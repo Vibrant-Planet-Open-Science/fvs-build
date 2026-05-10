@@ -36,13 +36,13 @@ on:
         default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
       runner_image:
         description: >-
-          GitHub-hosted runner image label. Pinned per ADR-001 to keep the
-          glibc baseline stable and matched to the runtime container base.
+          GitHub-hosted runner image label. Pinned to keep the glibc baseline
+          stable and matched to the runtime container base.
         required: false
         type: string
         default: "ubuntu-24.04"
       gfortran_package:
-        description: "apt package providing gfortran. Pinned per ADR-001."
+        description: "apt package providing gfortran. Pinned."
         required: false
         type: string
         default: "gfortran-13"
