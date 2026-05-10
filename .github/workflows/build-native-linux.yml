@@ -130,6 +130,13 @@ jobs:
       matrix:
         variant: ${{ fromJSON(needs.preflight.outputs.matrix_variants) }}
     steps:
+      # Reusable-workflow jobs do not populate the workspace by default; local
+      # composite actions need .github/actions/* on disk before uses: ./...
+      - name: Check out fvs-build (workflow repository)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: Resolve fvs-build repo and ref from workflow_ref
         id: fb_ref
         uses: ./.github/actions/resolve-fvs-build-ref
@@ -336,6 +343,11 @@ jobs:
     outputs:
       artifact_name: ${{ steps.bundle.outputs.artifact_name }}
     steps:
+      - name: Check out fvs-build (workflow repository)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: Resolve fvs-build repo and ref from workflow_ref
         id: fb_ref
         uses: ./.github/actions/resolve-fvs-build-ref
