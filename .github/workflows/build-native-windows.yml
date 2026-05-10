@@ -129,13 +129,17 @@ jobs:
         with:
           msystem: MINGW64
           update: true
+          # GNU coreutils are not packaged as mingw-w64-x86_64-coreutils; use MSYS repo tools on PATH.
           install: >-
             mingw-w64-x86_64-gcc-fortran
             mingw-w64-x86_64-gcc
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-python
             mingw-w64-x86_64-python-pip
-            mingw-w64-x86_64-coreutils
+            coreutils
+            findutils
+            grep
+            gawk
 
       - name: Resolve fvs-build repo and ref from workflow_ref
         id: fb_ref
