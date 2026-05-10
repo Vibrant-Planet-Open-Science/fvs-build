@@ -1,0 +1,24 @@
+# Composite action: derive fvs-build repository and ref from github.workflow_ref
+# so actions/checkout matches the reusable workflow invocation (same idiom as
+# GitHub's docs for self-checkout inside workflow_call).
+name: Resolve fvs-build repo/ref from workflow_ref
+description: >
+  github.workflow_ref looks like owner/repo/.github/workflows/<file>@<ref>.
+  Outputs owner/repo and ref for a following actions/checkout of this overlay.
+
+outputs:
+  repo:
+    description: fvs-build repository in owner/name form.
+    value: ${{ steps.resolve.outputs.repo }}
+  ref:
+    description: Git ref (branch, tag, or SHA) of the invoked workflow file.
+    value: ${{ steps.resolve.outputs.ref }}
+
+runs:
+  using: composite
+  steps:
+    - id: resolve
+      shell: bash
+      env:
+        WF_REF: ${{ github.workflow_ref }}
+      run: bash "${{ github.action_path }}/resolve.sh"
