@@ -1,0 +1,297 @@
+# Reusable workflow: build the Linux runtime container image from a
+# fvs-native-linux artifact bundle and (optionally) push to GHCR.
+#
+# Per ADR-001's "container build approach" subsection, this workflow does
+# NOT compile inside Docker. It consumes the binary artifact produced by
+# build-native-linux.yml and copies it into a runtime-only Ubuntu 24.04
+# image -- one binary, validated once via the native build's smoke test,
+# packaged into two distribution channels (raw artifact + container).
+#
+# Caller pattern (orchestrator, see dispatch-container-linux.yml):
+#
+#   jobs:
+#     native:
+#       uses: <owner>/fvs-build/.github/workflows/build-native-linux.yml@<ref>
+#       with:
+#         source_repo: ...
+#         source_ref: ...
+#     container:
+#       needs: native
+#       uses: <owner>/fvs-build/.github/workflows/build-container-linux.yml@<ref>
+#       with:
+#         artifact_name: ${{ needs.native.outputs.artifact_name }}
+#         image_name: ghcr.io/<owner>/usfs-fvs
+#         image_tag: ${{ inputs.source_ref }}
+#         push: true
+#       secrets: inherit
+#       permissions:
+#         contents: read
+#         packages: write
+
+name: Build Linux runtime container image (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      artifact_name:
+        description: >-
+          Name of the fvs-native-linux artifact bundle produced by a prior
+          build-native-linux.yml job in the same workflow run. Typically
+          `fvs-native-linux-<run_id>` -- pass the upstream job's
+          `artifact_name` output through unchanged.
+        required: true
+        type: string
+      image_name:
+        description: >-
+          Fully-qualified image name without the tag suffix, e.g.
+          `ghcr.io/vibrant-planet-open-science/usfs-fvs`. The two-namespace
+          split (PRD section 5: project namespace vs upstream-tracking
+          namespace) is the caller's choice; this workflow accepts whatever
+          name is supplied.
+        required: true
+        type: string
+      image_tag:
+        description: >-
+          Primary tag for the built image, e.g. `FS2025.4c` for an
+          upstream USFS release or a calver tag for a fvs-engine release.
+        required: true
+        type: string
+      image_extra_tags:
+        description: >-
+          Comma-separated additional tags applied at push time. Common
+          choices: `latest`, `<source_sha_short>`. Each tag is applied
+          (via docker tag) to the same image and pushed alongside the
+          primary tag. Empty by default.
+        required: false
+        type: string
+        default: ""
+      runtime_base:
+        description: >-
+          Base image for the runtime container. Pinned to ubuntu:24.04
+          per ADR-001's matched-base decision (same Ubuntu version as the
+          ubuntu-24.04 build runner means the binary's glibc baseline
+          matches the runtime).
+        required: false
+        type: string
+        default: "ubuntu:24.04"
+      runner_image:
+        description: >-
+          GitHub-hosted runner image label this workflow runs on.
+        required: false
+        type: string
+        default: "ubuntu-24.04"
+      push:
+        description: >-
+          Push the built image to the registry after smoke tests pass.
+          Defaults to false so dispatch / dry-run callers do not
+          accidentally publish; production callers (release pipelines)
+          must explicitly set true.
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      image_ref:
+        description: "Primary image reference: <image_name>:<image_tag>."
+        value: ${{ jobs.build.outputs.image_ref }}
+      image_digest:
+        description: >-
+          Image digest in `sha256:...` form. Empty unless `push: true`,
+          since digests are only stable for pushed images.
+        value: ${{ jobs.build.outputs.image_digest }}
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build, smoke-test, and (optionally) push
+    runs-on: ${{ inputs.runner_image }}
+    outputs:
+      image_ref: ${{ steps.refs.outputs.image_ref }}
+      image_digest: ${{ steps.push.outputs.image_digest }}
+    steps:
+      # Self-checkout for docker/Dockerfile.runtime (ref matches workflow_call).
+      - name: Resolve fvs-build repo and ref from workflow_ref
+        id: fb_ref
+        uses: ./.github/actions/resolve-fvs-build-ref
+
+      - name: Check out fvs-build (Dockerfile.runtime)
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ steps.fb_ref.outputs.repo }}
+          ref: ${{ steps.fb_ref.outputs.ref }}
+
+      - name: Download fvs-native-linux artifact bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: bundle
+
+      - name: Verify bundle layout matches the artifact contract
+        run: |
+          set -euo pipefail
+          for required in \
+            bundle/provenance/manifest.json \
+            bundle/sbom/fvs-native-linux.spdx.json
+          do
+            if [ ! -f "$required" ]; then
+              echo "ERROR: bundle missing required file: ${required}" >&2
+              echo "       (see docs/workflow-interface.md for the full contract)" >&2
+              exit 1
+            fi
+          done
+          if [ ! -d bundle/bin ] || [ -z "$(ls -A bundle/bin 2>/dev/null)" ]; then
+            echo "ERROR: bundle/bin is missing or empty" >&2
+            exit 1
+          fi
+          if [ ! -d bundle/lib ] || [ -z "$(ls -A bundle/lib 2>/dev/null)" ]; then
+            echo "ERROR: bundle/lib is missing or empty" >&2
+            exit 1
+          fi
+          echo "Bundle layout OK; binaries:"
+          ls -1 bundle/bin
+          echo "shared libraries:"
+          ls -1 bundle/lib
+
+      # Pull provenance fields out of the bundle's manifest.json so we can
+      # surface them as Docker --build-arg values and OCI labels. Keeping
+      # them in env via $GITHUB_ENV avoids re-running Python in every later
+      # step that needs them.
+      - name: Extract provenance from bundle manifest
+        id: provenance
+        run: |
+          set -euo pipefail
+          python3 tools/ci/provenance.py manifest-to-github-env
+
+      - name: Compose image references
+        id: refs
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          IMAGE_REF="${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "image_ref=${IMAGE_REF}"      >> "$GITHUB_OUTPUT"
+          echo "IMAGE_REF=${IMAGE_REF}"      >> "$GITHUB_ENV"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build with --load so the image lands in the local docker daemon
+      # for smoke testing. Push is intentionally separated into a later
+      # step so a failed smoke aborts before anything reaches the registry.
+      - name: Build runtime image (load locally)
+        run: |
+          set -euo pipefail
+          docker buildx build \
+            --platform linux/amd64 \
+            --load \
+            --tag "${IMAGE_REF}" \
+            --build-arg RUNTIME_BASE="${{ inputs.runtime_base }}" \
+            --build-arg SOURCE_REPO="${SOURCE_REPO}" \
+            --build-arg SOURCE_REF="${SOURCE_REF}" \
+            --build-arg SOURCE_SHA="${SOURCE_SHA}" \
+            --build-arg FVS_BUILD_REPO="${FVS_BUILD_REPO}" \
+            --build-arg FVS_BUILD_REF="${FVS_BUILD_REF}" \
+            --build-arg FVS_BUILD_SHA="${FVS_BUILD_SHA}" \
+            --build-arg VARIANTS="${VARIANTS_BUILT}" \
+            --build-arg GFORTRAN_VERSION="${GFORTRAN_VERSION}" \
+            --build-arg MESON_VERSION="${MESON_VERSION}" \
+            --build-arg TIMESTAMP="${TIMESTAMP}" \
+            -f docker/Dockerfile.runtime \
+            .
+
+      # Per-variant in-image smoke: with no ENTRYPOINT in the image, the
+      # variant binary runs as the default command and we use the same
+      # `</dev/null` -> `STOP 20` check build-native-linux.yml uses at
+      # the build runner level. Reaching STOP 20 confirms the binary
+      # loaded inside the runtime image and libgfortran5 / libquadmath0
+      # are correctly installed.
+      #
+      # Output is captured to a shell variable (not piped through tee +
+      # grep) to avoid `set -o pipefail` adopting tee's SIGPIPE-141 exit
+      # when grep -q matches early and closes the pipe -- same pattern
+      # build-native-linux.yml uses.
+      - name: Smoke-test image (per variant, STOP 20 expected)
+        run: |
+          set -euo pipefail
+          FAILED=()
+          for FVS in ${VARIANTS_BINARIES}; do
+            echo "::group::smoke ${FVS}"
+            OUTPUT=$( docker run --rm \
+                        "${IMAGE_REF}" \
+                        "${FVS}" \
+                        </dev/null 2>&1 || true )
+            printf '%s\n' "${OUTPUT}" | head -n 30
+            if printf '%s\n' "${OUTPUT}" | grep -q 'STOP 20'; then
+              echo "PASS: ${FVS}"
+            else
+              echo "FAIL: ${FVS} (no STOP 20 in output)"
+              FAILED+=("${FVS}")
+            fi
+            echo "::endgroup::"
+          done
+          if [ "${#FAILED[@]}" -ne 0 ]; then
+            echo "::error::container smoke failed for ${#FAILED[@]} variant(s): ${FAILED[*]}"
+            exit 1
+          fi
+          echo "All ${VARIANTS_BUILT} smoke tests passed."
+
+      # GHCR login is conditional on push=true AND a ghcr.io image ref.
+      # Non-GHCR registries need their own auth and are out of scope for
+      # the Phase 1 dispatch; callers can fork this workflow if needed.
+      - name: Log in to GHCR
+        if: inputs.push && startsWith(inputs.image_name, 'ghcr.io/')
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tag and push image
+        id: push
+        if: inputs.push
+        env:
+          IMAGE_EXTRA_TAGS: ${{ inputs.image_extra_tags }}
+          IMAGE_NAME: ${{ inputs.image_name }}
+        run: |
+          set -euo pipefail
+          docker push "${IMAGE_REF}"
+          if [ -n "${IMAGE_EXTRA_TAGS}" ]; then
+            IFS=',' read -ra TAGS <<< "${IMAGE_EXTRA_TAGS}"
+            for T in "${TAGS[@]}"; do
+              T_TRIM=$(echo "$T" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+              [ -z "$T_TRIM" ] && continue
+              EXTRA_REF="${IMAGE_NAME}:${T_TRIM}"
+              docker tag  "${IMAGE_REF}" "${EXTRA_REF}"
+              docker push "${EXTRA_REF}"
+              echo "pushed extra tag: ${EXTRA_REF}"
+            done
+          fi
+          # Capture the digest of the pushed primary tag for the workflow
+          # output. RepoDigests is populated post-push; pick the line for IMAGE_NAME.
+          DIGEST=$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${IMAGE_REF}" \
+            | grep -F "${IMAGE_NAME}@" \
+            | head -n 1 \
+            | awk -F '@' '{print $2}' || true)
+          echo "image_digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Pushed ${IMAGE_REF} (digest: ${DIGEST:-unknown})"
+
+      - name: Install syft (for image SBOM)
+        uses: anchore/sbom-action/download-syft@v0
+
+      - name: Generate SPDX SBOM of built image
+        run: |
+          set -euo pipefail
+          syft scan "${IMAGE_REF}" \
+            -o "spdx-json=container-sbom.spdx.json"
+          echo "Image SBOM size: $(wc -c < container-sbom.spdx.json) bytes"
+
+      - name: Upload image SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: container-sbom-${{ github.run_id }}
+          path: container-sbom.spdx.json
+          retention-days: 30
+          if-no-files-found: error

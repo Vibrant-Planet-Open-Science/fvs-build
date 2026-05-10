@@ -1,0 +1,119 @@
+# Local-dev driver for the full native + container pipeline.
+#
+# This is a thin workflow_dispatch wrapper that demonstrates the
+# orchestrator pattern documented in docs/workflow-interface.md:
+# call build-native-linux first, then call build-container-linux with
+# `needs:` on the native job, passing the artifact name through.
+#
+# Defaults assume an upstream-tracking build (USDAForestService source +
+# ghcr.io/<owner>/fvs-upstream namespace per PRD section 5). `push`
+# defaults to false so a manual dispatch never accidentally publishes;
+# operator must explicitly set push=true for production-style runs.
+#
+# This is NOT a caller interface for other repos -- they should compose
+# the two reusable workflows themselves, matching their own release ref
+# discipline. See docs/workflow-interface.md for the canonical pattern.
+
+name: Dispatch native + container build (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: 'Source repo (owner/name)'
+        required: true
+        default: 'USDAForestService/ForestVegetationSimulator'
+        type: string
+      source_ref:
+        description: 'Source ref (tag, branch, or SHA)'
+        required: true
+        default: 'FS2025.4c'
+        type: string
+      variants:
+        description: 'Comma-separated FVS variant codes (default: 22 known-good US variants)'
+        required: false
+        default: 'ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws'
+        type: string
+      image_name:
+        description: 'Fully-qualified image name without tag (defaults to upstream-tracking namespace per PRD section 5)'
+        required: false
+        default: ''
+        type: string
+      image_tag:
+        description: 'Primary image tag (typically matches source_ref)'
+        required: true
+        default: 'FS2025.4c'
+        type: string
+      image_extra_tags:
+        description: 'Comma-separated extra tags (e.g. latest)'
+        required: false
+        default: ''
+        type: string
+      push:
+        description: 'Push to GHCR after smoke tests pass'
+        required: false
+        default: false
+        type: boolean
+      runner_image:
+        description: 'Runner image label (pinned per ADR-001)'
+        required: false
+        default: 'ubuntu-24.04'
+        type: string
+        # Note: toolchain pinning inputs (gfortran_package, gpp_package,
+        # meson_version, runtime_base) are intentionally NOT exposed
+        # here. workflow_dispatch caps inputs at 10, and those four are
+        # already pinned by the reusable workflows' defaults per ADR-001.
+        # Override them by editing the called workflows or forking this
+        # dispatch driver if a one-off run truly needs different versions.
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Tiny preflight job to compute the default image_name when the operator
+  # leaves it blank. workflow_dispatch input defaults cannot reference
+  # github.repository_owner at definition time, so we derive it here and
+  # hand it to the container workflow via `with:`.
+  resolve-image-name:
+    name: Resolve image_name default
+    runs-on: ${{ inputs.runner_image }}
+    outputs:
+      image_name: ${{ steps.resolve.outputs.image_name }}
+    steps:
+      - name: Pick image_name
+        id: resolve
+        env:
+          INPUT_IMAGE_NAME: ${{ inputs.image_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_IMAGE_NAME}" ]; then
+            IMAGE_NAME="${INPUT_IMAGE_NAME}"
+          else
+            OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            IMAGE_NAME="ghcr.io/${OWNER_LC}/fvs-upstream"
+          fi
+          echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "image_name resolved to: ${IMAGE_NAME}"
+
+  native:
+    name: Native binary build
+    uses: ./.github/workflows/build-native-linux.yml
+    with:
+      source_repo: ${{ inputs.source_repo }}
+      source_ref: ${{ inputs.source_ref }}
+      variants: ${{ inputs.variants }}
+      runner_image: ${{ inputs.runner_image }}
+
+  container:
+    name: Container build
+    needs: [resolve-image-name, native]
+    uses: ./.github/workflows/build-container-linux.yml
+    with:
+      artifact_name: ${{ needs.native.outputs.artifact_name }}
+      image_name: ${{ needs.resolve-image-name.outputs.image_name }}
+      image_tag: ${{ inputs.image_tag }}
+      image_extra_tags: ${{ inputs.image_extra_tags }}
+      runner_image: ${{ inputs.runner_image }}
+      push: ${{ inputs.push }}
+    secrets: inherit

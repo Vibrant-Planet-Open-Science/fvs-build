@@ -1,0 +1,27 @@
+# Build-time options for the fvs-build Meson overlay.
+#
+# The overlay does not contain FVS source itself; it consumes a checked-out
+# upstream USDAForestService/ForestVegetationSimulator tree (or any source
+# repo that mirrors the upstream layout, e.g., fvs-engine post-modernization)
+# specified via fvs_source_dir.
+
+option(
+  'fvs_source_dir',
+  type: 'string',
+  value: '',
+  description: 'Absolute path to a checked-out FVS source tree (containing bin/FVS<variant>_sourceList.txt manifests). Required.',
+)
+
+option(
+  'variants',
+  type: 'array',
+  value: ['pn'],
+  description: 'FVS variant codes to build (e.g., pn, nc, wc). Each entry maps to bin/FVS<variant>_sourceList.txt in the source tree. The full set of US variants that build cleanly today is: ak, bm, ca, ci, cr, cs, ec, em, ie, kt, ls, nc, ne, oc, op, pn, sn, so, tt, ut, wc, ws. The Canadian variants bc and on currently fail at link due to incomplete upstream source lists; see README.md for details.',
+)
+
+option(
+  'extra_fortran_args',
+  type: 'array',
+  value: [],
+  description: 'Extra flags appended to fortran_args for every Fortran compilation unit. Escape hatch for ad-hoc build investigation; production builds should leave this empty. (Cannot be named fortran_* because Meson reserves that prefix for built-in compiler-flag options.)',
+)

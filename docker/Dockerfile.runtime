@@ -1,0 +1,106 @@
+# Runtime container image for FVS native binaries.
+#
+# Per ADR-001: this is a runtime-only image. The compile happens on a native
+# GitHub-hosted ubuntu-24.04 runner (build-native-linux.yml). This Dockerfile
+# only consumes the resulting binaries from the unpacked plan-1 artifact
+# bundle and copies them into a slim ubuntu:24.04 runtime alongside the
+# matching libgfortran5 / libquadmath0 packages.
+#
+# Pinning ubuntu:24.04 here matches the ubuntu-24.04 build runner per
+# ADR-001's "matched Ubuntu base" decision: identical glibc baseline on
+# both sides means the copied binary loads cleanly without surprises.
+#
+# Build context expectations (set up by build-container-linux.yml):
+#   ./bundle/                     unpacked from the build-native-linux.yml
+#   ./bundle/bin/FVS<v>             artifact `fvs-native-linux-<run_id>`
+#   ./bundle/lib/libFVS<v>.so
+#   ./bundle/provenance/manifest.json
+#   ./bundle/provenance/per-variant/FVS<v>.json
+#   ./bundle/sbom/fvs-native-linux.spdx.json
+#
+# The image has no ENTRYPOINT shim. Each FVS variant binary is on PATH
+# under its native name, so the image is invoked with the natural FVS
+# command line:
+#
+#   docker run --rm -v $PWD:/data ghcr.io/.../usfs-fvs:FS2025.4c \
+#     FVSak --keywordfile=mykey.key
+#
+# WORKDIR is /data so relative paths in the keyfile resolve and FVS
+# output files (.out, .trl, .sum, ...) land back in the caller's mount.
+
+ARG RUNTIME_BASE=ubuntu:24.04
+FROM ${RUNTIME_BASE}
+
+# Provenance ARGs derived from bundle/provenance/manifest.json by the
+# workflow before invoking docker buildx build. Keeping them as ARGs keeps
+# the Dockerfile portable for ad-hoc local builds (just pass --build-arg).
+ARG SOURCE_REPO
+ARG SOURCE_REF
+ARG SOURCE_SHA
+ARG FVS_BUILD_REPO
+ARG FVS_BUILD_REF
+ARG FVS_BUILD_SHA
+ARG VARIANTS
+ARG GFORTRAN_VERSION
+ARG MESON_VERSION
+ARG TIMESTAMP
+
+ENV DEBIAN_FRONTEND=noninteractive
+# Diagnostic env var (e.g. `docker run --rm IMAGE printenv FVS_VERSION`)
+# mirroring the same value baked into the OCI labels and manifest.json.
+ENV FVS_VERSION=${SOURCE_REF}
+
+# Runtime libraries only -- no compiler toolchain. libgfortran5 satisfies
+# the Fortran runtime; libquadmath0 covers IEEE quad-precision math
+# referenced by the FVS shared library.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends \
+  libgfortran5 \
+  libquadmath0 \
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Plan-1 bundle layout maps directly to FHS conventions:
+#   bundle/bin/FVS<v>           -> /usr/local/bin/FVS<v>
+#   bundle/lib/libFVS<v>.so     -> /usr/local/lib/libFVS<v>.so
+COPY bundle/bin/  /usr/local/bin/
+COPY bundle/lib/  /usr/local/lib/
+
+# Provenance: manifest + SBOM from the plan-1 bundle, kept in /usr/share
+# so consumers can read them with
+# `docker run --rm IMAGE cat /usr/share/fvs-build/manifest.json`.
+COPY bundle/provenance/manifest.json         /usr/share/fvs-build/manifest.json
+COPY bundle/sbom/fvs-native-linux.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
+
+RUN chmod +x /usr/local/bin/FVS* \
+  && ldconfig
+
+# OCI standard provenance labels (https://github.com/opencontainers/image-spec/blob/main/annotations.md).
+LABEL org.opencontainers.image.source="https://github.com/${FVS_BUILD_REPO}" \
+  org.opencontainers.image.revision="${FVS_BUILD_SHA}" \
+  org.opencontainers.image.version="${SOURCE_REF}" \
+  org.opencontainers.image.created="${TIMESTAMP}" \
+  org.opencontainers.image.title="usfs-fvs" \
+  org.opencontainers.image.description="Forest Vegetation Simulator (FVS) variant binaries packaged into a runtime-only Ubuntu 24.04 image. Built by Vibrant-Planet-Open-Science/fvs-build." \
+  org.opencontainers.image.documentation="https://github.com/${FVS_BUILD_REPO}/blob/${FVS_BUILD_REF}/docs/workflow-interface.md"
+
+# fvs-build-specific provenance: the FVS source provenance (separate from
+# the OCI source/revision, which here points at fvs-build itself), the
+# toolchain that built the binaries, and the variant set baked in.
+LABEL org.vibrantplanet.fvs.source-repo="${SOURCE_REPO}" \
+  org.vibrantplanet.fvs.source-ref="${SOURCE_REF}" \
+  org.vibrantplanet.fvs.source-sha="${SOURCE_SHA}" \
+  org.vibrantplanet.fvs.fvs-build-repo="${FVS_BUILD_REPO}" \
+  org.vibrantplanet.fvs.fvs-build-ref="${FVS_BUILD_REF}" \
+  org.vibrantplanet.fvs.fvs-build-sha="${FVS_BUILD_SHA}" \
+  org.vibrantplanet.fvs.variants="${VARIANTS}" \
+  org.vibrantplanet.fvs.gfortran-version="${GFORTRAN_VERSION}" \
+  org.vibrantplanet.fvs.meson-version="${MESON_VERSION}"
+
+# /data is the expected mount point for the caller's working directory.
+# It must contain the keyfile and any referenced database; FVS output
+# files land here too. With WORKDIR=/data and no ENTRYPOINT, the image
+# is invoked with the natural FVS command line:
+#   docker run --rm -v $PWD:/data IMAGE FVSak --keywordfile=mykeyfile.key
+VOLUME ["/data"]
+WORKDIR /data
