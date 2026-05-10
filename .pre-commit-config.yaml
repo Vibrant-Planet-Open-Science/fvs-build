@@ -1,0 +1,65 @@
+# Pre-commit hook configuration for fvs-build.
+#
+# To use locally:
+#   pip install pre-commit  (or: pipx install pre-commit)
+#   pre-commit install      (one-time, installs the git hook)
+#   pre-commit run --all-files  (run all hooks against everything)
+#
+# Authoritative enforcement runs in .github/workflows/lint.yml on every
+# pull request and push to main. Local hooks are advisory but should
+# match CI (same hook versions, same configs) so failures show up before
+# pushing rather than after.
+
+repos:
+  # Generic hygiene: trailing whitespace, missing/extra trailing newlines,
+  # accidentally committed merge markers, accidentally committed large
+  # files (default cap 500KB; nothing in this repo is close to that).
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        # GitHub Actions YAML occasionally uses tag aliases that
+        # standard PyYAML rejects without --unsafe. The actionlint hook
+        # below does deeper workflow-aware validation; this is just a
+        # cheap parser-level check.
+        args: ["--unsafe"]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  # actionlint: workflow-aware static analysis for .github/workflows/.
+  # Type-checks ${{ ... }} expressions including inputs / needs.outputs /
+  # secrets, validates `uses:` action versions, and shells out to
+  # shellcheck (when available) for the `run:` blocks.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.7
+    hooks:
+      - id: actionlint
+
+  # yamllint with the relaxed profile we use throughout the repo. Rules
+  # live in .yamllint so IDE yamllint extensions auto-discover the same
+  # config and stay in sync with this hook.
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+
+  # Ruff: fast lint (with autofix) + format. Single 88-column line length
+  # for code and docstrings (see ruff.toml).
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.12
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  # hadolint via its official Docker image. Picking the docker variant
+  # over the native one means contributors do not need to install the
+  # hadolint binary themselves; only Docker (which they probably already
+  # have for the runtime image work). Config lives in .hadolint.yaml.
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.13.1-beta
+    hooks:
+      - id: hadolint-docker
+        files: ^docker/Dockerfile

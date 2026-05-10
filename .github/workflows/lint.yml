@@ -1,0 +1,35 @@
+# Authoritative lint gate.
+#
+# Runs `pre-commit run --all-files`, which executes every hook declared
+# in .pre-commit-config.yaml against every tracked file. Local
+# `pre-commit install` is advisory; this workflow is what blocks merges
+# when a check fails.
+#
+# Hook environments (actionlint, yamllint, hadolint-docker, etc.) are
+# cached by pre-commit/action across runs keyed on the config's pinned
+# `rev:` values, so steady-state runs are fast.
+
+name: lint
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  pre-commit:
+    name: pre-commit run --all-files
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Run pre-commit
+        uses: pre-commit/action@v3.0.1

@@ -1,0 +1,18 @@
+# hadolint config for docker/Dockerfile.runtime.
+#
+# Shared between the pre-commit hadolint-docker hook
+# (.pre-commit-config.yaml) and any local `hadolint` invocation.
+
+ignored:
+  # DL3008: "Pin versions in apt-get install".
+  #
+  # We install libgfortran5, libquadmath0, ca-certificates from the
+  # ubuntu:24.04 base unpinned by design: per ADR-001's matched-Ubuntu
+  # decision the binaries are compiled on an `ubuntu-24.04` runner with
+  # `gfortran-13`, and the libgfortran5 surfaced by the same Ubuntu
+  # 24.04 LTS apt index is the natural runtime match. Pinning to a
+  # specific patch (14.2.0-4ubuntu2~24.04.1 today) would couple us to
+  # a moving target and force config bumps on every Ubuntu point
+  # release without buying anything reproducibility-wise -- the OCI
+  # labels and SBOM record what was actually pulled at build time.
+  - DL3008

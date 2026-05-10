@@ -1,0 +1,15 @@
+# yamllint config -- shared between the pre-commit hook
+# (.pre-commit-config.yaml) and any IDE yamllint extension.
+#
+# We start from the relaxed profile and disable a handful of rules that
+# would either fight GitHub Actions conventions (truthy: `on:` triggers
+# parse to true), require explicit document markers (---) for no benefit
+# in single-document files, or force hard line-length wraps that don't
+# improve readability for shell-heavy workflow blocks.
+
+extends: relaxed
+
+rules:
+  line-length: disable
+  document-start: disable
+  truthy: disable
