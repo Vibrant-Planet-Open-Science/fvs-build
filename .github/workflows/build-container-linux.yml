@@ -1,11 +1,11 @@
 # Reusable workflow: build the Linux runtime container image from a
 # fvs-native-linux artifact bundle and (optionally) push to GHCR.
 #
-# Per ADR-001's "container build approach" subsection, this workflow does
-# NOT compile inside Docker. It consumes the binary artifact produced by
-# build-native-linux.yml and copies it into a runtime-only Ubuntu 24.04
-# image -- one binary, validated once via the native build's smoke test,
-# packaged into two distribution channels (raw artifact + container).
+# This workflow does NOT compile inside Docker. It consumes the binary
+# artifact produced by build-native-linux.yml and copies it into a
+# runtime-only Ubuntu 24.04 image -- one binary, validated once via the
+# native build's smoke test, packaged into two distribution channels
+# (raw artifact + container).
 #
 # Caller pattern (orchestrator, see dispatch-container-linux.yml):
 #
@@ -45,8 +45,7 @@ on:
         description: >-
           Fully-qualified image name without the tag suffix, e.g.
           `ghcr.io/vibrant-planet-open-science/usfs-fvs`. The two-namespace
-          split (PRD section 5: project namespace vs upstream-tracking
-          namespace) is the caller's choice; this workflow accepts whatever
+          split is the caller's choice; this workflow accepts whatever
           name is supplied.
         required: true
         type: string
@@ -68,9 +67,8 @@ on:
       runtime_base:
         description: >-
           Base image for the runtime container. Pinned to ubuntu:24.04
-          per ADR-001's matched-base decision (same Ubuntu version as the
-          ubuntu-24.04 build runner means the binary's glibc baseline
-          matches the runtime).
+          (same Ubuntu version as the ubuntu-24.04 build runner means the
+          binary's glibc baseline matches the runtime).
         required: false
         type: string
         default: "ubuntu:24.04"
@@ -103,6 +101,10 @@ permissions:
   contents: read
   packages: write
 
+# GitHub is deprecating Node 20 for Actions; opt into Node 24 for JS actions.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: Build, smoke-test, and (optionally) push
@@ -111,7 +113,12 @@ jobs:
       image_ref: ${{ steps.refs.outputs.image_ref }}
       image_digest: ${{ steps.push.outputs.image_digest }}
     steps:
-      # Self-checkout for docker/Dockerfile.runtime (ref matches workflow_call).
+      # Reusable-workflow jobs need the workflow repo on disk before uses: ./...
+      - name: Check out fvs-build (workflow repository)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
       - name: Resolve fvs-build repo and ref from workflow_ref
         id: fb_ref
         uses: ./.github/actions/resolve-fvs-build-ref

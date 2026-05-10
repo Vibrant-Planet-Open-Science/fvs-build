@@ -65,6 +65,9 @@ common_fortran_args = [
   '-DANSI',
   '-Wall',
   '-Wno-integer-division',
+  # Upstream F77 uses patterns gfortran's flow analysis flags as uninitialized
+  # (-Wmaybe-uninitialized); not actionable for third-party sources.
+  '-Wno-maybe-uninitialized',
   '-ffpe-trap=invalid,zero,underflow,overflow,denormal',
   '-fbacktrace',
 ] + extra_fortran_flags

@@ -190,7 +190,7 @@ The workflow itself only requests `contents: read`. SBOM generation requires no 
 
 ### Wall-clock and concurrency
 
-The matrix expands to 22 variants by default; on GitHub-hosted runners with default concurrency limits a full release build typically completes well under one hour.
+The matrix expands to 22 variants by default; on GitHub-hosted runners with default concurrency limits a full release build typically completes in less than ten minutes.
 
 Per-variant Fortran compile time dominates. Caching the Meson build directory (`actions/cache@v4` keyed on variant + source ref + Meson scaffold hash) is enabled but mostly benefits branch/PR runs; tag-driven release builds change `source_ref` every run and miss intentionally.
 

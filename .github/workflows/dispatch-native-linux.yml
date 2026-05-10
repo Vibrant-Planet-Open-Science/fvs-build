@@ -32,12 +32,12 @@ on:
         default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
         type: string
       runner_image:
-        description: "GitHub-hosted runner image label (pinned per ADR-001)"
+        description: "GitHub-hosted runner image label"
         required: false
         default: "ubuntu-24.04"
         type: string
       gfortran_package:
-        description: "apt package providing gfortran (pinned per ADR-001)"
+        description: "apt package providing gfortran"
         required: false
         default: "gfortran-13"
         type: string
@@ -59,6 +59,10 @@ on:
 
 permissions:
   contents: read
+
+# GitHub is deprecating Node 20 for Actions; opt into Node 24 for JS actions.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build:
