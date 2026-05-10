@@ -1,17 +1,11 @@
-# Reusable workflow: build native Linux x86_64 FVS artifacts via the
-# fvs-build Meson overlay.
+# Reusable workflow: build native Windows x86_64 FVS artifacts (MinGW-w64 / MSYS2)
+# via the fvs-build Meson overlay.
 #
-# This workflow is source-agnostic. Callers supply a source repo URL and
-# ref; this workflow produces a single artifact bundle (per-variant
-# binaries + shared libraries + provenance manifest + SBOM) that downstream
-# callers consume. The bundle layout is the contract documented in
-# docs/workflow-interface.md.
-#
-# Container packaging is intentionally out of scope for this workflow;
-# this workflow's artifacts may be consumed by a separate container workflow
-# via its `artifact_name` output.
+# Same contract as build-native-linux.yml (per-variant matrix, bundle layout,
+# provenance) with Windows paths (.exe / .dll). Downstream container packaging
+# is Linux-only; this workflow is for native Windows delivery and validation.
 
-name: Build native Linux x86_64 FVS artifacts (reusable)
+name: Build native Windows x86_64 FVS artifacts (reusable)
 
 on:
   workflow_call:
@@ -27,115 +21,121 @@ on:
         type: string
       variants:
         description: >-
-          Comma-separated list of FVS variant codes. Defaults to the 22
-          cleanly-buildable US variants. The Canadian variants (bc, on)
-          are excluded by default due to incomplete upstream source lists;
-          see fvs-build README for details.
+          Comma-separated list of FVS variant codes. Defaults to the 22 US
+          variants that build cleanly on Linux; Windows may differ slightly.
         required: false
         type: string
         default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
       runner_image:
         description: >-
-          GitHub-hosted runner image label. Pinned to keep the glibc baseline
-          stable and matched to the runtime container base.
+          GitHub-hosted Windows runner label (MSYS2 MINGW64 toolchain).
         required: false
         type: string
-        default: "ubuntu-24.04"
+        default: "windows-latest"
       gfortran_package:
-        description: "apt package providing gfortran. Pinned."
+        description: >-
+          MSYS2 pacman package name recorded in provenance (toolchain labels).
         required: false
         type: string
-        default: "gfortran-13"
+        default: "mingw-w64-x86_64-gcc-fortran"
       gpp_package:
         description: >-
-          apt package providing g++. A handful of variants compile .cpp
-          files (fire/cfim/cfim.cpp), so a matching C++ compiler is
-          required; pinned to the same version family as gfortran.
+          MSYS2 package providing gcc/g++ (provenance labels).
         required: false
         type: string
-        default: "g++-13"
+        default: "mingw-w64-x86_64-gcc"
       meson_version:
         description: >-
-          Exact Meson version to install via pip. Pinned to the version
-          fvs-build was developed against to keep configure-time behavior
-          stable across releases.
+          Exact Meson version installed via pip (MINGW64 Python).
         required: false
         type: string
         default: "1.5.2"
       extra_fortran_args:
         description: >-
-          Comma-separated extra flags appended to common Fortran compile
-          args (passed verbatim through Meson's `-Dextra_fortran_args=`).
-          Escape hatch for ad-hoc build investigation; production builds
-          should leave this empty.
+          Comma-separated extra Fortran flags passed through
+          `-Dextra_fortran_args=`.
         required: false
         type: string
         default: ""
     outputs:
       artifact_name:
         description: >-
-          Name of the bundled artifact uploaded by this workflow. Exactly
-          `fvs-native-linux-<run_id>`. Plan 2's container workflow consumes
-          this name to download and unpack the bundle.
+          Name of the bundled artifact. Exactly `fvs-native-windows-<run_id>`.
         value: ${{ jobs.collect-and-finalize.outputs.artifact_name }}
 
 permissions:
   contents: read
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Preflight: parse the comma-separated variants input into a JSON array
-  # the build matrix can consume. Done once so every matrix leg sees the
-  # same expanded list; also surfaces empty-input errors before any compile
-  # work runs.
-  # ---------------------------------------------------------------------------
   preflight:
     name: Preflight (expand variant matrix)
     runs-on: ${{ inputs.runner_image }}
+    defaults:
+      run:
+        shell: bash
     outputs:
       matrix_variants: ${{ steps.matrix.outputs.matrix_variants }}
     steps:
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Expand variants input into matrix JSON
         id: matrix
         env:
           VARIANTS_CSV: ${{ inputs.variants }}
         run: |
-          set -euo pipefail
-          MATRIX=$(printf '%s\n' "$VARIANTS_CSV" \
-            | tr ',' '\n' \
-            | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
-            | awk 'NF && !seen[$0]++' \
-            | jq -R . \
-            | jq -s -c .)
-          echo "matrix_variants=${MATRIX}" >> "$GITHUB_OUTPUT"
-          echo "Expanded variants: ${MATRIX}"
-          if [ "$(echo "$MATRIX" | jq 'length')" -eq 0 ]; then
-            echo "ERROR: variants input expanded to an empty list" >&2
-            exit 1
-          fi
+          python - <<'PY'
+          import json
+          import os
 
-  # ---------------------------------------------------------------------------
-  # Per-variant build: one matrix leg per requested variant. Each leg checks
-  # out fvs-build (this repo, at the same ref the workflow is invoked from)
-  # plus the caller's source tree, installs the pinned toolchain, runs
-  # Meson + Ninja, smoke-tests the produced executable, and uploads an
-  # ephemeral per-variant artifact for the collect job.
-  # ---------------------------------------------------------------------------
+          csv = os.environ["VARIANTS_CSV"]
+          seen = set()
+          variants = []
+          for part in csv.split(","):
+              v = part.strip()
+              if v and v not in seen:
+                  seen.add(v)
+                  variants.append(v)
+          if not variants:
+              raise SystemExit("ERROR: variants input expanded to an empty list")
+          out = os.environ["GITHUB_OUTPUT"]
+          with open(out, "a", encoding="utf-8") as fh:
+              fh.write(f"matrix_variants={json.dumps(variants)}\n")
+          print("Expanded variants:", json.dumps(variants))
+          PY
+
   build-variant:
     name: Build FVS${{ matrix.variant }}
     runs-on: ${{ inputs.runner_image }}
     needs: preflight
+    defaults:
+      run:
+        shell: msys2 {0}
+    env:
+      MSYSTEM: MINGW64
     strategy:
       fail-fast: false
       matrix:
         variant: ${{ fromJSON(needs.preflight.outputs.matrix_variants) }}
     steps:
-      # Reusable-workflow jobs do not populate the workspace by default; local
-      # composite actions need .github/actions/* on disk before uses: ./...
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
+
+      - name: Set up MSYS2 (MINGW64)
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc-fortran
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-ninja
+            mingw-w64-x86_64-python
+            mingw-w64-x86_64-python-pip
+            mingw-w64-x86_64-coreutils
 
       - name: Resolve fvs-build repo and ref from workflow_ref
         id: fb_ref
@@ -148,12 +148,6 @@ jobs:
           ref: ${{ steps.fb_ref.outputs.ref }}
           path: fvs-build
 
-      # Fresh clone of the source tree on every run; sidesteps the stale-.mod
-      # issue documented in fvs-build/README.md (gfortran's -I path also
-      # searches for .mod files, so any leftover ones from a prior in-place
-      # build would be picked up before the freshly built ones).
-      # Upstream lists paths under submodules (e.g. volume/NVEL); without
-      # recursive checkout, parse_sourcelist warns and Meson can fail later.
       - name: Check out FVS source tree
         uses: actions/checkout@v5
         with:
@@ -163,20 +157,12 @@ jobs:
           clean: true
           submodules: recursive
 
-      # gfortran searches -I for .mod as well as include files; any .mod under
-      # fvs-source (tracked upstream, empty, or corrupt) wins over Meson's -J
-      # output and causes f951 "Unexpected EOF" when loading modules.
       - name: Remove stray Fortran .mod files from source tree
         run: |
           set -euo pipefail
-          # Meson emits modules under _build (-J). gfortran also searches -I dirs
-          # for .mod; tracked or empty files under fvs-source break with EOF errors.
           find fvs-source -name '*.mod' -type f -delete
           echo "Stripped any *.mod under fvs-source before Meson (see README)."
 
-      # Record the actual commits checked out in this job. For reusable
-      # workflow_call runs from another repo, github.sha is the caller's
-      # trigger commit — not the fvs-build overlay revision under fvs-build/.
       - name: Capture source and fvs-build SHAs for provenance
         id: git_shas
         run: |
@@ -188,49 +174,39 @@ jobs:
           echo "Source SHA:     ${SRC_SHA}"
           echo "fvs-build SHA:  ${FB_SHA}"
 
-      - name: Install Fortran/C/C++ toolchain (pinned)
-        env:
-          GFORTRAN_PKG: ${{ inputs.gfortran_package }}
-          GPP_PKG: ${{ inputs.gpp_package }}
+      - name: Expose compilers for provenance metadata
         run: |
           set -euo pipefail
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            --no-install-recommends \
-            "${GFORTRAN_PKG}" "${GPP_PKG}" ninja-build
-          # gfortran-N ships in the gcc-N package family; align CC to gcc-N
-          # so Meson picks the matching gcc/g++/gfortran trio rather than
-          # whatever Ubuntu's update-alternatives points at by default.
-          GCC_PKG="${GPP_PKG/g++/gcc}"
           {
-            echo "FC=${GFORTRAN_PKG}"
-            echo "CC=${GCC_PKG}"
-            echo "CXX=${GPP_PKG}"
+            echo "FC=gfortran"
+            echo "CC=gcc"
+            echo "CXX=g++"
           } >> "$GITHUB_ENV"
-
-      - name: Set up Python for Meson and parse_sourcelist.py
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
 
       - name: Install pinned Meson
         env:
           MESON_VERSION: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
-          python3 -m pip install --upgrade pip
-          python3 -m pip install "meson==${MESON_VERSION}"
+          python -m pip install --upgrade pip
+          python -m pip install "meson==${MESON_VERSION}"
           meson --version
           ninja --version
+          gfortran --version | head -n 1
 
-      # Cache is a light-touch optimization: tag-driven release builds change
-      # source_ref every run and miss; branch/PR builds against the same ref
-      # can hit and skip the long Fortran compile.
       - name: Cache Meson build directory
         uses: actions/cache@v5
         with:
           path: _build
-          key: meson-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/ci/provenance.py') }}
+          key: >-
+            meson-win-${{ matrix.variant }}-${{ inputs.source_ref }}-${{
+              hashFiles(
+                'fvs-build/meson.build',
+                'fvs-build/meson_options.txt',
+                'fvs-build/tools/parse_sourcelist.py',
+                'fvs-build/tools/ci/provenance.py'
+              )
+            }}
 
       - name: Configure Meson
         env:
@@ -254,22 +230,17 @@ jobs:
       - name: Compile (Ninja)
         run: ninja -C _build -k 0
 
-      # Smoke test mirrors the local-dev pattern documented in fvs-build's
-      # README: pipe EOF on stdin, expect the binary to start up and reach
-      # gfortran's `STOP 20` (raised when FVS hits EOF before reading a
-      # keyfile). Run from a temp dir so any fort.<N> spillover does not
-      # land next to the build outputs.
       - name: Smoke-test the variant executable
         env:
           VARIANT: ${{ matrix.variant }}
         run: |
           set -euo pipefail
-          BIN_REL="_build/FVS${VARIANT}"
-          if [ ! -x "$BIN_REL" ]; then
-            echo "ERROR: ${BIN_REL} missing or not executable" >&2
+          BIN_REL="_build/FVS${VARIANT}.exe"
+          if [ ! -f "$BIN_REL" ]; then
+            echo "ERROR: ${BIN_REL} missing" >&2
             exit 1
           fi
-          BIN_ABS=$(realpath "$BIN_REL")
+          BIN_ABS=$(realpath "$BIN_REL" 2>/dev/null || cygpath -am "$BIN_REL")
           SMOKE_DIR=$(mktemp -d)
           OUTPUT="$( (cd "$SMOKE_DIR" && "$BIN_ABS" </dev/null 2>&1) || true )"
           rm -rf "$SMOKE_DIR"
@@ -283,7 +254,7 @@ jobs:
 
       - name: Stage artifacts and per-variant build-info
         env:
-          FVS_NATIVE_PLATFORM: linux
+          FVS_NATIVE_PLATFORM: windows
           VARIANT: ${{ matrix.variant }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
@@ -300,23 +271,20 @@ jobs:
           STAGE="staging/${VARIANT}"
           mkdir -p "${STAGE}/bin" "${STAGE}/lib" "${STAGE}/provenance/meson-logs"
 
-          BIN_SRC="_build/FVS${VARIANT}"
-          # Meson shared_library('FVS' + v) with no soversion → _build/libFVS<v>.so.
-          SHLIB_SRC="_build/libFVS${VARIANT}.so"
+          BIN_SRC="_build/FVS${VARIANT}.exe"
+          SHLIB_SRC="_build/libFVS${VARIANT}.dll"
           if [ ! -f "${SHLIB_SRC}" ]; then
-            echo "ERROR: expected shared library missing: ${SHLIB_SRC}" >&2
-            echo "       (meson.build must keep a single unversioned libFVS<v>.so per variant)" >&2
+            echo "ERROR: expected DLL missing: ${SHLIB_SRC}" >&2
             exit 1
           fi
-          cp "${BIN_SRC}"   "${STAGE}/bin/FVS${VARIANT}"
-          cp "${SHLIB_SRC}" "${STAGE}/lib/libFVS${VARIANT}.so"
-          chmod +x "${STAGE}/bin/FVS${VARIANT}"
+          cp "${BIN_SRC}" "${STAGE}/bin/FVS${VARIANT}.exe"
+          cp "${SHLIB_SRC}" "${STAGE}/lib/libFVS${VARIANT}.dll"
 
-          BIN_SHA=$(sha256sum "${STAGE}/bin/FVS${VARIANT}"           | awk '{print $1}')
-          LIB_SHA=$(sha256sum "${STAGE}/lib/libFVS${VARIANT}.so"     | awk '{print $1}')
-          GFORTRAN_VERSION=$("${FC}"  --version | head -n 1)
-          GCC_VERSION=$("${CC}"       --version | head -n 1)
-          GPP_VERSION=$("${CXX}"      --version | head -n 1)
+          BIN_SHA=$(sha256sum "${STAGE}/bin/FVS${VARIANT}.exe" | awk '{print $1}')
+          LIB_SHA=$(sha256sum "${STAGE}/lib/libFVS${VARIANT}.dll" | awk '{print $1}')
+          GFORTRAN_VERSION=$(gfortran --version | head -n 1)
+          GCC_VERSION=$(gcc --version | head -n 1)
+          GPP_VERSION=$(g++ --version | head -n 1)
           NINJA_VERSION=$(ninja --version)
           MESON_VERSION_OUT=$(meson --version)
           TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -324,11 +292,9 @@ jobs:
           export BIN_SHA LIB_SHA TIMESTAMP \
             GFORTRAN_VERSION GCC_VERSION GPP_VERSION \
             NINJA_VERSION MESON_VERSION_OUT
-          python3 fvs-build/tools/ci/provenance.py write-build-info \
+          python fvs-build/tools/ci/provenance.py write-build-info \
             --output "${STAGE}/provenance/build-info.json"
 
-          # Trim meson-log to the tail; the full file is megabytes per
-          # variant and not useful as artifact-attached postmortem material.
           if [ -f _build/meson-logs/meson-log.txt ]; then
             tail -c 200000 _build/meson-logs/meson-log.txt \
               > "${STAGE}/provenance/meson-logs/meson-log.tail.txt"
@@ -345,16 +311,13 @@ jobs:
           retention-days: 1
           if-no-files-found: error
 
-  # ---------------------------------------------------------------------------
-  # Collect-and-finalize: download every per-variant artifact, fan it into
-  # the canonical bundle layout (the contract documented in
-  # docs/workflow-interface.md), generate an SBOM, and upload the single
-  # final artifact that callers (and plan 2's container workflow) consume.
-  # ---------------------------------------------------------------------------
   collect-and-finalize:
     name: Collect, SBOM, and finalize
     runs-on: ${{ inputs.runner_image }}
     needs: build-variant
+    defaults:
+      run:
+        shell: bash
     outputs:
       artifact_name: ${{ steps.bundle.outputs.artifact_name }}
     steps:
@@ -375,6 +338,10 @@ jobs:
           path: fvs-build
           fetch-depth: 1
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
       - name: Download all variant artifacts
         uses: actions/download-artifact@v7
         with:
@@ -384,8 +351,8 @@ jobs:
       - name: Fan into canonical bundle layout
         id: bundle
         env:
-          FVS_NATIVE_PLATFORM: linux
-          ARTIFACT_NAME: fvs-native-linux-${{ github.run_id }}
+          FVS_NATIVE_PLATFORM: windows
+          ARTIFACT_NAME: fvs-native-windows-${{ github.run_id }}
           VARIANTS_INPUT: ${{ inputs.variants }}
           RUNNER_IMAGE: ${{ inputs.runner_image }}
           GFORTRAN_PKG: ${{ inputs.gfortran_package }}
@@ -393,7 +360,7 @@ jobs:
           MESON_PIN: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
-          python3 fvs-build/tools/ci/provenance.py collect-bundle
+          python fvs-build/tools/ci/provenance.py collect-bundle
           echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
 
       - name: Install syft (for SBOM generation)
@@ -405,8 +372,8 @@ jobs:
         run: |
           set -euo pipefail
           syft scan "dir:${BUNDLE}" \
-            -o "spdx-json=${BUNDLE}/sbom/fvs-native-linux.spdx.json"
-          echo "SBOM size: $(wc -c < "${BUNDLE}/sbom/fvs-native-linux.spdx.json") bytes"
+            -o "spdx-json=${BUNDLE}/sbom/fvs-native-windows.spdx.json"
+          echo "SBOM size: $(wc -c < "${BUNDLE}/sbom/fvs-native-windows.spdx.json") bytes"
 
       - name: Upload bundled artifact
         uses: actions/upload-artifact@v7

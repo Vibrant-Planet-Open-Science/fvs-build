@@ -4,16 +4,16 @@ Reusable build machinery for the Forest Vegetation Simulator (FVS).
 
 `fvs-build` provides a thin Meson overlay that compiles FVS native binaries (executables and shared libraries) from any source repository following the upstream USDA Forest Service layout. It is **source-agnostic**: callers point `fvs-build` at a checked-out source tree (e.g., a tag of `USDAForestService/ForestVegetationSimulator`) and a set of variant codes, and Meson produces the corresponding native artifacts.
 
-This repo currently covers Linux x86_64 native builds. Windows (`x86_64-w64-mingw32` via MSYS2) and macOS (Apple Silicon via Homebrew gfortran) will soon follow.
+This repo covers **Linux** (`ubuntu-24.04`), **Windows** (MSYS2 MINGW64), and **macOS** (Homebrew `gcc@N`) native bundles via reusable workflows; see [`docs/workflow-interface.md`](docs/workflow-interface.md). The Meson overlay configures on all three hosts locally as well.
 
 ## What's in here
 
 - `[meson.build](meson.build)` — the overlay project. Reads options, parses the upstream `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
 - `[meson_options.txt](meson_options.txt)` — build-time options (`fvs_source_dir`, `variants`, `extra_fortran_args`).
 - `[tools/parse_sourcelist.py](tools/parse_sourcelist.py)` — stdlib-only Python helper that turns one source list into the categorized file lists Meson consumes. Invoked once per variant via `run_command()`.
-- `[.github/workflows/build-native-linux.yml](.github/workflows/build-native-linux.yml)` — reusable `workflow_call` workflow that wraps the Meson overlay for CI. Produces a per-run artifact bundle (binaries + provenance + SBOM); see `[docs/workflow-interface.md](docs/workflow-interface.md)`.
+- `[.github/workflows/build-native-linux.yml](.github/workflows/build-native-linux.yml)`, `[.github/workflows/build-native-windows.yml](.github/workflows/build-native-windows.yml)`, `[.github/workflows/build-native-macos.yml](.github/workflows/build-native-macos.yml)` — reusable `workflow_call` workflows that wrap the Meson overlay per OS. Each produces a per-run artifact bundle (binaries + provenance + SBOM); see `[docs/workflow-interface.md](docs/workflow-interface.md)`.
 - `[.github/workflows/build-container-linux.yml](.github/workflows/build-container-linux.yml)` — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image (no recompile inside Docker per ADR-001), with optional GHCR push.
-- `[.github/workflows/dispatch-native-linux.yml](.github/workflows/dispatch-native-linux.yml)` — manual driver for the native workflow alone.
+- `[.github/workflows/dispatch-native-linux.yml](.github/workflows/dispatch-native-linux.yml)`, `[.github/workflows/dispatch-native-windows.yml](.github/workflows/dispatch-native-windows.yml)`, `[.github/workflows/dispatch-native-macos.yml](.github/workflows/dispatch-native-macos.yml)` — manual drivers for each native OS workflow (`workflow_dispatch`).
 - `[.github/workflows/dispatch-container-linux.yml](.github/workflows/dispatch-container-linux.yml)` — manual orchestrator running native + container in sequence.
 - `[docker/Dockerfile.runtime](docker/Dockerfile.runtime)` — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; no entrypoint shim, native FVS CLI invocation).
 - `[.pre-commit-config.yaml](.pre-commit-config.yaml)`, `[ruff.toml](ruff.toml)`, `[.yamllint](.yamllint)`, `[.hadolint.yaml](.hadolint.yaml)`, `[.github/workflows/lint.yml](.github/workflows/lint.yml)` — repo-wide lint configuration enforced both locally (via `pre-commit`) and in CI.

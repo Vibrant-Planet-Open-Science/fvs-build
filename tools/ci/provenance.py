@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """GitHub Actions helpers for native bundle provenance JSON (stdlib only).
 
+Platform-specific filenames and SBOM paths are selected with the environment
+variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
+``darwin``. Native workflows set this when staging artifacts and when running
+``collect-bundle``.
+
 * ``write-build-info`` — one per-variant ``build-info.json`` (schema_version 1).
 * ``collect-bundle`` — fan ``staging/variant-*`` into the bundle layout and
   write ``provenance/manifest.json``.
@@ -29,14 +34,51 @@ def _require_env(name: str) -> str:
     return val
 
 
+def _native_platform() -> str:
+    """Set FVS_NATIVE_PLATFORM in CI per runner OS."""
+    raw = os.environ.get("FVS_NATIVE_PLATFORM", "linux").strip().lower()
+    if raw not in ("linux", "windows", "darwin"):
+        msg = (
+            "error: FVS_NATIVE_PLATFORM must be linux, windows, or darwin; "
+            f"got {raw!r}\n"
+        )
+        sys.stderr.write(msg)
+        sys.exit(1)
+    return raw
+
+
+def _binary_filename(variant: str) -> str:
+    if _native_platform() == "windows":
+        return f"FVS{variant}.exe"
+    return f"FVS{variant}"
+
+
+def _shared_library_filename(variant: str) -> str:
+    plat = _native_platform()
+    if plat == "windows":
+        return f"libFVS{variant}.dll"
+    if plat == "darwin":
+        return f"libFVS{variant}.dylib"
+    return f"libFVS{variant}.so"
+
+
+def _sbom_relative_path() -> str:
+    plat = _native_platform()
+    if plat == "windows":
+        return "sbom/fvs-native-windows.spdx.json"
+    if plat == "darwin":
+        return "sbom/fvs-native-macos.spdx.json"
+    return "sbom/fvs-native-linux.spdx.json"
+
+
 def _per_variant_document() -> dict[str, Any]:
     """Build the per-variant provenance dict from the process environment."""
     variant = _require_env("VARIANT")
     return {
         "schema_version": 1,
         "variant": variant,
-        "binary": f"FVS{variant}",
-        "shared_library": f"libFVS{variant}.so",
+        "binary": _binary_filename(variant),
+        "shared_library": _shared_library_filename(variant),
         "binary_sha256": _require_env("BIN_SHA"),
         "shared_library_sha256": _require_env("LIB_SHA"),
         "compiled_at_utc": _require_env("TIMESTAMP"),
@@ -136,7 +178,7 @@ def _bundle_manifest_document(
         "artifacts": {
             "binaries": [pv["binary"] for pv in per_variant],
             "shared_libraries": [pv["shared_library"] for pv in per_variant],
-            "sbom": "sbom/fvs-native-linux.spdx.json",
+            "sbom": _sbom_relative_path(),
         },
     }
 
@@ -171,11 +213,10 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
 
     for vd in variant_dirs:
         variant = vd.name.removeprefix("variant-")
-        shutil.copy2(vd / "bin" / f"FVS{variant}", bundle / "bin" / f"FVS{variant}")
-        shutil.copy2(
-            vd / "lib" / f"libFVS{variant}.so",
-            bundle / "lib" / f"libFVS{variant}.so",
-        )
+        bin_name = _binary_filename(variant)
+        lib_name = _shared_library_filename(variant)
+        shutil.copy2(vd / "bin" / bin_name, bundle / "bin" / bin_name)
+        shutil.copy2(vd / "lib" / lib_name, bundle / "lib" / lib_name)
         shutil.copy2(
             vd / "provenance" / "build-info.json",
             bundle / "provenance" / "per-variant" / f"FVS{variant}.json",
@@ -191,7 +232,8 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
             shutil.copy2(tail, dest)
 
     for exe in bundle.glob("bin/FVS*"):
-        _make_executable(exe)
+        if exe.suffix.lower() == ".exe" or exe.suffix == "":
+            _make_executable(exe)
 
     per_variant = _load_per_variant_jsons(bundle / "provenance" / "per-variant")
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -266,7 +308,10 @@ def cmd_manifest_to_github_env(args: argparse.Namespace) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Native Linux bundle provenance helpers for GitHub Actions.",
+        description=(
+            "Native bundle provenance helpers for GitHub Actions "
+            "(Linux, Windows, macOS)."
+        ),
     )
     sub = p.add_subparsers(dest="command", required=True)
 
