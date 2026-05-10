@@ -164,7 +164,7 @@ jobs:
     needs: fvs-binaries
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: ${{ needs.fvs-binaries.outputs.artifact_name }}
           path: fvs-bundle
@@ -184,7 +184,7 @@ Build a custom subset of variants:
 
 ### Authentication
 
-The default behavior assumes `source_repo` is public; `actions/checkout@v4` works without explicit credentials. If the source repo is private, add `secrets: inherit` to the caller's `uses:` block — see the commented hint in `[dispatch-native-linux.yml](../.github/workflows/dispatch-native-linux.yml)`.
+The default behavior assumes `source_repo` is public; `actions/checkout@v5` works without explicit credentials. If the source repo is private, add `secrets: inherit` to the caller's `uses:` block — see the commented hint in `[dispatch-native-linux.yml](../.github/workflows/dispatch-native-linux.yml)`.
 
 The workflow itself only requests `contents: read`. SBOM generation requires no extra permissions; SLSA build attestation (`id-token: write`) is deferred — the in-bundle `provenance/manifest.json` plus the SPDX SBOM satisfy PRD section 2's "build metadata" requirement for Phase 1 without taking on the operational complexity of attestation right now.
 
@@ -192,7 +192,7 @@ The workflow itself only requests `contents: read`. SBOM generation requires no 
 
 The matrix expands to 22 variants by default; on GitHub-hosted runners with default concurrency limits a full release build typically completes in less than ten minutes.
 
-Per-variant Fortran compile time dominates. Caching the Meson build directory (`actions/cache@v4` keyed on variant + source ref + Meson scaffold hash) is enabled but mostly benefits branch/PR runs; tag-driven release builds change `source_ref` every run and miss intentionally.
+Per-variant Fortran compile time dominates. Caching the Meson build directory (`actions/cache@v5` keyed on variant + source ref + Meson scaffold hash) is enabled but mostly benefits branch/PR runs; tag-driven release builds change `source_ref` every run and miss intentionally.
 
 ### Local validation before any external caller exists
 

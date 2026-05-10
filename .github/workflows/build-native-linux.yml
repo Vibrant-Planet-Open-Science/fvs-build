@@ -82,10 +82,6 @@ on:
 permissions:
   contents: read
 
-# GitHub is deprecating Node 20 for Actions; opt into Node 24 for JS actions.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   # ---------------------------------------------------------------------------
   # Preflight: parse the comma-separated variants input into a JSON array
@@ -137,7 +133,7 @@ jobs:
       # Reusable-workflow jobs do not populate the workspace by default; local
       # composite actions need .github/actions/* on disk before uses: ./...
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
@@ -146,7 +142,7 @@ jobs:
         uses: ./.github/actions/resolve-fvs-build-ref
 
       - name: Check out fvs-build (the Meson overlay)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ steps.fb_ref.outputs.repo }}
           ref: ${{ steps.fb_ref.outputs.ref }}
@@ -159,7 +155,7 @@ jobs:
       # Upstream lists paths under submodules (e.g. volume/NVEL); without
       # recursive checkout, parse_sourcelist warns and Meson can fail later.
       - name: Check out FVS source tree
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ inputs.source_repo }}
           ref: ${{ inputs.source_ref }}
@@ -213,7 +209,7 @@ jobs:
           } >> "$GITHUB_ENV"
 
       - name: Set up Python for Meson and parse_sourcelist.py
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
 
@@ -231,7 +227,7 @@ jobs:
       # source_ref every run and miss; branch/PR builds against the same ref
       # can hit and skip the long Fortran compile.
       - name: Cache Meson build directory
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: _build
           key: meson-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/ci/provenance.py') }}
@@ -341,7 +337,7 @@ jobs:
           ls -laR "${STAGE}"
 
       - name: Upload variant artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: variant-${{ matrix.variant }}
           path: staging/${{ matrix.variant }}/
@@ -362,7 +358,7 @@ jobs:
       artifact_name: ${{ steps.bundle.outputs.artifact_name }}
     steps:
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
@@ -371,7 +367,7 @@ jobs:
         uses: ./.github/actions/resolve-fvs-build-ref
 
       - name: Check out fvs-build (CI scripts)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ steps.fb_ref.outputs.repo }}
           ref: ${{ steps.fb_ref.outputs.ref }}
@@ -379,7 +375,7 @@ jobs:
           fetch-depth: 1
 
       - name: Download all variant artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           path: staging
           pattern: variant-*
@@ -411,7 +407,7 @@ jobs:
           echo "SBOM size: $(wc -c < "${BUNDLE}/sbom/fvs-native-linux.spdx.json") bytes"
 
       - name: Upload bundled artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ steps.bundle.outputs.artifact_name }}
           path: ${{ steps.bundle.outputs.artifact_name }}/

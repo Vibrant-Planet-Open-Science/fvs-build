@@ -55,7 +55,7 @@ on:
         default: false
         type: boolean
       runner_image:
-        description: "Runner image label (pinned per ADR-001)"
+        description: "Runner image label"
         required: false
         default: "ubuntu-24.04"
         type: string
@@ -69,10 +69,6 @@ on:
 permissions:
   contents: read
   packages: write
-
-# GitHub is deprecating Node 20 for Actions; opt into Node 24 for JS actions.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   # Tiny preflight job to compute the default image_name when the operator
