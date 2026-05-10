@@ -101,10 +101,6 @@ permissions:
   contents: read
   packages: write
 
-# GitHub is deprecating Node 20 for Actions; opt into Node 24 for JS actions.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   build:
     name: Build, smoke-test, and (optionally) push
@@ -115,7 +111,7 @@ jobs:
     steps:
       # Reusable-workflow jobs need the workflow repo on disk before uses: ./...
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
@@ -124,13 +120,13 @@ jobs:
         uses: ./.github/actions/resolve-fvs-build-ref
 
       - name: Check out fvs-build (Dockerfile.runtime)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: ${{ steps.fb_ref.outputs.repo }}
           ref: ${{ steps.fb_ref.outputs.ref }}
 
       - name: Download fvs-native-linux artifact bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
         with:
           name: ${{ inputs.artifact_name }}
           path: bundle
@@ -296,7 +292,7 @@ jobs:
           echo "Image SBOM size: $(wc -c < container-sbom.spdx.json) bytes"
 
       - name: Upload image SBOM artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: container-sbom-${{ github.run_id }}
           path: container-sbom.spdx.json

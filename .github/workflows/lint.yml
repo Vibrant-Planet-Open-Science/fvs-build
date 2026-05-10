@@ -6,8 +6,8 @@
 # when a check fails.
 #
 # Hook environments (actionlint, yamllint, hadolint-docker, etc.) are
-# cached by pre-commit/action across runs keyed on the config's pinned
-# `rev:` values, so steady-state runs are fast.
+# cached via actions/cache keyed on the Python interpreter path and the
+# config's pinned `rev:` values, so steady-state runs are fast.
 
 name: lint
 
@@ -19,21 +19,27 @@ on:
 permissions:
   contents: read
 
-# GitHub is deprecating Node 20 for Actions; opt into Node 24 for JS actions.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   pre-commit:
     name: pre-commit run --all-files
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        id: setup-python
+        uses: actions/setup-python@v6
         with:
           python-version: '3.12'
 
+      - name: Cache pre-commit environments
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-3|${{ steps.setup-python.outputs.python-path }}|${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Install pre-commit
+        run: python -m pip install pre-commit
+
       - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
+        run: pre-commit run --show-diff-on-failure --color=always --all-files
