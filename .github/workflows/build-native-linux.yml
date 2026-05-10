@@ -152,6 +152,8 @@ jobs:
       # issue documented in fvs-build/README.md (gfortran's -I path also
       # searches for .mod files, so any leftover ones from a prior in-place
       # build would be picked up before the freshly built ones).
+      # Upstream lists paths under submodules (e.g. volume/NVEL); without
+      # recursive checkout, parse_sourcelist warns and Meson can fail later.
       - name: Check out FVS source tree
         uses: actions/checkout@v4
         with:
@@ -159,6 +161,7 @@ jobs:
           ref: ${{ inputs.source_ref }}
           path: fvs-source
           clean: true
+          submodules: recursive
 
       # Record the actual commits checked out in this job. For reusable
       # workflow_call runs from another repo, github.sha is the caller's
