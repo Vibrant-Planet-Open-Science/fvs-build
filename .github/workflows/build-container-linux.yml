@@ -103,6 +103,10 @@ permissions:
   contents: read
   packages: write
 
+# GitHub is deprecating Node 20 for Actions; opt into Node 24 for JS actions.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   build:
     name: Build, smoke-test, and (optionally) push

@@ -70,6 +70,10 @@ permissions:
   contents: read
   packages: write
 
+# GitHub is deprecating Node 20 for Actions; opt into Node 24 for JS actions.
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # Tiny preflight job to compute the default image_name when the operator
   # leaves it blank. workflow_dispatch input defaults cannot reference
