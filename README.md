@@ -164,7 +164,7 @@ git clean -fdx           # removes all untracked files including .mod / .o
 find . -name '*.mod' -not -path './bin/FVS*_buildDir/*' -delete
 ```
 
-A fresh `git clone` will not have this problem.
+A fresh `git clone` should not have this problem. The native Linux GitHub Actions workflow also deletes `*.mod` under the checked-out source tree before running Meson, since upstream can ship empty or stale module files under paths such as `volume/NVEL/`.
 
 ## How the parser categorizes source-list entries
 

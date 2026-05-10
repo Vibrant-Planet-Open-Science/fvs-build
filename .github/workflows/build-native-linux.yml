@@ -163,6 +163,17 @@ jobs:
           clean: true
           submodules: recursive
 
+      # gfortran searches -I for .mod as well as include files; any .mod under
+      # fvs-source (tracked upstream, empty, or corrupt) wins over Meson's -J
+      # output and causes f951 "Unexpected EOF" when loading modules.
+      - name: Remove stray Fortran .mod files from source tree
+        run: |
+          set -euo pipefail
+          # Meson emits modules under _build (-J). gfortran also searches -I dirs
+          # for .mod; tracked or empty files under fvs-source break with EOF errors.
+          find fvs-source -name '*.mod' -type f -delete
+          echo "Stripped any *.mod under fvs-source before Meson (see README)."
+
       # Record the actual commits checked out in this job. For reusable
       # workflow_call runs from another repo, github.sha is the caller's
       # trigger commit — not the fvs-build overlay revision under fvs-build/.
