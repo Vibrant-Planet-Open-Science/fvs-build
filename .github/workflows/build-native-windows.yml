@@ -255,6 +255,11 @@ jobs:
     outputs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
+      - name: Check out fvs-build (workflow repository)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
       - id: collect
         uses: ./.github/actions/collect-native-bundle
         with:

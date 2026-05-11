@@ -281,6 +281,14 @@ jobs:
     outputs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
+      # Local composite actions require the workflow repo on disk before GitHub
+      # can resolve uses: ./.github/actions/... (the composite's own checkout
+      # runs too late).
+      - name: Check out fvs-build (workflow repository)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
       - id: collect
         uses: ./.github/actions/collect-native-bundle
         with:

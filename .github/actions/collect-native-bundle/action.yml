@@ -3,8 +3,9 @@
 # See docs/workflow-interface.md for the bundle layout contract.
 name: Collect native FVS bundle
 description: >
-  Check out fvs-build, download OS-prefixed variant artifacts, run collect-bundle,
-  generate SPDX JSON with syft, upload the final bundle artifact.
+  Download OS-prefixed variant artifacts, run collect-bundle, SPDX scan with syft,
+  upload the bundle. The calling job must run actions/checkout on the workflow
+  repository first so uses: ./.github/actions/collect-native-bundle resolves.
 
 inputs:
   fvs_native_platform:
@@ -68,11 +69,6 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Check out fvs-build (workflow repository)
-      uses: actions/checkout@v5
-      with:
-        fetch-depth: 1
-
     - name: Resolve fvs-build repo and ref from workflow_ref
       id: fb_ref
       uses: ./.github/actions/resolve-fvs-build-ref
