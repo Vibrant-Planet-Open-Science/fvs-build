@@ -8,15 +8,15 @@ This repo covers **Linux** (`ubuntu-24.04`), **Windows** (MSYS2 MINGW64), and **
 
 ## What's in here
 
-- `[meson.build](meson.build)` — the overlay project. Reads options, parses the upstream `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
-- `[meson_options.txt](meson_options.txt)` — build-time options (`fvs_source_dir`, `variants`, `extra_fortran_args`).
-- `[tools/parse_sourcelist.py](tools/parse_sourcelist.py)` — stdlib-only Python helper that turns one source list into the categorized file lists Meson consumes. Invoked once per variant via `run_command()`.
-- `[.github/workflows/build-native-linux.yml](.github/workflows/build-native-linux.yml)`, `[.github/workflows/build-native-windows.yml](.github/workflows/build-native-windows.yml)`, `[.github/workflows/build-native-macos.yml](.github/workflows/build-native-macos.yml)` — reusable `workflow_call` workflows that wrap the Meson overlay per OS. Each produces a per-run artifact bundle (binaries + provenance + SBOM); see `[docs/workflow-interface.md](docs/workflow-interface.md)`.
-- `[.github/workflows/build-container-linux.yml](.github/workflows/build-container-linux.yml)` — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image (no recompile inside Docker per ADR-001), with optional GHCR push.
-- `[.github/workflows/dispatch-native-linux.yml](.github/workflows/dispatch-native-linux.yml)`, `[.github/workflows/dispatch-native-windows.yml](.github/workflows/dispatch-native-windows.yml)`, `[.github/workflows/dispatch-native-macos.yml](.github/workflows/dispatch-native-macos.yml)` — manual drivers for each native OS workflow (`workflow_dispatch`).
-- `[.github/workflows/dispatch-container-linux.yml](.github/workflows/dispatch-container-linux.yml)` — manual orchestrator running native + container in sequence.
-- `[docker/Dockerfile.runtime](docker/Dockerfile.runtime)` — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; no entrypoint shim, native FVS CLI invocation).
-- `[.pre-commit-config.yaml](.pre-commit-config.yaml)`, `[ruff.toml](ruff.toml)`, `[.yamllint](.yamllint)`, `[.hadolint.yaml](.hadolint.yaml)`, `[.github/workflows/lint.yml](.github/workflows/lint.yml)` — repo-wide lint configuration enforced both locally (via `pre-commit`) and in CI.
+- [`meson.build`](meson.build) — the overlay project. Reads options, parses the upstream `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
+- [`meson_options.txt`](meson_options.txt) — build-time options (`fvs_source_dir`, `variants`, `extra_fortran_args`).
+- [`tools/parse_sourcelist.py`](tools/parse_sourcelist.py) — stdlib-only Python helper that turns one source list into the categorized file lists Meson consumes. Invoked once per variant via `run_command()`.
+- [`.github/workflows/build-native-linux.yml`](.github/workflows/build-native-linux.yml), [`.github/workflows/build-native-windows.yml`](.github/workflows/build-native-windows.yml), [`.github/workflows/build-native-macos.yml`](.github/workflows/build-native-macos.yml) — reusable `workflow_call` workflows that wrap the Meson overlay per OS. Each produces a per-run artifact bundle (binaries + provenance + SBOM); see [`docs/workflow-interface.md`](docs/workflow-interface.md).
+- [`.github/workflows/build-container-linux.yml`](.github/workflows/build-container-linux.yml) — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image (no recompile inside Docker per ADR-001), with optional GHCR push.
+- [`.github/workflows/dispatch-native-linux.yml`](.github/workflows/dispatch-native-linux.yml), [`.github/workflows/dispatch-native-windows.yml`](.github/workflows/dispatch-native-windows.yml), [`.github/workflows/dispatch-native-macos.yml`](.github/workflows/dispatch-native-macos.yml) — manual drivers for each native OS workflow (`workflow_dispatch`).
+- [`.github/workflows/dispatch-container-linux.yml`](.github/workflows/dispatch-container-linux.yml) — manual orchestrator running native + container in sequence.
+- [`docker/Dockerfile.runtime`](docker/Dockerfile.runtime) — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; no entrypoint shim, native FVS CLI invocation).
+- [`.pre-commit-config.yaml`](.pre-commit-config.yaml), [`ruff.toml`](ruff.toml), [`.yamllint`](.yamllint), [`.hadolint.yaml`](.hadolint.yaml), [`.github/workflows/lint.yml`](.github/workflows/lint.yml) — repo-wide lint configuration enforced both locally (via `pre-commit`) and in CI.
 
 ## Local-dev quickstart
 
@@ -316,12 +316,12 @@ docker inspect ghcr.io/<owner>/usfs-fvs:FS2025.4c | jq '.[0].Config.Labels'
 
 ## Linting
 
-Repo-wide hygiene is enforced via `[pre-commit](https://pre-commit.com/)`. The same hooks that run in CI (`[.github/workflows/lint.yml](.github/workflows/lint.yml)`) are wired up for local commits via `[.pre-commit-config.yaml](.pre-commit-config.yaml)`:
+Repo-wide hygiene is enforced via [`pre-commit`](https://pre-commit.com/). The same hooks that run in CI ([`.github/workflows/lint.yml`](.github/workflows/lint.yml)) are wired up for local commits via [`.pre-commit-config.yaml`](.pre-commit-config.yaml):
 
-- `[actionlint](https://github.com/rhysd/actionlint)` — workflow-aware static analysis for `.github/workflows/`, including `${{ ... }}` expression type-checking and `shellcheck` over `run:` blocks.
-- `[yamllint](https://github.com/adrienverge/yamllint)` — YAML hygiene with the relaxed profile in `[.yamllint](.yamllint)`.
-- `[Ruff](https://docs.astral.sh/ruff/)` (`ruff check` + `ruff format`) — Python lint and formatting per `[ruff.toml](ruff.toml)`: **88** columns everywhere (code, docstrings, comments; Black-style default), Google-style docstrings on `[tools/parse_sourcelist.py](tools/parse_sourcelist.py)`.
-- `[hadolint](https://github.com/hadolint/hadolint)` (via Docker) — Dockerfile lint for `[docker/Dockerfile.runtime](docker/Dockerfile.runtime)`; ignores in `[.hadolint.yaml](.hadolint.yaml)`.
+- [`actionlint`](https://github.com/rhysd/actionlint) — workflow-aware static analysis for `.github/workflows/`, including `${{ ... }}` expression type-checking and `shellcheck` over `run:` blocks.
+- [`yamllint`](https://github.com/adrienverge/yamllint) — YAML hygiene with the relaxed profile in [`.yamllint`](.yamllint).
+- [`Ruff`](https://docs.astral.sh/ruff/) (`ruff check` + `ruff format`) — Python lint and formatting per [`ruff.toml`](ruff.toml): **88** columns everywhere (code, docstrings, comments; Black-style default), Google-style docstrings on `[tools/parse_sourcelist.py](tools/parse_sourcelist.py)`.
+- [`hadolint`](https://github.com/hadolint/hadolint) (via Docker) — Dockerfile lint for [`docker/Dockerfile.runtime`](docker/Dockerfile.runtime); ignores in [`.hadolint.yaml`](.hadolint.yaml).
 - Generic hygiene from `pre-commit-hooks`: trailing whitespace, missing trailing newlines, accidentally committed merge markers, oversized files.
 
 To enable locally:
