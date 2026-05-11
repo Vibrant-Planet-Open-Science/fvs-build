@@ -19,8 +19,8 @@ inputs:
     required: true
   artifact_name:
     description: >
-      Bundle directory name and upload-artifact name (e.g.
-      fvs-native-linux-${{ github.run_id }} from the caller).
+      Bundle directory name and upload-artifact name (callers typically pass
+      fvs-native-linux-<run_id> using github.run_id in the workflow YAML).
     required: true
   sbom_spdx_relpath:
     description: >
