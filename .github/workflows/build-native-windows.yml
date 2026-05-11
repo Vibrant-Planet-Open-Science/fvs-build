@@ -354,6 +354,15 @@ jobs:
           path: staging
           pattern: variant-*
 
+      - name: Log staging tree after download (diagnostics)
+        run: |
+          set -euo pipefail
+          cd "${GITHUB_WORKSPACE}"
+          echo "== top: staging =="
+          ls -la staging
+          echo "== FVS* and libFVS* under staging (maxdepth 5) =="
+          find staging -maxdepth 5 -type f \( -name 'FVS*' -o -name 'libFVS*' \) | sort | head -500
+
       - name: Fan into canonical bundle layout
         id: bundle
         env:

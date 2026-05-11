@@ -9,9 +9,8 @@ variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
 * ``write-build-info`` — one per-variant ``build-info.json`` (schema_version 1).
 * ``collect-bundle`` — fan ``staging/variant-*`` into a **flat** bundle root
   (``FVS<v>`` / ``libFVS<v>.*`` plus ``provenance/``, ``sbom/``). Per-variant
-  staging keeps binaries and shared libs at the variant dir root (not under a
-  directory named ``lib/``, which would match ``.gitignore`` and be skipped by
-  ``actions/upload-artifact``).
+  staging keeps binaries and shared libs at the variant directory root (not
+  under a ``lib/`` subdirectory) so paths match the flat bundle contract.
 * ``manifest-to-github-env`` — append Docker-related variables to
   ``$GITHUB_ENV`` from ``bundle/provenance/manifest.json``.
 """
@@ -191,6 +190,91 @@ def _make_executable(path: Path) -> None:
     path.chmod(mode | 0o111)
 
 
+def _describe_path_entry(path: Path) -> str:
+    """One-line description for diagnostic listings (collect-bundle)."""
+    if path.is_symlink():
+        try:
+            target = path.readlink()
+            tail = f"symlink -> {target}"
+        except OSError as exc:
+            tail = f"symlink (readlink failed: {exc})"
+    elif path.is_dir():
+        tail = "directory"
+    elif path.is_file():
+        tail = "file"
+    else:
+        tail = "other"
+    return f"{path.name!r} ({tail})"
+
+
+def _emit_collect_bundle_missing_file(
+    *,
+    role: str,
+    variant: str,
+    expected: Path,
+    vd: Path,
+    staging_dir: Path,
+) -> None:
+    plat = _native_platform()
+    lib_expect = _shared_library_filename(variant)
+    lines = [
+        f"error: collect-bundle: {role} missing for variant {variant!r}",
+        f"  FVS_NATIVE_PLATFORM={plat!r} "
+        f"(expected shared library filename: {lib_expect!r})",
+        f"  expected path: {expected}",
+        f"  exists={expected.exists()}  is_file={expected.is_file()}  "
+        f"is_symlink={expected.is_symlink()}",
+    ]
+    if vd.is_dir():
+        lines.append(f"  contents of {vd}:")
+        try:
+            for child in sorted(vd.iterdir(), key=lambda p: p.name.lower()):
+                lines.append(f"    {_describe_path_entry(child)}")
+        except OSError as exc:
+            lines.append(f"    (could not list directory: {exc})")
+    else:
+        lines.append(f"  variant directory missing or not a directory: {vd}")
+    lines.append(f"  sibling variant-* directories under {staging_dir}:")
+    try:
+        sibs = sorted(staging_dir.glob("variant-*/"), key=lambda p: p.name.lower())
+        if sibs:
+            for s in sibs:
+                lines.append(f"    {s.name}/")
+        else:
+            lines.append("    (none)")
+    except OSError as exc:
+        lines.append(f"    (could not list: {exc})")
+    lines.append(
+        "  hints: (1) open the matrix job log and confirm "
+        "'----- staged staging/<code> -----' lists the same filenames; "
+        "(2) download the variant-* zip from the workflow run and check whether "
+        "the shared library is inside; "
+        "(3) confirm collect uses merge-multiple=false (default) so each "
+        "artifact extracts under staging/variant-<code>/."
+    )
+    sys.stderr.write("\n".join(lines) + "\n")
+    sys.exit(1)
+
+
+def _collect_require_file(
+    path: Path,
+    *,
+    role: str,
+    variant: str,
+    vd: Path,
+    staging_dir: Path,
+) -> None:
+    if path.is_file():
+        return
+    _emit_collect_bundle_missing_file(
+        role=role,
+        variant=variant,
+        expected=path,
+        vd=vd,
+        staging_dir=staging_dir,
+    )
+
+
 def cmd_collect_bundle(_args: argparse.Namespace) -> int:
     """Fan staging artifacts into the bundle directory and write manifest.json."""
     staging_dir = Path(os.environ.get("STAGING_DIR", "staging"))
@@ -210,16 +294,71 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
         sys.stderr.write(
             f"error: no directories matching {staging_dir}/variant-*/\n",
         )
+        abs_staging = staging_dir.resolve()
+        if staging_dir.is_dir():
+            sys.stderr.write(f"  contents of {abs_staging}:\n")
+            try:
+                for child in sorted(
+                    staging_dir.iterdir(),
+                    key=lambda p: p.name.lower(),
+                ):
+                    sys.stderr.write(f"    {_describe_path_entry(child)}\n")
+            except OSError as exc:
+                sys.stderr.write(f"    (could not list: {exc})\n")
+        else:
+            sys.stderr.write(
+                f"  staging directory does not exist: {abs_staging}\n",
+            )
+        sys.stderr.write(
+            "  hint: with multiple artifacts, download-artifact extracts each "
+            "into staging/<artifact-name>/ by default. "
+            "merge-multiple=true places all files directly in path/ and breaks "
+            "this layout.\n",
+        )
         sys.exit(1)
+
+    abs_staging = staging_dir.resolve()
+    print(
+        "collect-bundle: "
+        f"FVS_NATIVE_PLATFORM={_native_platform()!r} STAGING_DIR={abs_staging}",
+    )
+    print(
+        "collect-bundle: variant directories: "
+        + ", ".join(p.name for p in variant_dirs),
+    )
 
     for vd in variant_dirs:
         variant = vd.name.removeprefix("variant-")
         bin_name = _binary_filename(variant)
         lib_name = _shared_library_filename(variant)
-        shutil.copy2(vd / bin_name, bundle / bin_name)
-        shutil.copy2(vd / lib_name, bundle / lib_name)
+        bin_path = vd / bin_name
+        lib_path = vd / lib_name
+        info_path = vd / "provenance" / "build-info.json"
+        _collect_require_file(
+            bin_path,
+            role="executable",
+            variant=variant,
+            vd=vd,
+            staging_dir=staging_dir,
+        )
+        _collect_require_file(
+            lib_path,
+            role="shared library",
+            variant=variant,
+            vd=vd,
+            staging_dir=staging_dir,
+        )
+        _collect_require_file(
+            info_path,
+            role="provenance/build-info.json",
+            variant=variant,
+            vd=vd,
+            staging_dir=staging_dir,
+        )
+        shutil.copy2(bin_path, bundle / bin_name)
+        shutil.copy2(lib_path, bundle / lib_name)
         shutil.copy2(
-            vd / "provenance" / "build-info.json",
+            info_path,
             bundle / "provenance" / "per-variant" / f"FVS{variant}.json",
         )
         tail = vd / "provenance" / "meson-logs" / "meson-log.tail.txt"
