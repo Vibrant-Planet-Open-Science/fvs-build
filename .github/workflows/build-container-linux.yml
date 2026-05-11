@@ -144,18 +144,22 @@ jobs:
               exit 1
             fi
           done
-          if [ ! -d bundle/bin ] || [ -z "$(ls -A bundle/bin 2>/dev/null)" ]; then
-            echo "ERROR: bundle/bin is missing or empty" >&2
+          shopt -s nullglob
+          bins=(bundle/FVS*)
+          libs=(bundle/libFVS*.so)
+          shopt -u nullglob
+          if [ "${#bins[@]}" -eq 0 ]; then
+            echo "ERROR: no bundle/FVS* executables at bundle root" >&2
             exit 1
           fi
-          if [ ! -d bundle/lib ] || [ -z "$(ls -A bundle/lib 2>/dev/null)" ]; then
-            echo "ERROR: bundle/lib is missing or empty" >&2
+          if [ "${#libs[@]}" -eq 0 ]; then
+            echo "ERROR: no bundle/libFVS*.so at bundle root" >&2
             exit 1
           fi
-          echo "Bundle layout OK; binaries:"
-          ls -1 bundle/bin
+          echo "Bundle layout OK; executables:"
+          printf '%s\n' "${bins[@]}"
           echo "shared libraries:"
-          ls -1 bundle/lib
+          printf '%s\n' "${libs[@]}"
 
       # Pull provenance fields out of the bundle's manifest.json so we can
       # surface them as Docker --build-arg values and OCI labels. Keeping

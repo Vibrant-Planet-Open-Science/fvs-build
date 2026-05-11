@@ -5,8 +5,9 @@
 # `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits
 # native binaries (executable + shared library) per requested variant.
 #
-# Phase 1 scope: Linux x86_64 only. Windows/macOS branches will be added under
-# `if host_machine.system() == ...` guards in a follow-up. See ADR-001.
+# Supported hosts: Linux, macOS (darwin), Windows (e.g. MinGW-w64 / MSYS2 with
+# gfortran). Flags follow USDAForestService `bin/makefile` where applicable;
+# macOS shared libraries use `.dylib` (Meson default on darwin).
 
 project(
   'fvs-build',
@@ -21,8 +22,11 @@ project(
   ],
 )
 
-if host_machine.system() != 'linux'
-  error('fvs-build Phase 1 supports Linux only; got @0@. Windows/macOS toolchain branches are tracked for Phase 2/3.'.format(host_machine.system()))
+host_sys = host_machine.system()
+if host_sys != 'linux' and host_sys != 'darwin' and host_sys != 'windows'
+  error(
+    'fvs-build supports linux, darwin, and windows; got @0@'.format(host_sys),
+  )
 endif
 
 src_dir = get_option('fvs_source_dir')
@@ -40,21 +44,52 @@ extra_fortran_flags = get_option('extra_fortran_args')
 py = find_program('python3')
 parser = files('tools/parse_sourcelist.py')
 
+cc = meson.get_compiler('c')
+
 # libm: FOFEM C code calls exp/log/pow/sqrt; SQLite3 amalgamation can also
 # pull in libm symbols. Upstream's bin/makefile gets away with no explicit
 # -lm because it uses gfortran as the linker for the variant binary, and
 # gfortran pulls in libm transitively. Our C-only shared libraries (FVSsql,
-# FVSfofem) are linked by gcc, so libm has to be explicit.
-m_dep = meson.get_compiler('c').find_library('m', required: true)
+# FVSfofem) are linked by gcc, so libm has to be explicit on Unix.
+# Windows (MinGW): math is provided by the runtime; no separate libm link.
+# libgfortran still depends on libquadmath (quadmath_snprintf, etc.); with
+# `-static` DLL/exe linking gcc does not always pull it in, so link explicitly.
+if host_sys == 'windows'
+  m_dep = declare_dependency()
+  quadmath_dep = cc.find_library('quadmath', required: true)
+else
+  m_dep = cc.find_library('m', required: true)
+  quadmath_dep = declare_dependency()
+endif
 
-# Compiler flags transcribed from upstream bin/makefile (Linux branch). We pin
-# them here rather than pulling whatever the system compiler defaults to, so a
-# build of fvs-build against an upstream tag matches the upstream-built binary
-# byte-for-bytish given the same gfortran version.
+# USFS bin/makefile: WIN is -DWINDOWS on Windows, -Dunix on Linux and macOS
+# (fvsSQL.c and related).
+if host_sys == 'windows'
+  os_c_args = ['-DWINDOWS']
+  # w64 link recipe: static DLL (incl. libgfortran/libquadmath) + export all
+  # symbols. Do not use `-static` on the `.exe`: it pulls libgfortran.a into the
+  # main program while `link_with` already uses the DLL import lib, which
+  # duplicates Fortran runtime entry points (`_gfortran_set_args`, etc.).
+  shlib_link_args = ['-static', '-shared', '-Wl,--export-all-symbols']
+  exe_link_args = []
+  objs_pic = false
+else
+  os_c_args = ['-Dunix']
+  shlib_link_args = []
+  exe_link_args = []
+  # Linux (l64): USFS uses -fPIC. macOS: PIC for dylib objects (departure from
+  # USFS empty PIC on osx).
+  objs_pic = true
+endif
+
+# Compiler flags transcribed from upstream bin/makefile. We pin them here rather
+# than pulling whatever the system compiler defaults to, so a build of fvs-build
+# against an upstream tag matches the upstream-built binary closely given the
+# same gfortran version.
 common_c_args = [
   '-DANSI',
   '-DCMPgcc',
-  '-Dunix',
+] + os_c_args + [
   '-DSQLITE_THREADSAFE=0',
   '-DSQLITE_OMIT_LOAD_EXTENSION',
 ]
@@ -135,14 +170,15 @@ foreach v : variants
     inc_args += '-I' + d
   endforeach
 
-  # All-but-main objects (Fortran + C) collapsed into a single PIC static
-  # carrier. This matches the topology of upstream's bin/makefile rather
-  # than upstream's bin/CMakeLists.txt: there is exactly one shared library
-  # per variant. The CMake split into FVSsql / FVSfofem / FVS_<v> is
-  # unworkable under a strict `-Wl,--no-undefined` link policy because
-  # apisubsc.c (categorized "SQL" upstream) references Fortran-defined
-  # symbols, creating a cycle between FVSsql and FVS_<v>. Collapsing them
-  # also produces the "one .so per variant" output the PRD describes.
+  # All-but-main objects (Fortran + C) collapsed into a single static carrier
+  # (PIC on Linux and macOS; not on Windows per USFS w64). This matches the
+  # topology of upstream's bin/makefile rather than upstream's
+  # bin/CMakeLists.txt: there is exactly one shared library per variant.
+  # The CMake split into FVSsql / FVSfofem / FVS_<v> is unworkable under a
+  # strict `-Wl,--no-undefined` link policy because apisubsc.c (categorized
+  # "SQL" upstream) references Fortran-defined symbols, creating a cycle
+  # between FVSsql and FVS_<v>. Collapsing them also produces the "one .so per
+  # variant" output the PRD describes.
   #
   # Meson auto-discovers Fortran `module`/`use` dependencies across these
   # sources (including the *_mod.f files in volume/NVEL/) and orders
@@ -154,23 +190,24 @@ foreach v : variants
     fortran_args: common_fortran_args + inc_args,
     c_args: common_c_args + inc_args,
     cpp_args: common_c_args + inc_args,
-    pic: true,
+    pic: objs_pic,
     dependencies: [m_dep],
     install: false,
   )
 
-  # libFVS<v>.so: the single shared library consumers (microfvs, rFVS,
-  # fvs2py) link against. link_whole pulls in every object from the
-  # static carrier; libm comes through from the static lib's deps.
+  # Shared library: libFVS<v>.so (Linux), libFVS<v>.dylib (macOS), libFVS<v>.dll
+  # (Windows). link_whole pulls in every object from the static carrier; libm
+  # comes through from the static lib's deps on Unix.
   fvs_lib = shared_library(
     'FVS' + v,
     [],
     link_whole: fvs_objs,
-    dependencies: [m_dep],
+    dependencies: [m_dep, quadmath_dep],
+    link_args: shlib_link_args,
     install: false,
   )
 
-  # FVS<v>: standalone executable. main.f is matched by basename in the
+  # FVS<v> executable (.exe on Windows). main.f is matched by basename in the
   # parser, so this works even if upstream reorders entries in the source
   # list across releases.
   executable(
@@ -178,6 +215,7 @@ foreach v : variants
     [main_source],
     fortran_args: common_fortran_args + inc_args,
     link_with: [fvs_lib],
+    link_args: exe_link_args,
     install: false,
   )
 endforeach

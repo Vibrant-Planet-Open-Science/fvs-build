@@ -1,0 +1,65 @@
+# Local-dev driver for the reusable native macOS workflow.
+#
+# Thin workflow_dispatch wrapper around build-native-macos.yml so the reusable
+# workflow can be exercised manually from the Actions UI or `gh workflow run`.
+# Same intent as dispatch-native-linux.yml; not the external caller interface.
+#
+# Real callers use `uses: <owner>/fvs-build/.github/workflows/build-native-macos.yml@<ref>`.
+
+name: Dispatch native macOS build (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "Source repo (owner/name)"
+        required: true
+        default: "USDAForestService/ForestVegetationSimulator"
+        type: string
+      source_ref:
+        description: "Source ref (tag, branch, or SHA)"
+        required: true
+        default: "FS2025.4c"
+        type: string
+      variants:
+        description: "Comma-separated FVS variant codes (default: 22 US variants)"
+        required: false
+        default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
+        type: string
+      runner_image:
+        description: "GitHub-hosted macOS runner label"
+        required: false
+        default: "macos-latest"
+        type: string
+      brew_gcc_major:
+        description: "Homebrew gcc@N major version (see build-native-macos.yml)"
+        required: false
+        default: "14"
+        type: string
+      meson_version:
+        description: "Meson version installed via pip"
+        required: false
+        default: "1.5.2"
+        type: string
+      extra_fortran_args:
+        description: "Comma-separated extra Fortran flags (escape hatch; empty for production)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (via reusable workflow)
+    uses: ./.github/workflows/build-native-macos.yml
+    with:
+      source_repo: ${{ inputs.source_repo }}
+      source_ref: ${{ inputs.source_ref }}
+      variants: ${{ inputs.variants }}
+      runner_image: ${{ inputs.runner_image }}
+      brew_gcc_major: ${{ inputs.brew_gcc_major }}
+      meson_version: ${{ inputs.meson_version }}
+      extra_fortran_args: ${{ inputs.extra_fortran_args }}
+    # secrets: inherit  # uncomment if source_repo is private

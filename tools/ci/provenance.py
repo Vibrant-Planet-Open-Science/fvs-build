@@ -1,9 +1,18 @@
 #!/usr/bin/env python3
 """GitHub Actions helpers for native bundle provenance JSON (stdlib only).
 
+Platform-specific filenames and SBOM paths are selected with the environment
+variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
+``darwin``. Native workflows set this when staging artifacts and when running
+``collect-bundle``.
+
 * ``write-build-info`` — one per-variant ``build-info.json`` (schema_version 1).
-* ``collect-bundle`` — fan ``staging/variant-*`` into the bundle layout and
-  write ``provenance/manifest.json``.
+* ``collect-bundle`` — fan ``staging/<os>-variant-*`` into a **flat** bundle
+  root (``FVS<v>`` / ``libFVS<v>.*`` plus ``provenance/``, ``sbom/``).
+  Per-variant staging keeps binaries and shared libs at the variant directory
+  root (not under a ``lib/`` subdirectory). Artifact names use an ``<os>``
+  prefix (``linux-``, ``macos-``, ``windows-``) so parallel reusable native
+  workflows in the **same** GitHub Actions run do not collide on ``variant-<v>``.
 * ``manifest-to-github-env`` — append Docker-related variables to
   ``$GITHUB_ENV`` from ``bundle/provenance/manifest.json``.
 """
@@ -29,14 +38,61 @@ def _require_env(name: str) -> str:
     return val
 
 
+def _native_platform() -> str:
+    """Set FVS_NATIVE_PLATFORM in CI per runner OS."""
+    raw = os.environ.get("FVS_NATIVE_PLATFORM", "linux").strip().lower()
+    if raw not in ("linux", "windows", "darwin"):
+        msg = (
+            "error: FVS_NATIVE_PLATFORM must be linux, windows, or darwin; "
+            f"got {raw!r}\n"
+        )
+        sys.stderr.write(msg)
+        sys.exit(1)
+    return raw
+
+
+def _variant_artifact_staging_prefix() -> str:
+    """Directory/artifact prefix for per-variant uploads (must match workflows)."""
+    plat = _native_platform()
+    if plat == "linux":
+        return "linux-variant-"
+    if plat == "darwin":
+        return "macos-variant-"
+    return "windows-variant-"
+
+
+def _binary_filename(variant: str) -> str:
+    if _native_platform() == "windows":
+        return f"FVS{variant}.exe"
+    return f"FVS{variant}"
+
+
+def _shared_library_filename(variant: str) -> str:
+    plat = _native_platform()
+    if plat == "windows":
+        return f"libFVS{variant}.dll"
+    if plat == "darwin":
+        return f"libFVS{variant}.dylib"
+    return f"libFVS{variant}.so"
+
+
+def _sbom_relative_path() -> str:
+    plat = _native_platform()
+    if plat == "windows":
+        return "sbom/fvs-native-windows.spdx.json"
+    if plat == "darwin":
+        return "sbom/fvs-native-macos.spdx.json"
+    return "sbom/fvs-native-linux.spdx.json"
+
+
 def _per_variant_document() -> dict[str, Any]:
     """Build the per-variant provenance dict from the process environment."""
     variant = _require_env("VARIANT")
     return {
         "schema_version": 1,
         "variant": variant,
-        "binary": f"FVS{variant}",
-        "shared_library": f"libFVS{variant}.so",
+        "binary": _binary_filename(variant),
+        "shared_library": _shared_library_filename(variant),
         "binary_sha256": _require_env("BIN_SHA"),
         "shared_library_sha256": _require_env("LIB_SHA"),
         "compiled_at_utc": _require_env("TIMESTAMP"),
@@ -136,7 +192,7 @@ def _bundle_manifest_document(
         "artifacts": {
             "binaries": [pv["binary"] for pv in per_variant],
             "shared_libraries": [pv["shared_library"] for pv in per_variant],
-            "sbom": "sbom/fvs-native-linux.spdx.json",
+            "sbom": _sbom_relative_path(),
         },
     }
 
@@ -146,6 +202,100 @@ def _make_executable(path: Path) -> None:
     path.chmod(mode | 0o111)
 
 
+def _describe_path_entry(path: Path) -> str:
+    """One-line description for diagnostic listings (collect-bundle)."""
+    if path.is_symlink():
+        try:
+            target = path.readlink()
+            tail = f"symlink -> {target}"
+        except OSError as exc:
+            tail = f"symlink (readlink failed: {exc})"
+    elif path.is_dir():
+        tail = "directory"
+    elif path.is_file():
+        tail = "file"
+    else:
+        tail = "other"
+    return f"{path.name!r} ({tail})"
+
+
+def _emit_collect_bundle_missing_file(
+    *,
+    role: str,
+    variant: str,
+    expected: Path,
+    vd: Path,
+    staging_dir: Path,
+) -> None:
+    plat = _native_platform()
+    lib_expect = _shared_library_filename(variant)
+    lines = [
+        f"error: collect-bundle: {role} missing for variant {variant!r}",
+        f"  FVS_NATIVE_PLATFORM={plat!r} "
+        f"(expected shared library filename: {lib_expect!r})",
+        f"  expected path: {expected}",
+        f"  exists={expected.exists()}  is_file={expected.is_file()}  "
+        f"is_symlink={expected.is_symlink()}",
+    ]
+    if vd.is_dir():
+        lines.append(f"  contents of {vd}:")
+        try:
+            for child in sorted(vd.iterdir(), key=lambda p: p.name.lower()):
+                lines.append(f"    {_describe_path_entry(child)}")
+        except OSError as exc:
+            lines.append(f"    (could not list directory: {exc})")
+    else:
+        lines.append(f"  variant directory missing or not a directory: {vd}")
+    want = _variant_artifact_staging_prefix()
+    lines.append(
+        f"  sibling {want}* directories under {staging_dir}:",
+    )
+    try:
+        sibs = sorted(
+            staging_dir.glob(f"{want}*/"),
+            key=lambda p: p.name.lower(),
+        )
+        if sibs:
+            for s in sibs:
+                lines.append(f"    {s.name}/")
+        else:
+            lines.append("    (none)")
+    except OSError as exc:
+        lines.append(f"    (could not list: {exc})")
+    lines.append(
+        "  hints: (1) open the matrix job log and confirm "
+        "'----- staged staging/<code> -----' lists the same filenames; "
+        "(2) download the linux-variant-* (or macos-/windows-) zip and check "
+        "the shared library is inside; "
+        "(3) merge-multiple=false (default) extracts each artifact under "
+        "staging/<artifact-name>/; "
+        "(4) if you see macos-variant-* while collecting a Linux bundle, "
+        "another job in the same workflow run likely overwrote unprefixed "
+        "variant-* artifacts — use OS-prefixed artifact names (this repo does)."
+    )
+    sys.stderr.write("\n".join(lines) + "\n")
+    sys.exit(1)
+
+
+def _collect_require_file(
+    path: Path,
+    *,
+    role: str,
+    variant: str,
+    vd: Path,
+    staging_dir: Path,
+) -> None:
+    if path.is_file():
+        return
+    _emit_collect_bundle_missing_file(
+        role=role,
+        variant=variant,
+        expected=path,
+        vd=vd,
+        staging_dir=staging_dir,
+    )
+
+
 def cmd_collect_bundle(_args: argparse.Namespace) -> int:
     """Fan staging artifacts into the bundle directory and write manifest.json."""
     staging_dir = Path(os.environ.get("STAGING_DIR", "staging"))
@@ -153,8 +303,6 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
     bundle = Path(artifact_name)
 
     subdirs = (
-        "bin",
-        "lib",
         "provenance/per-variant",
         "provenance/meson-logs",
         "sbom",
@@ -162,22 +310,94 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
     for sub in subdirs:
         (bundle / sub).mkdir(parents=True, exist_ok=True)
 
-    variant_dirs = sorted(staging_dir.glob("variant-*/"))
+    dir_prefix = _variant_artifact_staging_prefix()
+    variant_dirs = sorted(staging_dir.glob(f"{dir_prefix}*/"))
     if not variant_dirs:
         sys.stderr.write(
-            f"error: no directories matching {staging_dir}/variant-*/\n",
+            f"error: no directories matching {staging_dir}/{dir_prefix}*/\n",
+        )
+        abs_staging = staging_dir.resolve()
+        if staging_dir.is_dir():
+            sys.stderr.write(f"  contents of {abs_staging}:\n")
+            try:
+                for child in sorted(
+                    staging_dir.iterdir(),
+                    key=lambda p: p.name.lower(),
+                ):
+                    sys.stderr.write(f"    {_describe_path_entry(child)}\n")
+            except OSError as exc:
+                sys.stderr.write(f"    (could not list: {exc})\n")
+            if dir_prefix == "linux-variant-" and list(
+                staging_dir.glob("macos-variant-*/"),
+            ):
+                sys.stderr.write(
+                    "  hint: found macos-variant-* but expected linux-variant-* — "
+                    "download-artifact pattern should be linux-variant-* for "
+                    "build-native-linux.yml.\n",
+                )
+            if dir_prefix == "linux-variant-" and list(
+                staging_dir.glob("variant-*/"),
+            ):
+                sys.stderr.write(
+                    "  hint: found legacy variant-* directories (no OS prefix). "
+                    "Older workflows collided when Linux and macOS reusable jobs "
+                    "ran in the same run; upgrade fvs-build workflows to "
+                    "linux-variant-* / macos-variant-* artifact names.\n",
+                )
+        else:
+            sys.stderr.write(
+                f"  staging directory does not exist: {abs_staging}\n",
+            )
+        sys.stderr.write(
+            "  hint: with multiple artifacts, download-artifact extracts each "
+            "into staging/<artifact-name>/ by default. "
+            "merge-multiple=true places all files directly in path/ and breaks "
+            "this layout.\n",
         )
         sys.exit(1)
 
+    abs_staging = staging_dir.resolve()
+    print(
+        "collect-bundle: "
+        f"FVS_NATIVE_PLATFORM={_native_platform()!r} STAGING_DIR={abs_staging}",
+    )
+    print(
+        "collect-bundle: variant directories: "
+        + ", ".join(p.name for p in variant_dirs),
+    )
+
     for vd in variant_dirs:
-        variant = vd.name.removeprefix("variant-")
-        shutil.copy2(vd / "bin" / f"FVS{variant}", bundle / "bin" / f"FVS{variant}")
-        shutil.copy2(
-            vd / "lib" / f"libFVS{variant}.so",
-            bundle / "lib" / f"libFVS{variant}.so",
+        variant = vd.name.removeprefix(dir_prefix)
+        bin_name = _binary_filename(variant)
+        lib_name = _shared_library_filename(variant)
+        bin_path = vd / bin_name
+        lib_path = vd / lib_name
+        info_path = vd / "provenance" / "build-info.json"
+        _collect_require_file(
+            bin_path,
+            role="executable",
+            variant=variant,
+            vd=vd,
+            staging_dir=staging_dir,
         )
+        _collect_require_file(
+            lib_path,
+            role="shared library",
+            variant=variant,
+            vd=vd,
+            staging_dir=staging_dir,
+        )
+        _collect_require_file(
+            info_path,
+            role="provenance/build-info.json",
+            variant=variant,
+            vd=vd,
+            staging_dir=staging_dir,
+        )
+        shutil.copy2(bin_path, bundle / bin_name)
+        shutil.copy2(lib_path, bundle / lib_name)
         shutil.copy2(
-            vd / "provenance" / "build-info.json",
+            info_path,
             bundle / "provenance" / "per-variant" / f"FVS{variant}.json",
         )
         tail = vd / "provenance" / "meson-logs" / "meson-log.tail.txt"
@@ -190,8 +410,9 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
             )
             shutil.copy2(tail, dest)
 
-    for exe in bundle.glob("bin/FVS*"):
-        _make_executable(exe)
+    for exe in bundle.glob("FVS*"):
+        if exe.suffix.lower() == ".exe" or exe.suffix == "":
+            _make_executable(exe)
 
     per_variant = _load_per_variant_jsons(bundle / "provenance" / "per-variant")
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -266,7 +487,10 @@ def cmd_manifest_to_github_env(args: argparse.Namespace) -> int:
 
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
-        description="Native Linux bundle provenance helpers for GitHub Actions.",
+        description=(
+            "Native bundle provenance helpers for GitHub Actions "
+            "(Linux, Windows, macOS)."
+        ),
     )
     sub = p.add_subparsers(dest="command", required=True)
 
@@ -284,7 +508,10 @@ def _build_parser() -> argparse.ArgumentParser:
 
     p_coll = sub.add_parser(
         "collect-bundle",
-        help="Assemble bundle from staging/variant-* (env-driven).",
+        help=(
+            "Assemble bundle from staging/<os>-variant-* "
+            "(env-driven; see _variant_artifact_staging_prefix)."
+        ),
     )
     p_coll.set_defaults(func=cmd_collect_bundle)
 

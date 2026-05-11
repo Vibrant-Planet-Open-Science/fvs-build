@@ -31,6 +31,9 @@ MANIFEST
 profile_default/
 ipython_config.py
 
+# pre-commit when PRE_COMMIT_HOME points into the repo (e.g. sandboxed CI)
+.pre-commit-home/
+
 # Environments
 .env
 .venv

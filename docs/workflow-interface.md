@@ -12,10 +12,29 @@ The interface is **source-agnostic**: callers supply a source repo URL plus a co
 | `[.github/workflows/build-native-linux.yml](../.github/workflows/build-native-linux.yml)`             | Native Linux x86_64 binaries + provenance + SBOM                                           | `workflow_call`     | available |
 | `[.github/workflows/build-container-linux.yml](../.github/workflows/build-container-linux.yml)`       | Linux container image (Ubuntu 24.04 runtime) packaging the native binaries, pushed to GHCR | `workflow_call`     | available |
 | `[.github/workflows/dispatch-native-linux.yml](../.github/workflows/dispatch-native-linux.yml)`       | Manual driver around `build-native-linux.yml` for local validation                         | `workflow_dispatch` | available |
+| `[.github/workflows/dispatch-native-windows.yml](../.github/workflows/dispatch-native-windows.yml)` | Manual driver around `build-native-windows.yml` for local validation                       | `workflow_dispatch` | available |
+| `[.github/workflows/dispatch-native-macos.yml](../.github/workflows/dispatch-native-macos.yml)`     | Manual driver around `build-native-macos.yml` for local validation                         | `workflow_dispatch` | available |
 | `[.github/workflows/dispatch-container-linux.yml](../.github/workflows/dispatch-container-linux.yml)` | Manual orchestrator running native + container in sequence                                 | `workflow_dispatch` | available |
-| Windows / macOS native workflows                                                                      | Native binary builds for Windows and macOS                                                 | `workflow_call`     | planned   |
+| `[.github/workflows/build-native-windows.yml](../.github/workflows/build-native-windows.yml)`       | Native Windows x86_64 (MSYS2 MINGW64) binaries + provenance + SBOM                       | `workflow_call`     | available |
+| `[.github/workflows/build-native-macos.yml](../.github/workflows/build-native-macos.yml)`           | Native macOS (Homebrew `gcc@N`) binaries + provenance + SBOM                               | `workflow_call`     | available |
 | Upstream-tracking automation                                                                          | Cron-driven detection of new USFS releases plus pruning of evicted images                  | scheduled           | planned   |
 
+
+## Native bundles (Linux, Windows, macOS)
+
+Three reusable workflows share the same job shape (preflight → per-variant matrix → collect) and the same provenance tool, [`tools/ci/provenance.py`](../tools/ci/provenance.py). Workflows set **`FVS_NATIVE_PLATFORM`** for `write-build-info` and `collect-bundle` so bundle filenames and SBOM paths match the OS:
+
+| OS      | Workflow                 | `FVS_NATIVE_PLATFORM` | Uploaded bundle name              | Executable at bundle root | Shared library at bundle root | SBOM relative path                          |
+| ------- | ------------------------ | --------------------- | --------------------------------- | ------------------------- | ----------------------------- | ------------------------------------------- |
+| Linux   | `build-native-linux.yml` | `linux`               | `fvs-native-linux-<run_id>`     | `FVS<v>`                  | `libFVS<v>.so`                | `sbom/fvs-native-linux.spdx.json`           |
+| Windows | `build-native-windows.yml` | `windows`           | `fvs-native-windows-<run_id>`   | `FVS<v>.exe`              | `libFVS<v>.dll`               | `sbom/fvs-native-windows.spdx.json`         |
+| macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`                  | `libFVS<v>.dylib`             | `sbom/fvs-native-macos.spdx.json`           |
+
+`provenance/manifest.json` and each `provenance/per-variant/FVS<v>.json` use the **`binary`** and **`shared_library`** basenames from this table (including extensions on Windows). The manifest’s `toolchain.gfortran_package` and `toolchain.gpp_package` fields are **human-readable labels** (apt names on Linux, MSYS2 pacman package names on Windows, `gcc@N` on macOS), not a portable schema across OSes.
+
+During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs the Linux, macOS, and Windows reusable workflows in the **same** workflow run — for example `[ci-test-reusable-native.yml](../.github/workflows/ci-test-reusable-native.yml)`. Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (e.g. `libFVSak.dylib` instead of `.so`). The final bundle artifact names (`fvs-native-*-<run_id>`) are unchanged.
+
+The Linux container workflow consumes **only** the Linux bundle; Windows and macOS bundles are for native delivery on those platforms.
 
 ## `build-native-linux.yml`
 
@@ -33,7 +52,7 @@ Jobs that need the overlay resolve `owner/name` and git ref from `[github.workfl
 | `variants`           | string | no       | `ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws` | Comma-separated FVS variant codes. Default is the 22 cleanly-buildable US variants. The Canadian variants (`bc`, `on`) are excluded by default; their upstream source lists are incomplete (see `[README.md](../README.md)` for details). |
 | `runner_image`       | string | no       | `ubuntu-24.04`                                                      | GitHub-hosted runner image label. Pinned per ADR-001 to keep the glibc baseline stable and matched to the Ubuntu 24.04 runtime container base.                                                                                            |
 | `gfortran_package`   | string | no       | `gfortran-13`                                                       | apt package providing gfortran. Pinned per ADR-001 so Ubuntu point releases cannot shift the default compiler.                                                                                                                            |
-| `gpp_package`        | string | no       | `g++-13`                                                            | apt package providing g. ++A handful of variants compile++ `.cpp` ++files (`fire/cfim/cfim.cpp`); the C++ compiler is pinned to the same gcc family as gfortran.                                                                          |
+| `gpp_package`        | string | no       | `g++-13`                                                            | apt package providing g++. A handful of variants compile `.cpp` files (`fire/cfim/cfim.cpp`); the C++ compiler is pinned to the same gcc family as gfortran.                                                                                |
 | `meson_version`      | string | no       | `1.5.2`                                                             | Exact Meson version installed via pip. Pinned to the version `fvs-build` was developed against.                                                                                                                                           |
 | `extra_fortran_args` | string | no       | `""`                                                                | Comma-separated extra flags appended to common Fortran compile args (passed verbatim through Meson's `-Dextra_fortran_args=`). Escape hatch for ad-hoc build investigation; production builds should leave this empty.                    |
 
@@ -52,14 +71,12 @@ The workflow uploads exactly one artifact with the canonical layout below. This 
 
 ```
 fvs-native-linux-<run_id>/
-├── bin/
-│   ├── FVSak             # standalone executable, +x
-│   ├── FVSbm
-│   └── ...               # one per requested variant
-├── lib/
-│   ├── libFVSak.so       # shared library; consumed by microfvs, rFVS, fvs2py
-│   ├── libFVSbm.so
-│   └── ...               # one per requested variant
+├── FVSak                 # standalone executable, +x (flat bundle root)
+├── FVSbm
+├── ...                   # one `FVS<v>` per requested variant
+├── libFVSak.so           # shared library; consumed by microfvs, rFVS, fvs2py
+├── libFVSbm.so
+├── ...                   # one `libFVS<v>.so` per requested variant
 ├── provenance/
 │   ├── manifest.json     # aggregated build provenance (top-level)
 │   ├── per-variant/
@@ -107,6 +124,8 @@ fvs-native-linux-<run_id>/
   }
 }
 ```
+
+On **Windows**, `artifacts.binaries` use the `.exe` suffix, `artifacts.shared_libraries` use `.dll`, and `artifacts.sbom` is `sbom/fvs-native-windows.spdx.json`. On **macOS**, binaries are extensionless like Linux; `shared_libraries` use `.dylib`; `artifacts.sbom` is `sbom/fvs-native-macos.spdx.json`.
 
 #### `provenance/per-variant/FVS<v>.json` schema
 
@@ -169,7 +188,7 @@ jobs:
           name: ${{ needs.fvs-binaries.outputs.artifact_name }}
           path: fvs-bundle
       - run: |
-          ls fvs-bundle/bin/
+          ls -1 fvs-bundle/FVS* fvs-bundle/libFVS*.so
           jq . fvs-bundle/provenance/manifest.json
 ```
 
@@ -204,7 +223,21 @@ gh workflow run dispatch-native-linux.yml \
   -f source_ref=FS2025.4c
 ```
 
+The same pattern applies on **Windows** and **macOS** via [`dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) and [`dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml) (substitute the workflow file name in `gh workflow run`).
+
 This invokes the reusable workflow with the same inputs an external caller would supply.
+
+## `build-native-windows.yml`
+
+Reusable workflow: **Windows x86_64**, **MSYS2 `MINGW64`**, gfortran/gcc from `pacman`, Meson from **pip** (MINGW64 Python). Outputs **`fvs-native-windows-<run_id>`** with `FVS<v>.exe` and `libFVS<v>.dll`. See the workflow file for the full input list; notable inputs include `runner_image` (default `windows-latest`), `gfortran_package` / `gpp_package` (provenance labels for MSYS2 packages), `meson_version`, and `variants` (same CSV default as Linux).
+
+**Calling pattern** is the same as Linux: `uses: <owner>/fvs-build/.github/workflows/build-native-windows.yml@<ref>` with `with: source_repo`, `source_ref`, and optional `variants`.
+
+## `build-native-macos.yml`
+
+Reusable workflow: **macOS**, **Homebrew** `gcc@N` (default `N=14`) for `gfortran-N` / `gcc-N` / `g++-N`, **Ninja** from Homebrew, Meson from **pip**. Outputs **`fvs-native-macos-<run_id>`** with extensionless `FVS<v>` and `libFVS<v>.dylib`. Inputs include `runner_image` (default `macos-latest`), `brew_gcc_major` (must match the installed `gcc@N` formula), `meson_version`, and `variants`.
+
+**Calling pattern** matches Linux/Windows; consume `outputs.artifact_name` the same way.
 
 ## `build-container-linux.yml`
 

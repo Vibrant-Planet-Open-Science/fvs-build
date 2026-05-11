@@ -1,0 +1,72 @@
+# Local-dev driver for the reusable native Windows workflow.
+#
+# Thin workflow_dispatch wrapper around build-native-windows.yml so the
+# reusable workflow can be exercised manually from the Actions UI or
+# `gh workflow run`. Same intent as dispatch-native-linux.yml; not the external
+# caller interface.
+#
+# Real callers use `uses: <owner>/fvs-build/.github/workflows/build-native-windows.yml@<ref>`.
+
+name: Dispatch native Windows build (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "Source repo (owner/name)"
+        required: true
+        default: "USDAForestService/ForestVegetationSimulator"
+        type: string
+      source_ref:
+        description: "Source ref (tag, branch, or SHA)"
+        required: true
+        default: "FS2025.4c"
+        type: string
+      variants:
+        description: "Comma-separated FVS variant codes (default: 22 US variants)"
+        required: false
+        default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
+        type: string
+      runner_image:
+        description: "GitHub-hosted Windows runner label"
+        required: false
+        default: "windows-latest"
+        type: string
+      gfortran_package:
+        description: "MSYS2 pacman package name (provenance label)"
+        required: false
+        default: "mingw-w64-x86_64-gcc-fortran"
+        type: string
+      gpp_package:
+        description: "MSYS2 package for gcc/g++ (provenance label)"
+        required: false
+        default: "mingw-w64-x86_64-gcc"
+        type: string
+      meson_version:
+        description: "Meson version installed via pip (MINGW64 Python)"
+        required: false
+        default: "1.5.2"
+        type: string
+      extra_fortran_args:
+        description: "Comma-separated extra Fortran flags (escape hatch; empty for production)"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (via reusable workflow)
+    uses: ./.github/workflows/build-native-windows.yml
+    with:
+      source_repo: ${{ inputs.source_repo }}
+      source_ref: ${{ inputs.source_ref }}
+      variants: ${{ inputs.variants }}
+      runner_image: ${{ inputs.runner_image }}
+      gfortran_package: ${{ inputs.gfortran_package }}
+      gpp_package: ${{ inputs.gpp_package }}
+      meson_version: ${{ inputs.meson_version }}
+      extra_fortran_args: ${{ inputs.extra_fortran_args }}
+    # secrets: inherit  # uncomment if source_repo is private
