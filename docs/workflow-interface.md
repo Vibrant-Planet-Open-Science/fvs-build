@@ -36,6 +36,18 @@ During the matrix → collect handoff, each workflow uploads **ephemeral** per-v
 
 The Linux container workflow consumes **only** the Linux bundle; Windows and macOS bundles are for native delivery on those platforms.
 
+### Shared native CI helpers
+
+The three `build-native-*.yml` workflows share the same overall shape; repeated steps are centralized so the YAML stays short and changes stay in one place:
+
+| Location | Role |
+| -------- | ---- |
+| [`tools/ci/expand_variants_matrix.py`](../tools/ci/expand_variants_matrix.py) | Preflight: expand the `variants` CSV into the JSON matrix for `strategy.matrix`. |
+| [`.github/actions/prepare-fvs-native-checkout/action.yml`](../.github/actions/prepare-fvs-native-checkout/action.yml) | Matrix jobs: resolve the overlay repo/ref, check out `fvs-build/` and `fvs-source/`, delete stray `*.mod` under `fvs-source`, emit `source_sha` and `fvs_build_sha` outputs. |
+| [`tools/ci/stage_variant_native.py`](../tools/ci/stage_variant_native.py) | After compile: populate `staging/<variant>/`, tail `meson-log.txt`, invoke `provenance.py write-build-info`. |
+| [`.github/actions/collect-native-bundle/action.yml`](../.github/actions/collect-native-bundle/action.yml) | Collect job: download OS-prefixed `*-variant-*` artifacts, run `provenance.py collect-bundle`, Syft SBOM, upload the final bundle. |
+| [`.github/actions/resolve-fvs-build-ref`](../.github/actions/resolve-fvs-build-ref/action.yml) | Parse `github.workflow_ref` into overlay `owner/name` + ref (used by native matrix/collect steps and by `build-container-linux.yml`). |
+
 ## `build-native-linux.yml`
 
 Builds Linux x86_64 native binaries for one or more FVS variants from any source repo + ref using the `fvs-build` [Meson overlay](../meson.build), and uploads a single artifact bundle containing every variant's binary plus aggregated provenance and an SBOM.
@@ -55,6 +67,7 @@ Jobs that need the overlay resolve `owner/name` and git ref from `[github.workfl
 | `gpp_package`        | string | no       | `g++-13`                                                            | apt package providing g++. A handful of variants compile `.cpp` files (`fire/cfim/cfim.cpp`); the C++ compiler is pinned to the same gcc family as gfortran.                                                                                |
 | `meson_version`      | string | no       | `1.5.2`                                                             | Exact Meson version installed via pip. Pinned to the version `fvs-build` was developed against.                                                                                                                                           |
 | `extra_fortran_args` | string | no       | `""`                                                                | Comma-separated extra flags appended to common Fortran compile args (passed verbatim through Meson's `-Dextra_fortran_args=`). Escape hatch for ad-hoc build investigation; production builds should leave this empty.                    |
+| `python_version`     | string | no       | `3.12`                                                              | Version string for `actions/setup-python` (matrix Meson / scripts and the collect job's interpreter when setup-python runs).                                                                                                         |
 
 
 ### Outputs
@@ -229,19 +242,19 @@ This invokes the reusable workflow with the same inputs an external caller would
 
 ## `build-native-windows.yml`
 
-Reusable workflow: **Windows x86_64**, **MSYS2 `MINGW64`**, gfortran/gcc from `pacman`, Meson from **pip** (MINGW64 Python). Outputs **`fvs-native-windows-<run_id>`** with `FVS<v>.exe` and `libFVS<v>.dll`. See the workflow file for the full input list; notable inputs include `runner_image` (default `windows-latest`), `gfortran_package` / `gpp_package` (provenance labels for MSYS2 packages), `meson_version`, and `variants` (same CSV default as Linux).
+Reusable workflow: **Windows x86_64**, **MSYS2 `MINGW64`**, gfortran/gcc from `pacman`, Meson from **pip** (MINGW64 Python). Outputs **`fvs-native-windows-<run_id>`** with `FVS<v>.exe` and `libFVS<v>.dll`. See the workflow file for the full input list; notable inputs include `runner_image` (default `windows-latest`), `gfortran_package` / `gpp_package` (provenance labels for MSYS2 packages), `meson_version`, `python_version` (default `3.12` for `actions/setup-python`), and `variants` (same CSV default as Linux).
 
 **Calling pattern** is the same as Linux: `uses: <owner>/fvs-build/.github/workflows/build-native-windows.yml@<ref>` with `with: source_repo`, `source_ref`, and optional `variants`.
 
 ## `build-native-macos.yml`
 
-Reusable workflow: **macOS**, **Homebrew** `gcc@N` (default `N=14`) for `gfortran-N` / `gcc-N` / `g++-N`, **Ninja** from Homebrew, Meson from **pip**. Outputs **`fvs-native-macos-<run_id>`** with extensionless `FVS<v>` and `libFVS<v>.dylib`. Inputs include `runner_image` (default `macos-latest`), `brew_gcc_major` (must match the installed `gcc@N` formula), `meson_version`, and `variants`.
+Reusable workflow: **macOS**, **Homebrew** `gcc@N` (default `N=14`) for `gfortran-N` / `gcc-N` / `g++-N`, **Ninja** from Homebrew, Meson from **pip**. Outputs **`fvs-native-macos-<run_id>`** with extensionless `FVS<v>` and `libFVS<v>.dylib`. Inputs include `runner_image` (default `macos-latest`), `brew_gcc_major` (must match the installed `gcc@N` formula), `meson_version`, `python_version` (default `3.12`), and `variants`.
 
 **Calling pattern** matches Linux/Windows; consume `outputs.artifact_name` the same way.
 
 ## `build-container-linux.yml`
 
-Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 24.04 container image and (optionally) pushes it to GHCR. Per [ADR-001's "container build approach"](adr-001-build-system-build-environment-and-artifact-formats.md), the container does **not** recompile FVS — it copies the already-validated native binaries into a slim runtime image with the matching `libgfortran5` / `libquadmath0` runtime libraries.
+Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 24.04 container image and (optionally) pushes it to GHCR. Per [ADR-001's "container build approach"](adr-001-build-system-build-environment-and-artifact-formats.md), the container does **not** recompile FVS — it copies the already-validated native binaries into a slim runtime image with the matching `libgfortran5` / `libquadmath0` runtime libraries. **Per-variant `STOP 20` smoke runs on the native Linux build runner** before bundling; this workflow does not re-run those binaries inside the image (see the **Validation / smoke testing** subsection later in this document).
 
 ### Inputs
 
@@ -254,7 +267,7 @@ Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 2
 | `image_extra_tags` | string  | no       | `""`           | Comma-separated extra tags applied at push time (e.g. `latest`, `<short-sha>`). Each is `docker tag`ged from the primary and pushed alongside it.                                |
 | `runtime_base`     | string  | no       | `ubuntu:24.04` | Base image for the runtime container. Pinned per ADR-001's matched-base decision (same Ubuntu version as `runner_image`'s `ubuntu-24.04` build runner so glibc baselines match). |
 | `runner_image`     | string  | no       | `ubuntu-24.04` | GitHub-hosted runner image label this workflow runs on.                                                                                                                          |
-| `push`             | boolean | no       | `false`        | Push to the registry after smoke tests pass. Defaults to `false`; production callers explicitly opt in.                                                                          |
+| `push`             | boolean | no       | `false`        | Push to the registry after the image build succeeds. Defaults to `false`; production callers explicitly opt in.                                                                  |
 
 
 ### Outputs
@@ -272,9 +285,8 @@ Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 2
 2. Download the named artifact bundle into `bundle/` and verify the layout.
 3. Extract source repo/ref/sha and toolchain versions from `bundle/provenance/manifest.json` via `[tools/ci/provenance.py](../tools/ci/provenance.py)` (`manifest-to-github-env`); pass them into `docker buildx build` as `--build-arg` values which become OCI image labels.
 4. `docker buildx build --load --platform linux/amd64` produces the image into the local Docker daemon (no push yet).
-5. Per-variant in-image smoke test: for each `FVS<v>` listed in `manifest.json`'s `artifacts.binaries`, run the variant binary as the image's default command (the image has no `ENTRYPOINT` shim) with `</dev/null` and assert the output reaches gfortran's `STOP 20`. This validates that the binary loads inside the runtime image and `libgfortran5` is correctly installed; it mirrors the per-variant smoke from `build-native-linux.yml`'s build runner.
-6. If `push: true` and `image_name` starts with `ghcr.io/`: log in to GHCR with `${{ secrets.GITHUB_TOKEN }}`, push the primary tag, then tag-and-push each `image_extra_tags` entry.
-7. Generate an SPDX SBOM of the *built image* via `syft` (separate from the binary-only SBOM in the bundle — the image SBOM also captures the Ubuntu base layers and `libgfortran5`). Upload as a sibling `container-sbom-<run_id>` artifact.
+5. If `push: true` and `image_name` starts with `ghcr.io/`: log in to GHCR with `${{ secrets.GITHUB_TOKEN }}`, push the primary tag, then tag-and-push each `image_extra_tags` entry.
+6. Generate an SPDX SBOM of the *built image* via `syft` (separate from the binary-only SBOM in the bundle — the image SBOM also captures the Ubuntu base layers and `libgfortran5`). Upload as a sibling `container-sbom-<run_id>` artifact.
 
 ### OCI labels applied to the image
 
@@ -365,9 +377,13 @@ When `push: true`, `${{ secrets.GITHUB_TOKEN }}` (auto-available in reusable wor
 
 For non-GHCR registries the workflow's GHCR-only `docker/login-action` step is skipped (guarded by `startsWith(image_name, 'ghcr.io/')`); a fork or downstream caller would need to handle login themselves.
 
-### Smoke-test scope
+### Validation / smoke testing
 
-Phase 1 smoke is intentionally minimal: per-variant binary-load + `STOP 20` reach. Future enhancements (porting `docker_fvs/tests/test_fvs_build.py`'s pytest harness with per-variant keyfiles, asserting no `WARNING:`/`ERROR:` in output, etc.) are tracked as follow-ups; the current scope catches missing-runtime-library and broken-image regressions cheaply, in seconds per variant.
+**Native Linux matrix:** each variant binary is smoke-tested on the build runner (`</dev/null`, expect gfortran `STOP 20`) before staging and bundle collection — the same minimal pattern as local development (see `README.md`).
+
+**Container workflow:** the image is **not** smoke-tested after `docker build`. That keeps CI fast and avoids duplicating the native gate. The tradeoff is weaker coverage for mistakes that only show up inside the runtime image (for example wrong `apt` packages in `Dockerfile.runtime` or a broken `COPY` layout). Teams that need in-image confirmation can add a separate integration job, reintroduce a targeted `docker run` check, or rely on downstream tests.
+
+Future enhancements (porting `docker_fvs/tests/test_fvs_build.py`-style checks, keyfiles, log assertions, etc.) remain possible without changing the native contract.
 
 ### Local validation before any external caller exists
 
@@ -381,4 +397,4 @@ gh workflow run dispatch-container-linux.yml \
   -f push=false
 ```
 
-`push=false` (the default) builds and smoke-tests without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2025.4c` once you're confident the image is ready for the registry.
+`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2025.4c` once you're confident the image is ready for the registry.

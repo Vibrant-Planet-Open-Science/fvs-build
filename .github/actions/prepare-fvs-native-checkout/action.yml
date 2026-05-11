@@ -1,0 +1,79 @@
+# Composite: resolve fvs-build ref from workflow_ref, check out overlay + FVS source,
+# strip stray *.mod under fvs-source, record SHAs for provenance.
+#
+# Call after the workflow repository is checked out (so ./.github/actions exists).
+# On Windows build-variant jobs, install MSYS2 *before* this action so find/git
+# behave like the rest of the job. Pass run_shell: "msys2 {0}" on Windows.
+name: Prepare fvs-build + FVS checkouts for native matrix
+description: >
+  Resolve overlay repo/ref, clone fvs-build and FVS into fvs-build/ and fvs-source/,
+  delete tracked *.mod under fvs-source, emit source_sha and fvs_build_sha.
+
+inputs:
+  source_repo:
+    description: FVS upstream repository (owner/name).
+    required: true
+  source_ref:
+    description: Tag, branch, or SHA in source_repo.
+    required: true
+  run_shell:
+    description: >
+      Shell for run steps (bash on Linux/macOS; use msys2 {0} for Windows MINGW64).
+    required: false
+    default: bash
+
+outputs:
+  overlay_repo:
+    description: Resolved fvs-build repository (owner/name).
+    value: ${{ steps.fb_ref.outputs.repo }}
+  overlay_ref:
+    description: Resolved git ref for the overlay checkout.
+    value: ${{ steps.fb_ref.outputs.ref }}
+  source_sha:
+    description: HEAD of fvs-source after checkout.
+    value: ${{ steps.git_shas.outputs.source_sha }}
+  fvs_build_sha:
+    description: HEAD of fvs-build overlay after checkout.
+    value: ${{ steps.git_shas.outputs.fvs_build_sha }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve fvs-build repo and ref from workflow_ref
+      id: fb_ref
+      uses: ./.github/actions/resolve-fvs-build-ref
+
+    - name: Check out fvs-build (the Meson overlay)
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ steps.fb_ref.outputs.repo }}
+        ref: ${{ steps.fb_ref.outputs.ref }}
+        path: fvs-build
+
+    - name: Check out FVS source tree
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ inputs.source_repo }}
+        ref: ${{ inputs.source_ref }}
+        path: fvs-source
+        clean: true
+        submodules: recursive
+
+    - name: Remove stray Fortran .mod files from source tree
+      shell: ${{ inputs.run_shell }}
+      run: |
+        set -euo pipefail
+        find fvs-source -name '*.mod' -type f -delete
+        echo "Stripped any *.mod under fvs-source before Meson (see README)."
+
+    - name: Capture source and fvs-build SHAs for provenance
+      id: git_shas
+      shell: ${{ inputs.run_shell }}
+      run: |
+        set -euo pipefail
+        SRC_SHA=$(git -C fvs-source rev-parse HEAD)
+        FB_SHA=$(git -C fvs-build rev-parse HEAD)
+        echo "source_sha=${SRC_SHA}" >> "$GITHUB_OUTPUT"
+        echo "fvs_build_sha=${FB_SHA}" >> "$GITHUB_OUTPUT"
+        echo "Source SHA:     ${SRC_SHA}"
+        echo "fvs-build SHA:  ${FB_SHA}"
