@@ -251,7 +251,7 @@ jobs:
 
 The container does **not** recompile FVS — it copies the already-validated native binaries (each variant is smoke-tested on the Linux native build runner before bundling) into a runtime-only Ubuntu 24.04 image with the matching `libgfortran5` runtime, then pushes to GHCR with full OCI provenance labels when the pipeline opts in to `push`.
 
-See `**[docs/workflow-interface.md](docs/workflow-interface.md)`** for the full input/output surface of both workflows, the artifact-bundle layout, the OCI label set baked into the image, and additional caller snippets.
+See [**`docs/workflow-interface.md`**](docs/workflow-interface.md) for the full input/output surface of both workflows, the artifact-bundle layout, the OCI label set baked into the image, and additional caller snippets.
 
 ### Manual / local-dev drivers
 
@@ -332,4 +332,4 @@ pre-commit install           # one-time, installs the git hook
 pre-commit run --all-files   # run all hooks against the whole tree
 ```
 
-CI is the authoritative gate — local hooks can be bypassed with `--no-verify`, but `[lint.yml](.github/workflows/lint.yml)` runs `pre-commit run --all-files` on every PR and push to `main` and will block merges on any failure.
+CI is the authoritative gate — local hooks can be bypassed with `--no-verify`, but [`lint.yml`](.github/workflows/lint.yml) runs `pre-commit run --all-files` on every PR and push to `main` and will block merges on any failure.
