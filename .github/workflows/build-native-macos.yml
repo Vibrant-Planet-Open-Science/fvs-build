@@ -259,7 +259,7 @@ jobs:
         run: |
           set -euo pipefail
           STAGE="staging/${VARIANT}"
-          mkdir -p "${STAGE}/bin" "${STAGE}/lib" "${STAGE}/provenance/meson-logs"
+          mkdir -p "${STAGE}/provenance/meson-logs"
 
           BIN_SRC="_build/FVS${VARIANT}"
           SHLIB_SRC="_build/libFVS${VARIANT}.dylib"
@@ -267,16 +267,16 @@ jobs:
             echo "ERROR: expected dylib missing: ${SHLIB_SRC}" >&2
             exit 1
           fi
-          cp "${BIN_SRC}" "${STAGE}/bin/FVS${VARIANT}"
-          cp "${SHLIB_SRC}" "${STAGE}/lib/libFVS${VARIANT}.dylib"
-          chmod +x "${STAGE}/bin/FVS${VARIANT}"
+          cp "${BIN_SRC}" "${STAGE}/FVS${VARIANT}"
+          cp "${SHLIB_SRC}" "${STAGE}/libFVS${VARIANT}.dylib"
+          chmod +x "${STAGE}/FVS${VARIANT}"
 
           if command -v sha256sum >/dev/null 2>&1; then
-            BIN_SHA=$(sha256sum "${STAGE}/bin/FVS${VARIANT}" | awk '{print $1}')
-            LIB_SHA=$(sha256sum "${STAGE}/lib/libFVS${VARIANT}.dylib" | awk '{print $1}')
+            BIN_SHA=$(sha256sum "${STAGE}/FVS${VARIANT}" | awk '{print $1}')
+            LIB_SHA=$(sha256sum "${STAGE}/libFVS${VARIANT}.dylib" | awk '{print $1}')
           else
-            BIN_SHA=$(shasum -a 256 "${STAGE}/bin/FVS${VARIANT}" | awk '{print $1}')
-            LIB_SHA=$(shasum -a 256 "${STAGE}/lib/libFVS${VARIANT}.dylib" | awk '{print $1}')
+            BIN_SHA=$(shasum -a 256 "${STAGE}/FVS${VARIANT}" | awk '{print $1}')
+            LIB_SHA=$(shasum -a 256 "${STAGE}/libFVS${VARIANT}.dylib" | awk '{print $1}')
           fi
           GFORTRAN_VERSION=$("${FC}" --version | head -n 1)
           GCC_VERSION=$("${CC}" --version | head -n 1)

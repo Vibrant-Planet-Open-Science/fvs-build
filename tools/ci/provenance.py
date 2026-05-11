@@ -8,7 +8,9 @@ variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
 
 * ``write-build-info`` — one per-variant ``build-info.json`` (schema_version 1).
 * ``collect-bundle`` — fan ``staging/variant-*`` into the bundle layout and
-  write ``provenance/manifest.json``.
+  write ``provenance/manifest.json``. Each per-variant tree has the binary and
+  shared library at the variant directory root (not under ``lib/``, which would
+  match ``.gitignore`` and be skipped by ``actions/upload-artifact``).
 * ``manifest-to-github-env`` — append Docker-related variables to
   ``$GITHUB_ENV`` from ``bundle/provenance/manifest.json``.
 """
@@ -215,8 +217,8 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
         variant = vd.name.removeprefix("variant-")
         bin_name = _binary_filename(variant)
         lib_name = _shared_library_filename(variant)
-        shutil.copy2(vd / "bin" / bin_name, bundle / "bin" / bin_name)
-        shutil.copy2(vd / "lib" / lib_name, bundle / "lib" / lib_name)
+        shutil.copy2(vd / bin_name, bundle / "bin" / bin_name)
+        shutil.copy2(vd / lib_name, bundle / "lib" / lib_name)
         shutil.copy2(
             vd / "provenance" / "build-info.json",
             bundle / "provenance" / "per-variant" / f"FVS{variant}.json",

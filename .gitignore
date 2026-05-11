@@ -7,8 +7,7 @@ __pycache__/
 .vscode/
 *.swp
 
-# Distribution / packaging (anchor to repo root so CI paths like
-# staging/<variant>/lib/*.so are not treated as ignored)
+# Distribution / packaging
 .Python
 build/
 develop-eggs/
@@ -16,8 +15,8 @@ dist/
 downloads/
 eggs/
 .eggs/
-/lib/
-/lib64/
+lib/
+lib64/
 parts/
 sdist/
 var/

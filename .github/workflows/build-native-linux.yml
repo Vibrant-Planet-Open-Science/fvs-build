@@ -298,7 +298,7 @@ jobs:
         run: |
           set -euo pipefail
           STAGE="staging/${VARIANT}"
-          mkdir -p "${STAGE}/bin" "${STAGE}/lib" "${STAGE}/provenance/meson-logs"
+          mkdir -p "${STAGE}/provenance/meson-logs"
 
           BIN_SRC="_build/FVS${VARIANT}"
           # Meson shared_library('FVS' + v) with no soversion → _build/libFVS<v>.so.
@@ -308,12 +308,12 @@ jobs:
             echo "       (meson.build must keep a single unversioned libFVS<v>.so per variant)" >&2
             exit 1
           fi
-          cp "${BIN_SRC}"   "${STAGE}/bin/FVS${VARIANT}"
-          cp "${SHLIB_SRC}" "${STAGE}/lib/libFVS${VARIANT}.so"
-          chmod +x "${STAGE}/bin/FVS${VARIANT}"
+          cp "${BIN_SRC}"   "${STAGE}/FVS${VARIANT}"
+          cp "${SHLIB_SRC}" "${STAGE}/libFVS${VARIANT}.so"
+          chmod +x "${STAGE}/FVS${VARIANT}"
 
-          BIN_SHA=$(sha256sum "${STAGE}/bin/FVS${VARIANT}"           | awk '{print $1}')
-          LIB_SHA=$(sha256sum "${STAGE}/lib/libFVS${VARIANT}.so"     | awk '{print $1}')
+          BIN_SHA=$(sha256sum "${STAGE}/FVS${VARIANT}"           | awk '{print $1}')
+          LIB_SHA=$(sha256sum "${STAGE}/libFVS${VARIANT}.so"     | awk '{print $1}')
           GFORTRAN_VERSION=$("${FC}"  --version | head -n 1)
           GCC_VERSION=$("${CC}"       --version | head -n 1)
           GPP_VERSION=$("${CXX}"      --version | head -n 1)

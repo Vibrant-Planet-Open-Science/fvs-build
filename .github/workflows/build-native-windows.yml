@@ -275,7 +275,7 @@ jobs:
         run: |
           set -euo pipefail
           STAGE="staging/${VARIANT}"
-          mkdir -p "${STAGE}/bin" "${STAGE}/lib" "${STAGE}/provenance/meson-logs"
+          mkdir -p "${STAGE}/provenance/meson-logs"
 
           BIN_SRC="_build/FVS${VARIANT}.exe"
           SHLIB_SRC="_build/libFVS${VARIANT}.dll"
@@ -283,11 +283,11 @@ jobs:
             echo "ERROR: expected DLL missing: ${SHLIB_SRC}" >&2
             exit 1
           fi
-          cp "${BIN_SRC}" "${STAGE}/bin/FVS${VARIANT}.exe"
-          cp "${SHLIB_SRC}" "${STAGE}/lib/libFVS${VARIANT}.dll"
+          cp "${BIN_SRC}" "${STAGE}/FVS${VARIANT}.exe"
+          cp "${SHLIB_SRC}" "${STAGE}/libFVS${VARIANT}.dll"
 
-          BIN_SHA=$(sha256sum "${STAGE}/bin/FVS${VARIANT}.exe" | awk '{print $1}')
-          LIB_SHA=$(sha256sum "${STAGE}/lib/libFVS${VARIANT}.dll" | awk '{print $1}')
+          BIN_SHA=$(sha256sum "${STAGE}/FVS${VARIANT}.exe" | awk '{print $1}')
+          LIB_SHA=$(sha256sum "${STAGE}/libFVS${VARIANT}.dll" | awk '{print $1}')
           GFORTRAN_VERSION=$(gfortran --version | head -n 1)
           GCC_VERSION=$(gcc --version | head -n 1)
           GPP_VERSION=$(g++ --version | head -n 1)
