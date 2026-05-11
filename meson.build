@@ -66,9 +66,12 @@ endif
 # (fvsSQL.c and related).
 if host_sys == 'windows'
   os_c_args = ['-DWINDOWS']
-  # w64 link recipe: static DLL with full symbol export; static executable.
+  # w64 link recipe: static DLL (incl. libgfortran/libquadmath) + export all
+  # symbols. Do not use `-static` on the `.exe`: it pulls libgfortran.a into the
+  # main program while `link_with` already uses the DLL import lib, which
+  # duplicates Fortran runtime entry points (`_gfortran_set_args`, etc.).
   shlib_link_args = ['-static', '-shared', '-Wl,--export-all-symbols']
-  exe_link_args = ['-static']
+  exe_link_args = []
   objs_pic = false
 else
   os_c_args = ['-Dunix']
@@ -212,7 +215,6 @@ foreach v : variants
     [main_source],
     fortran_args: common_fortran_args + inc_args,
     link_with: [fvs_lib],
-    dependencies: [quadmath_dep],
     link_args: exe_link_args,
     install: false,
   )
