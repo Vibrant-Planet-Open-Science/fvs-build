@@ -249,7 +249,7 @@ jobs:
     secrets: inherit
 ```
 
-The container does **not** recompile FVS — it copies the already-validated native binaries into a runtime-only Ubuntu 24.04 image with the matching `libgfortran5` runtime, smoke-tests every variant inside the image, and pushes to GHCR with full OCI provenance labels.
+The container does **not** recompile FVS — it copies the already-validated native binaries (each variant is smoke-tested on the Linux native build runner before bundling) into a runtime-only Ubuntu 24.04 image with the matching `libgfortran5` runtime, then pushes to GHCR with full OCI provenance labels when the pipeline opts in to `push`.
 
 See `**[docs/workflow-interface.md](docs/workflow-interface.md)`** for the full input/output surface of both workflows, the artifact-bundle layout, the OCI label set baked into the image, and additional caller snippets.
 

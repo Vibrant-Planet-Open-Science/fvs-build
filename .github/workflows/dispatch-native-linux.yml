@@ -56,6 +56,11 @@ on:
         required: false
         default: ""
         type: string
+      python_version:
+        description: "actions/setup-python version (Meson / CI scripts)"
+        required: false
+        default: "3.12"
+        type: string
 
 permissions:
   contents: read
@@ -73,5 +78,6 @@ jobs:
       gpp_package: ${{ inputs.gpp_package }}
       meson_version: ${{ inputs.meson_version }}
       extra_fortran_args: ${{ inputs.extra_fortran_args }}
+      python_version: ${{ inputs.python_version }}
     # secrets: inherit  # uncomment if source_repo becomes private and the
     #                   # workflow needs to authenticate the source checkout

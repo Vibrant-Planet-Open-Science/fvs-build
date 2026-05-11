@@ -50,7 +50,7 @@ on:
         default: ""
         type: string
       push:
-        description: "Push to GHCR after smoke tests pass"
+        description: "Push to GHCR after the container image build succeeds"
         required: false
         default: false
         type: boolean
@@ -59,12 +59,14 @@ on:
         required: false
         default: "ubuntu-24.04"
         type: string
-        # Note: toolchain pinning inputs (gfortran_package, gpp_package,
-        # meson_version, runtime_base) are intentionally NOT exposed
-        # here. workflow_dispatch caps inputs at 10, and those four are
-        # already pinned by the reusable workflows' defaults per ADR-001.
-        # Override them by editing the called workflows or forking this
-        # dispatch driver if a one-off run truly needs different versions.
+      python_version:
+        description: "actions/setup-python for the native Linux build job"
+        required: false
+        default: "3.12"
+        type: string
+        # Note: gfortran_package, gpp_package, meson_version, and runtime_base
+        # are not exposed here (workflow_dispatch input cap); they follow the
+        # reusable workflows' defaults per ADR-001.
 
 permissions:
   contents: read
@@ -104,6 +106,7 @@ jobs:
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
       runner_image: ${{ inputs.runner_image }}
+      python_version: ${{ inputs.python_version }}
 
   container:
     name: Container build

@@ -9,12 +9,16 @@ on:
     branches:
       - main
     paths:
+      - .github/actions/collect-native-bundle/action.yml
+      - .github/actions/prepare-fvs-native-checkout/action.yml
       - .github/workflows/build-native-linux.yml
       - .github/workflows/build-native-windows.yml
       - .github/workflows/build-native-macos.yml
       - .github/workflows/ci-test-reusable-native.yml
       - meson.build
       - meson_options.txt
+      - tools/ci/expand_variants_matrix.py
+      - tools/ci/stage_variant_native.py
       - tools/ci/provenance.py
       - tools/parse_sourcelist.py
 

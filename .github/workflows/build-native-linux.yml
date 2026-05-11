@@ -71,6 +71,13 @@ on:
         required: false
         type: string
         default: ""
+      python_version:
+        description: >-
+          Version string for actions/setup-python (Meson, parse_sourcelist,
+          and collect-bundle when setup-python runs).
+        required: false
+        type: string
+        default: "3.12"
     outputs:
       artifact_name:
         description: >-
@@ -87,7 +94,8 @@ jobs:
   # Preflight: parse the comma-separated variants input into a JSON array
   # the build matrix can consume. Done once so every matrix leg sees the
   # same expanded list; also surfaces empty-input errors before any compile
-  # work runs.
+  # work runs. Logic lives in tools/ci/expand_variants_matrix.py (shared with
+  # Windows and macOS native workflows).
   # ---------------------------------------------------------------------------
   preflight:
     name: Preflight (expand variant matrix)
@@ -95,24 +103,18 @@ jobs:
     outputs:
       matrix_variants: ${{ steps.matrix.outputs.matrix_variants }}
     steps:
+      - name: Check out fvs-build (workflow repository)
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+
       - name: Expand variants input into matrix JSON
         id: matrix
         env:
           VARIANTS_CSV: ${{ inputs.variants }}
         run: |
           set -euo pipefail
-          MATRIX=$(printf '%s\n' "$VARIANTS_CSV" \
-            | tr ',' '\n' \
-            | sed -E 's/^[[:space:]]+|[[:space:]]+$//g' \
-            | awk 'NF && !seen[$0]++' \
-            | jq -R . \
-            | jq -s -c .)
-          echo "matrix_variants=${MATRIX}" >> "$GITHUB_OUTPUT"
-          echo "Expanded variants: ${MATRIX}"
-          if [ "$(echo "$MATRIX" | jq 'length')" -eq 0 ]; then
-            echo "ERROR: variants input expanded to an empty list" >&2
-            exit 1
-          fi
+          python3 tools/ci/expand_variants_matrix.py
 
   # ---------------------------------------------------------------------------
   # Per-variant build: one matrix leg per requested variant. Each leg checks
@@ -137,56 +139,13 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Resolve fvs-build repo and ref from workflow_ref
-        id: fb_ref
-        uses: ./.github/actions/resolve-fvs-build-ref
-
-      - name: Check out fvs-build (the Meson overlay)
-        uses: actions/checkout@v5
+      # Recursive FVS checkout, strip *.mod under fvs-source, record SHAs — see
+      # README and .github/actions/prepare-fvs-native-checkout/action.yml.
+      - id: prepare
+        uses: ./.github/actions/prepare-fvs-native-checkout
         with:
-          repository: ${{ steps.fb_ref.outputs.repo }}
-          ref: ${{ steps.fb_ref.outputs.ref }}
-          path: fvs-build
-
-      # Fresh clone of the source tree on every run; sidesteps the stale-.mod
-      # issue documented in fvs-build/README.md (gfortran's -I path also
-      # searches for .mod files, so any leftover ones from a prior in-place
-      # build would be picked up before the freshly built ones).
-      # Upstream lists paths under submodules (e.g. volume/NVEL); without
-      # recursive checkout, parse_sourcelist warns and Meson can fail later.
-      - name: Check out FVS source tree
-        uses: actions/checkout@v5
-        with:
-          repository: ${{ inputs.source_repo }}
-          ref: ${{ inputs.source_ref }}
-          path: fvs-source
-          clean: true
-          submodules: recursive
-
-      # gfortran searches -I for .mod as well as include files; any .mod under
-      # fvs-source (tracked upstream, empty, or corrupt) wins over Meson's -J
-      # output and causes f951 "Unexpected EOF" when loading modules.
-      - name: Remove stray Fortran .mod files from source tree
-        run: |
-          set -euo pipefail
-          # Meson emits modules under _build (-J). gfortran also searches -I dirs
-          # for .mod; tracked or empty files under fvs-source break with EOF errors.
-          find fvs-source -name '*.mod' -type f -delete
-          echo "Stripped any *.mod under fvs-source before Meson (see README)."
-
-      # Record the actual commits checked out in this job. For reusable
-      # workflow_call runs from another repo, github.sha is the caller's
-      # trigger commit — not the fvs-build overlay revision under fvs-build/.
-      - name: Capture source and fvs-build SHAs for provenance
-        id: git_shas
-        run: |
-          set -euo pipefail
-          SRC_SHA=$(git -C fvs-source rev-parse HEAD)
-          FB_SHA=$(git -C fvs-build rev-parse HEAD)
-          echo "source_sha=${SRC_SHA}" >> "$GITHUB_OUTPUT"
-          echo "fvs_build_sha=${FB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "Source SHA:     ${SRC_SHA}"
-          echo "fvs-build SHA:  ${FB_SHA}"
+          source_repo: ${{ inputs.source_repo }}
+          source_ref: ${{ inputs.source_ref }}
 
       - name: Install Fortran/C/C++ toolchain (pinned)
         env:
@@ -211,7 +170,7 @@ jobs:
       - name: Set up Python for Meson and parse_sourcelist.py
         uses: actions/setup-python@v6
         with:
-          python-version: "3.12"
+          python-version: ${{ inputs.python_version }}
 
       - name: Install pinned Meson
         env:
@@ -287,55 +246,17 @@ jobs:
           VARIANT: ${{ matrix.variant }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
-          SOURCE_SHA: ${{ steps.git_shas.outputs.source_sha }}
-          FVS_BUILD_REPO: ${{ steps.fb_ref.outputs.repo }}
-          FVS_BUILD_REF: ${{ steps.fb_ref.outputs.ref }}
-          FVS_BUILD_SHA: ${{ steps.git_shas.outputs.fvs_build_sha }}
+          SOURCE_SHA: ${{ steps.prepare.outputs.source_sha }}
+          FVS_BUILD_REPO: ${{ steps.prepare.outputs.overlay_repo }}
+          FVS_BUILD_REF: ${{ steps.prepare.outputs.overlay_ref }}
+          FVS_BUILD_SHA: ${{ steps.prepare.outputs.fvs_build_sha }}
           RUNNER_IMAGE: ${{ inputs.runner_image }}
           GFORTRAN_PKG: ${{ inputs.gfortran_package }}
           GPP_PKG: ${{ inputs.gpp_package }}
           MESON_PIN: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
-          STAGE="staging/${VARIANT}"
-          mkdir -p "${STAGE}/provenance/meson-logs"
-
-          BIN_SRC="_build/FVS${VARIANT}"
-          # Meson shared_library('FVS' + v) with no soversion → _build/libFVS<v>.so.
-          SHLIB_SRC="_build/libFVS${VARIANT}.so"
-          if [ ! -f "${SHLIB_SRC}" ]; then
-            echo "ERROR: expected shared library missing: ${SHLIB_SRC}" >&2
-            echo "       (meson.build must keep a single unversioned libFVS<v>.so per variant)" >&2
-            exit 1
-          fi
-          cp "${BIN_SRC}"   "${STAGE}/FVS${VARIANT}"
-          cp "${SHLIB_SRC}" "${STAGE}/libFVS${VARIANT}.so"
-          chmod +x "${STAGE}/FVS${VARIANT}"
-
-          BIN_SHA=$(sha256sum "${STAGE}/FVS${VARIANT}"           | awk '{print $1}')
-          LIB_SHA=$(sha256sum "${STAGE}/libFVS${VARIANT}.so"     | awk '{print $1}')
-          GFORTRAN_VERSION=$("${FC}"  --version | head -n 1)
-          GCC_VERSION=$("${CC}"       --version | head -n 1)
-          GPP_VERSION=$("${CXX}"      --version | head -n 1)
-          NINJA_VERSION=$(ninja --version)
-          MESON_VERSION_OUT=$(meson --version)
-          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-          export BIN_SHA LIB_SHA TIMESTAMP \
-            GFORTRAN_VERSION GCC_VERSION GPP_VERSION \
-            NINJA_VERSION MESON_VERSION_OUT
-          python3 fvs-build/tools/ci/provenance.py write-build-info \
-            --output "${STAGE}/provenance/build-info.json"
-
-          # Trim meson-log to the tail; the full file is megabytes per
-          # variant and not useful as artifact-attached postmortem material.
-          if [ -f _build/meson-logs/meson-log.txt ]; then
-            tail -c 200000 _build/meson-logs/meson-log.txt \
-              > "${STAGE}/provenance/meson-logs/meson-log.tail.txt"
-          fi
-
-          echo "----- staged ${STAGE} -----"
-          ls -laR "${STAGE}"
+          python3 fvs-build/tools/ci/stage_variant_native.py
 
       - name: Upload variant artifact
         uses: actions/upload-artifact@v7
@@ -358,71 +279,26 @@ jobs:
     runs-on: ${{ inputs.runner_image }}
     needs: build-variant
     outputs:
-      artifact_name: ${{ steps.bundle.outputs.artifact_name }}
+      artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
+      # Local composite actions require the workflow repo on disk before GitHub
+      # can resolve uses: ./.github/actions/... (the composite's own checkout
+      # runs too late).
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
 
-      - name: Resolve fvs-build repo and ref from workflow_ref
-        id: fb_ref
-        uses: ./.github/actions/resolve-fvs-build-ref
-
-      - name: Check out fvs-build (CI scripts)
-        uses: actions/checkout@v5
+      - id: collect
+        uses: ./.github/actions/collect-native-bundle
         with:
-          repository: ${{ steps.fb_ref.outputs.repo }}
-          ref: ${{ steps.fb_ref.outputs.ref }}
-          path: fvs-build
-          fetch-depth: 1
-
-      - name: Download all variant artifacts
-        uses: actions/download-artifact@v7
-        with:
-          path: staging
-          pattern: linux-variant-*
-
-      - name: Log staging tree after download (diagnostics)
-        run: |
-          set -euo pipefail
-          cd "${GITHUB_WORKSPACE}"
-          echo "== top: staging =="
-          ls -la staging
-          echo "== FVS* and libFVS* under staging (maxdepth 5) =="
-          find staging -maxdepth 5 -type f \( -name 'FVS*' -o -name 'libFVS*' \) | sort | head -500
-
-      - name: Fan into canonical bundle layout
-        id: bundle
-        env:
-          FVS_NATIVE_PLATFORM: linux
-          ARTIFACT_NAME: fvs-native-linux-${{ github.run_id }}
-          VARIANTS_INPUT: ${{ inputs.variants }}
-          RUNNER_IMAGE: ${{ inputs.runner_image }}
-          GFORTRAN_PKG: ${{ inputs.gfortran_package }}
-          GPP_PKG: ${{ inputs.gpp_package }}
-          MESON_PIN: ${{ inputs.meson_version }}
-        run: |
-          set -euo pipefail
-          python3 fvs-build/tools/ci/provenance.py collect-bundle
-          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
-
-      - name: Install syft (for SBOM generation)
-        uses: anchore/sbom-action/download-syft@v0
-
-      - name: Generate SPDX SBOM of bundled binaries
-        env:
-          BUNDLE: ${{ steps.bundle.outputs.artifact_name }}
-        run: |
-          set -euo pipefail
-          syft scan "dir:${BUNDLE}" \
-            -o "spdx-json=${BUNDLE}/sbom/fvs-native-linux.spdx.json"
-          echo "SBOM size: $(wc -c < "${BUNDLE}/sbom/fvs-native-linux.spdx.json") bytes"
-
-      - name: Upload bundled artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: ${{ steps.bundle.outputs.artifact_name }}
-          path: ${{ steps.bundle.outputs.artifact_name }}/
-          retention-days: 30
-          if-no-files-found: error
+          fvs_native_platform: linux
+          download_pattern: linux-variant-*
+          artifact_name: fvs-native-linux-${{ github.run_id }}
+          sbom_spdx_relpath: sbom/fvs-native-linux.spdx.json
+          variants_input: ${{ inputs.variants }}
+          runner_image: ${{ inputs.runner_image }}
+          gfortran_package: ${{ inputs.gfortran_package }}
+          gpp_package: ${{ inputs.gpp_package }}
+          meson_version: ${{ inputs.meson_version }}
+          python_version: ${{ inputs.python_version }}

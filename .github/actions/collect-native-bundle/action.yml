@@ -1,0 +1,142 @@
+# Composite: download per-variant native artifacts, fan into the canonical bundle
+# (tools/ci/provenance.py collect-bundle), SPDX scan with syft, upload bundle.
+# See docs/workflow-interface.md for the bundle layout contract.
+name: Collect native FVS bundle
+description: >
+  Download OS-prefixed variant artifacts, run collect-bundle, SPDX scan with syft,
+  upload the bundle. The calling job must run actions/checkout on the workflow
+  repository first so uses: ./.github/actions/collect-native-bundle resolves.
+
+inputs:
+  fvs_native_platform:
+    description: >
+      Value for FVS_NATIVE_PLATFORM passed to provenance.py (linux, windows, or
+      darwin). Must match download_pattern / SBOM paths used by the matrix job.
+    required: true
+  download_pattern:
+    description: >
+      Glob for actions/download-artifact (e.g. linux-variant-*, windows-variant-*).
+    required: true
+  artifact_name:
+    description: >
+      Bundle directory name and upload-artifact name (callers typically pass
+      fvs-native-linux-<run_id> using github.run_id in the workflow YAML).
+    required: true
+  sbom_spdx_relpath:
+    description: >
+      Path relative to bundle root for SPDX JSON (must match provenance.py /
+      collect-bundle layout), e.g. sbom/fvs-native-linux.spdx.json.
+    required: true
+  variants_input:
+    description: Comma-separated variant list (same as workflow inputs.variants).
+    required: true
+  runner_image:
+    description: Runner image label recorded in provenance.
+    required: true
+  gfortran_package:
+    description: Toolchain package label for provenance (OS-specific).
+    required: true
+  gpp_package:
+    description: C++ toolchain package label for provenance (OS-specific).
+    required: true
+  meson_version:
+    description: Pinned Meson version string for provenance.
+    required: true
+  use_setup_python:
+    description: >
+      If the string "true", run actions/setup-python before collect (Windows/macOS).
+    required: false
+    default: "false"
+  python_cmd:
+    description: Python executable for provenance.py (e.g. python3 or python).
+    required: false
+    default: python3
+  python_version:
+    description: Version for setup-python when use_setup_python is true.
+    required: false
+    default: "3.12"
+  run_staging_diagnostics:
+    description: >
+      If the string "true", list staging after download (find FVS/libFVS paths).
+    required: false
+    default: "true"
+
+outputs:
+  artifact_name:
+    description: Bundle artifact name (directory and upload name).
+    value: ${{ steps.bundle.outputs.artifact_name }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve fvs-build repo and ref from workflow_ref
+      id: fb_ref
+      uses: ./.github/actions/resolve-fvs-build-ref
+
+    - name: Check out fvs-build (CI scripts)
+      uses: actions/checkout@v5
+      with:
+        repository: ${{ steps.fb_ref.outputs.repo }}
+        ref: ${{ steps.fb_ref.outputs.ref }}
+        path: fvs-build
+        fetch-depth: 1
+
+    - uses: actions/setup-python@v6
+      if: ${{ inputs.use_setup_python == 'true' }}
+      with:
+        python-version: ${{ inputs.python_version }}
+
+    - name: Download all variant artifacts
+      uses: actions/download-artifact@v7
+      with:
+        path: staging
+        pattern: ${{ inputs.download_pattern }}
+
+    - name: Log staging tree after download (diagnostics)
+      if: ${{ inputs.run_staging_diagnostics == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd "${GITHUB_WORKSPACE}"
+        echo "== top: staging =="
+        ls -la staging
+        echo "== FVS* and libFVS* under staging (maxdepth 5) =="
+        find staging -maxdepth 5 -type f \( -name 'FVS*' -o -name 'libFVS*' \) | sort | head -500
+
+    - name: Fan into canonical bundle layout
+      id: bundle
+      shell: bash
+      env:
+        FVS_NATIVE_PLATFORM: ${{ inputs.fvs_native_platform }}
+        ARTIFACT_NAME: ${{ inputs.artifact_name }}
+        VARIANTS_INPUT: ${{ inputs.variants_input }}
+        RUNNER_IMAGE: ${{ inputs.runner_image }}
+        GFORTRAN_PKG: ${{ inputs.gfortran_package }}
+        GPP_PKG: ${{ inputs.gpp_package }}
+        MESON_PIN: ${{ inputs.meson_version }}
+      run: |
+        set -euo pipefail
+        ${{ inputs.python_cmd }} fvs-build/tools/ci/provenance.py collect-bundle
+        echo "artifact_name=${ARTIFACT_NAME}" >> "${GITHUB_OUTPUT}"
+
+    - name: Install syft (for SBOM generation)
+      uses: anchore/sbom-action/download-syft@v0
+
+    - name: Generate SPDX SBOM of bundled binaries
+      shell: bash
+      env:
+        BUNDLE: ${{ steps.bundle.outputs.artifact_name }}
+        SBOM_REL: ${{ inputs.sbom_spdx_relpath }}
+      run: |
+        set -euo pipefail
+        syft scan "dir:${BUNDLE}" \
+          -o "spdx-json=${BUNDLE}/${SBOM_REL}"
+        echo "SBOM size: $(wc -c < "${BUNDLE}/${SBOM_REL}") bytes"
+
+    - name: Upload bundled artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.bundle.outputs.artifact_name }}
+        path: ${{ steps.bundle.outputs.artifact_name }}/
+        retention-days: 30
+        if-no-files-found: error

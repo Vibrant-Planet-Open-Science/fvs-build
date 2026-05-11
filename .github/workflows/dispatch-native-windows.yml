@@ -52,6 +52,11 @@ on:
         required: false
         default: ""
         type: string
+      python_version:
+        description: "actions/setup-python version (preflight, collect, Meson pip)"
+        required: false
+        default: "3.12"
+        type: string
 
 permissions:
   contents: read
@@ -69,4 +74,5 @@ jobs:
       gpp_package: ${{ inputs.gpp_package }}
       meson_version: ${{ inputs.meson_version }}
       extra_fortran_args: ${{ inputs.extra_fortran_args }}
+      python_version: ${{ inputs.python_version }}
     # secrets: inherit  # uncomment if source_repo is private

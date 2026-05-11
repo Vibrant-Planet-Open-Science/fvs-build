@@ -3,9 +3,9 @@
 #
 # This workflow does NOT compile inside Docker. It consumes the binary
 # artifact produced by build-native-linux.yml and copies it into a
-# runtime-only Ubuntu 24.04 image -- one binary, validated once via the
-# native build's smoke test, packaged into two distribution channels
-# (raw artifact + container).
+# runtime-only Ubuntu 24.04 image. Binaries are already smoke-tested on the
+# native build runner (STOP 20 per variant); this job packages them into the
+# container image (raw bundle artifact + image).
 #
 # Caller pattern (orchestrator, see dispatch-container-linux.yml):
 #
@@ -80,7 +80,7 @@ on:
         default: "ubuntu-24.04"
       push:
         description: >-
-          Push the built image to the registry after smoke tests pass.
+          Push the built image to the registry after the image build succeeds.
           Defaults to false so dispatch / dry-run callers do not
           accidentally publish; production callers (release pipelines)
           must explicitly set true.
@@ -103,7 +103,7 @@ permissions:
 
 jobs:
   build:
-    name: Build, smoke-test, and (optionally) push
+    name: Build and (optionally) push
     runs-on: ${{ inputs.runner_image }}
     outputs:
       image_ref: ${{ steps.refs.outputs.image_ref }}
@@ -185,9 +185,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # Build with --load so the image lands in the local docker daemon
-      # for smoke testing. Push is intentionally separated into a later
-      # step so a failed smoke aborts before anything reaches the registry.
+      # Build with --load so the image lands in the local docker daemon for
+      # push (and optional local inspection). Push runs in a later step so a
+      # failed build never reaches the registry.
       - name: Build runtime image (load locally)
         run: |
           set -euo pipefail
@@ -208,42 +208,6 @@ jobs:
             --build-arg TIMESTAMP="${TIMESTAMP}" \
             -f docker/Dockerfile.runtime \
             .
-
-      # Per-variant in-image smoke: with no ENTRYPOINT in the image, the
-      # variant binary runs as the default command and we use the same
-      # `</dev/null` -> `STOP 20` check build-native-linux.yml uses at
-      # the build runner level. Reaching STOP 20 confirms the binary
-      # loaded inside the runtime image and libgfortran5 / libquadmath0
-      # are correctly installed.
-      #
-      # Output is captured to a shell variable (not piped through tee +
-      # grep) to avoid `set -o pipefail` adopting tee's SIGPIPE-141 exit
-      # when grep -q matches early and closes the pipe -- same pattern
-      # build-native-linux.yml uses.
-      - name: Smoke-test image (per variant, STOP 20 expected)
-        run: |
-          set -euo pipefail
-          FAILED=()
-          for FVS in ${VARIANTS_BINARIES}; do
-            echo "::group::smoke ${FVS}"
-            OUTPUT=$( docker run --rm \
-                        "${IMAGE_REF}" \
-                        "${FVS}" \
-                        </dev/null 2>&1 || true )
-            printf '%s\n' "${OUTPUT}" | head -n 30
-            if printf '%s\n' "${OUTPUT}" | grep -q 'STOP 20'; then
-              echo "PASS: ${FVS}"
-            else
-              echo "FAIL: ${FVS} (no STOP 20 in output)"
-              FAILED+=("${FVS}")
-            fi
-            echo "::endgroup::"
-          done
-          if [ "${#FAILED[@]}" -ne 0 ]; then
-            echo "::error::container smoke failed for ${#FAILED[@]} variant(s): ${FAILED[*]}"
-            exit 1
-          fi
-          echo "All ${VARIANTS_BUILT} smoke tests passed."
 
       # GHCR login is conditional on push=true AND a ghcr.io image ref.
       # Non-GHCR registries need their own auth and are out of scope for
