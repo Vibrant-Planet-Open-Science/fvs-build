@@ -52,10 +52,14 @@ cc = meson.get_compiler('c')
 # gfortran pulls in libm transitively. Our C-only shared libraries (FVSsql,
 # FVSfofem) are linked by gcc, so libm has to be explicit on Unix.
 # Windows (MinGW): math is provided by the runtime; no separate libm link.
+# libgfortran still depends on libquadmath (quadmath_snprintf, etc.); with
+# `-static` DLL/exe linking gcc does not always pull it in, so link explicitly.
 if host_sys == 'windows'
   m_dep = declare_dependency()
+  quadmath_dep = cc.find_library('quadmath', required: true)
 else
   m_dep = cc.find_library('m', required: true)
+  quadmath_dep = declare_dependency()
 endif
 
 # USFS bin/makefile: WIN is -DWINDOWS on Windows, -Dunix on Linux and macOS
@@ -195,7 +199,7 @@ foreach v : variants
     'FVS' + v,
     [],
     link_whole: fvs_objs,
-    dependencies: [m_dep],
+    dependencies: [m_dep, quadmath_dep],
     link_args: shlib_link_args,
     install: false,
   )
@@ -208,6 +212,7 @@ foreach v : variants
     [main_source],
     fortran_args: common_fortran_args + inc_args,
     link_with: [fvs_lib],
+    dependencies: [quadmath_dep],
     link_args: exe_link_args,
     install: false,
   )
