@@ -130,6 +130,7 @@ jobs:
           msystem: MINGW64
           update: true
           # GNU coreutils are not packaged as mingw-w64-x86_64-coreutils; use MSYS repo tools on PATH.
+          # MSYS `git` is on PATH in MINGW64 shells; Git-for-Windows is not (needed for rev-parse SHAs).
           install: >-
             mingw-w64-x86_64-gcc-fortran
             mingw-w64-x86_64-gcc
@@ -140,6 +141,7 @@ jobs:
             findutils
             grep
             gawk
+            git
 
       - name: Resolve fvs-build repo and ref from workflow_ref
         id: fb_ref
