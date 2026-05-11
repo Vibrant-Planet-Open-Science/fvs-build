@@ -24,11 +24,11 @@ The interface is **source-agnostic**: callers supply a source repo URL plus a co
 
 Three reusable workflows share the same job shape (preflight → per-variant matrix → collect) and the same provenance tool, [`tools/ci/provenance.py`](../tools/ci/provenance.py). Workflows set **`FVS_NATIVE_PLATFORM`** for `write-build-info` and `collect-bundle` so bundle filenames and SBOM paths match the OS:
 
-| OS      | Workflow                 | `FVS_NATIVE_PLATFORM` | Uploaded bundle name              | `bin/` per variant | `lib/` per variant   | SBOM relative path                          |
-| ------- | ------------------------ | --------------------- | --------------------------------- | ------------------ | -------------------- | ------------------------------------------- |
-| Linux   | `build-native-linux.yml` | `linux`               | `fvs-native-linux-<run_id>`     | `FVS<v>`           | `libFVS<v>.so`       | `sbom/fvs-native-linux.spdx.json`           |
-| Windows | `build-native-windows.yml` | `windows`           | `fvs-native-windows-<run_id>`   | `FVS<v>.exe`       | `libFVS<v>.dll`      | `sbom/fvs-native-windows.spdx.json`         |
-| macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`           | `libFVS<v>.dylib`    | `sbom/fvs-native-macos.spdx.json`           |
+| OS      | Workflow                 | `FVS_NATIVE_PLATFORM` | Uploaded bundle name              | Executable at bundle root | Shared library at bundle root | SBOM relative path                          |
+| ------- | ------------------------ | --------------------- | --------------------------------- | ------------------------- | ----------------------------- | ------------------------------------------- |
+| Linux   | `build-native-linux.yml` | `linux`               | `fvs-native-linux-<run_id>`     | `FVS<v>`                  | `libFVS<v>.so`                | `sbom/fvs-native-linux.spdx.json`           |
+| Windows | `build-native-windows.yml` | `windows`           | `fvs-native-windows-<run_id>`   | `FVS<v>.exe`              | `libFVS<v>.dll`               | `sbom/fvs-native-windows.spdx.json`         |
+| macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`                  | `libFVS<v>.dylib`             | `sbom/fvs-native-macos.spdx.json`           |
 
 `provenance/manifest.json` and each `provenance/per-variant/FVS<v>.json` use the **`binary`** and **`shared_library`** basenames from this table (including extensions on Windows). The manifest’s `toolchain.gfortran_package` and `toolchain.gpp_package` fields are **human-readable labels** (apt names on Linux, MSYS2 pacman package names on Windows, `gcc@N` on macOS), not a portable schema across OSes.
 
@@ -69,14 +69,12 @@ The workflow uploads exactly one artifact with the canonical layout below. This 
 
 ```
 fvs-native-linux-<run_id>/
-├── bin/
-│   ├── FVSak             # standalone executable, +x
-│   ├── FVSbm
-│   └── ...               # one per requested variant
-├── lib/
-│   ├── libFVSak.so       # shared library; consumed by microfvs, rFVS, fvs2py
-│   ├── libFVSbm.so
-│   └── ...               # one per requested variant
+├── FVSak                 # standalone executable, +x (flat bundle root)
+├── FVSbm
+├── ...                   # one `FVS<v>` per requested variant
+├── libFVSak.so           # shared library; consumed by microfvs, rFVS, fvs2py
+├── libFVSbm.so
+├── ...                   # one `libFVS<v>.so` per requested variant
 ├── provenance/
 │   ├── manifest.json     # aggregated build provenance (top-level)
 │   ├── per-variant/
@@ -188,7 +186,7 @@ jobs:
           name: ${{ needs.fvs-binaries.outputs.artifact_name }}
           path: fvs-bundle
       - run: |
-          ls fvs-bundle/bin/
+          ls -1 fvs-bundle/FVS* fvs-bundle/libFVS*.so
           jq . fvs-bundle/provenance/manifest.json
 ```
 

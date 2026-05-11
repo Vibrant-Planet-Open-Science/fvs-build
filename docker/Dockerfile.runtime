@@ -12,8 +12,9 @@
 #
 # Build context expectations (set up by build-container-linux.yml):
 #   ./bundle/                     unpacked from the build-native-linux.yml
-#   ./bundle/bin/FVS<v>             artifact `fvs-native-linux-<run_id>`
-#   ./bundle/lib/libFVS<v>.so
+#                                 artifact `fvs-native-linux-<run_id>`
+#   ./bundle/FVS<v>               per-variant executable (+x) at bundle root
+#   ./bundle/libFVS<v>.so
 #   ./bundle/provenance/manifest.json
 #   ./bundle/provenance/per-variant/FVS<v>.json
 #   ./bundle/sbom/fvs-native-linux.spdx.json
@@ -60,11 +61,9 @@ RUN apt-get update \
   ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Plan-1 bundle layout maps directly to FHS conventions:
-#   bundle/bin/FVS<v>           -> /usr/local/bin/FVS<v>
-#   bundle/lib/libFVS<v>.so     -> /usr/local/lib/libFVS<v>.so
-COPY bundle/bin/  /usr/local/bin/
-COPY bundle/lib/  /usr/local/lib/
+# Flat bundle root: copy by prefix into FHS locations.
+COPY bundle/FVS*       /usr/local/bin/
+COPY bundle/libFVS*.so /usr/local/lib/
 
 # Provenance: manifest + SBOM from the plan-1 bundle, kept in /usr/share
 # so consumers can read them with
