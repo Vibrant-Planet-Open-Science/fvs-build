@@ -302,7 +302,7 @@ jobs:
       - name: Upload variant artifact
         uses: actions/upload-artifact@v7
         with:
-          name: variant-${{ matrix.variant }}
+          name: macos-variant-${{ matrix.variant }}
           path: staging/${{ matrix.variant }}/
           retention-days: 1
           if-no-files-found: error
@@ -342,7 +342,7 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: staging
-          pattern: variant-*
+          pattern: macos-variant-*
 
       - name: Log staging tree after download (diagnostics)
         run: |

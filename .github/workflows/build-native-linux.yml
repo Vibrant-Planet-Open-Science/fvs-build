@@ -230,7 +230,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: _build
-          key: meson-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/ci/provenance.py') }}
+          key: meson-${{ runner.os }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/ci/provenance.py') }}
 
       - name: Configure Meson
         env:
@@ -340,7 +340,9 @@ jobs:
       - name: Upload variant artifact
         uses: actions/upload-artifact@v7
         with:
-          name: variant-${{ matrix.variant }}
+          # OS-prefixed name avoids collision when linux + macOS + Windows reusable
+          # workflows run in the same workflow run (e.g. ci-test-reusable-native).
+          name: linux-variant-${{ matrix.variant }}
           path: staging/${{ matrix.variant }}/
           retention-days: 1
           if-no-files-found: error
@@ -379,7 +381,7 @@ jobs:
         uses: actions/download-artifact@v7
         with:
           path: staging
-          pattern: variant-*
+          pattern: linux-variant-*
 
       - name: Log staging tree after download (diagnostics)
         run: |
