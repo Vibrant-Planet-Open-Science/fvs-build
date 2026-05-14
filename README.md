@@ -122,9 +122,9 @@ the upstream tree.
 | `ls` | Lake States                                 | builds + smoke-tests cleanly                   |
 | `nc` | Inland California (North-Central)           | builds + smoke-tests cleanly                   |
 | `ne` | Northeast                                   | builds + smoke-tests cleanly                   |
-| `oc` | Oregon Coast                                | builds + smoke-tests cleanly                   |
+| `oc` | ORGANON Southwest (Oregon)                  | builds + smoke-tests cleanly                   |
 | `on` | Ontario (Canada)                            | upstream source list incomplete (see below)    |
-| `op` | Olympic Peninsula                           | builds + smoke-tests cleanly                   |
+| `op` | ORGANON Pacific Northwest (coastal)         | builds + smoke-tests cleanly                   |
 | `pn` | Pacific Northwest                           | builds + smoke-tests cleanly (default variant) |
 | `sn` | Southern                                    | builds + smoke-tests cleanly                   |
 | `so` | South-Central Oregon / Northeast California | builds + smoke-tests cleanly                   |
@@ -164,7 +164,7 @@ git clean -fdx           # removes all untracked files including .mod / .o
 find . -name '*.mod' -not -path './bin/FVS*_buildDir/*' -delete
 ```
 
-A fresh `git clone` should not have this problem. The native Linux GitHub Actions workflow also deletes `*.mod` under the checked-out source tree before running Meson, since upstream can ship empty or stale module files under paths such as `volume/NVEL/`.
+The native Linux GitHub Actions workflow also deletes `*.mod` under the checked-out source tree before running Meson, since upstream repos can ship empty or stale module files under paths such as `volume/NVEL/`.
 
 ## How the parser categorizes source-list entries
 
