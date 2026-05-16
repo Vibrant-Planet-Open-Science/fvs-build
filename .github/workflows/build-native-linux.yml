@@ -62,15 +62,14 @@ on:
         required: false
         type: string
         default: "1.5.2"
-      extra_fortran_args:
+      profile:
         description: >-
-          Comma-separated extra flags appended to common Fortran compile
-          args (passed verbatim through Meson's `-Dextra_fortran_args=`).
-          Escape hatch for ad-hoc build investigation; production builds
-          should leave this empty.
+          Build profile. One of: reference, debug. reference is
+          goldens-aligned; debug enables extra runtime checks and is not
+          goldens-compatible.
         required: false
         type: string
-        default: ""
+        default: "reference"
       python_version:
         description: >-
           Version string for actions/setup-python (Meson, parse_sourcelist,
@@ -82,7 +81,7 @@ on:
       artifact_name:
         description: >-
           Name of the bundled artifact uploaded by this workflow. Exactly
-          `fvs-native-linux-<run_id>`. Plan 2's container workflow consumes
+          `fvs-native-linux-<run_id>`. The container workflow consumes
           this name to download and unpack the bundle.
         value: ${{ jobs.collect-and-finalize.outputs.artifact_name }}
 
@@ -189,26 +188,16 @@ jobs:
         uses: actions/cache@v5
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/ci/provenance.py') }}
+          key: meson-${{ runner.os }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
 
       - name: Configure Meson
         env:
           VARIANT: ${{ matrix.variant }}
-          EXTRA_FORTRAN: ${{ inputs.extra_fortran_args }}
-        run: |
-          set -euo pipefail
-          ARGS=(
-            -Dfvs_source_dir="${GITHUB_WORKSPACE}/fvs-source"
-            -Dvariants="${VARIANT}"
-          )
-          if [ -n "${EXTRA_FORTRAN}" ]; then
-            ARGS+=(-Dextra_fortran_args="${EXTRA_FORTRAN}")
-          fi
-          if [ -d _build ]; then
-            meson setup --reconfigure _build fvs-build "${ARGS[@]}"
-          else
-            meson setup _build fvs-build "${ARGS[@]}"
-          fi
+          PROFILE: ${{ inputs.profile }}
+          FVS_SOURCE: ${{ github.workspace }}/fvs-source
+          BUILD_DIR: _build
+          OVERLAY_DIR: fvs-build
+        run: bash fvs-build/tools/ci/meson_configure_native.sh
 
       - name: Compile (Ninja)
         run: ninja -C _build -k 0
@@ -243,6 +232,8 @@ jobs:
       - name: Stage artifacts and per-variant build-info
         env:
           FVS_NATIVE_PLATFORM: linux
+          BUILD_PROFILE: ${{ inputs.profile }}
+          MESON_BUILDTYPE: plain
           VARIANT: ${{ matrix.variant }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
@@ -272,7 +263,7 @@ jobs:
   # Collect-and-finalize: download every per-variant artifact, fan it into
   # the canonical bundle layout (the contract documented in
   # docs/workflow-interface.md), generate an SBOM, and upload the single
-  # final artifact that callers (and plan 2's container workflow) consume.
+  # final artifact that callers (and the container workflow) consume.
   # ---------------------------------------------------------------------------
   collect-and-finalize:
     name: Collect, SBOM, and finalize

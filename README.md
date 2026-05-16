@@ -9,10 +9,10 @@ This repo covers **Linux** (`ubuntu-24.04`), **Windows** (MSYS2 MINGW64), and **
 ## Key contents
 
 - [`meson.build`](meson.build) — the overlay project. Reads options, parses the upstream `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
-- [`meson_options.txt`](meson_options.txt) — build-time options (`fvs_source_dir`, `variants`, `extra_fortran_args`).
+- [`meson_options.txt`](meson_options.txt) — build-time options (`fvs_source_dir`, `variants`, `profile`, `traps`, and local-only `extra_fortran_args`).
 - [`tools/parse_sourcelist.py`](tools/parse_sourcelist.py) — turns one source list into the categorized file lists Meson consumes. Invoked once per variant via `run_command()`.
 - [`.github/workflows/build-native-linux.yml`](.github/workflows/build-native-linux.yml), [`.github/workflows/build-native-windows.yml`](.github/workflows/build-native-windows.yml), [`.github/workflows/build-native-macos.yml`](.github/workflows/build-native-macos.yml) — reusable `workflow_call` workflows that wrap the Meson overlay per OS. Each produces a per-run artifact bundle (binaries + provenance + SBOM); see [`docs/workflow-interface.md`](docs/workflow-interface.md).
-- [`.github/workflows/build-container-linux.yml`](.github/workflows/build-container-linux.yml) — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image (no recompile inside Docker per ADR-001), with optional GHCR push.
+- [`.github/workflows/build-container-linux.yml`](.github/workflows/build-container-linux.yml) — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image (no recompile inside Docker), with optional GHCR push.
 - [`.github/workflows/dispatch-native-linux.yml`](.github/workflows/dispatch-native-linux.yml), [`.github/workflows/dispatch-native-windows.yml`](.github/workflows/dispatch-native-windows.yml), [`.github/workflows/dispatch-native-macos.yml`](.github/workflows/dispatch-native-macos.yml) — manual drivers for each native OS workflow (`workflow_dispatch`).
 - [`.github/workflows/dispatch-container-linux.yml`](.github/workflows/dispatch-container-linux.yml) — manual orchestrator running native + container in sequence.
 - [`docker/Dockerfile.runtime`](docker/Dockerfile.runtime) — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; no entrypoint shim, native FVS CLI invocation).
@@ -76,9 +76,13 @@ any reasonably recent gfortran works for local-dev experimentation)
 # Get a source tree to build against. Any tag works.
 git clone https://github.com/USDAForestService/ForestVegetationSimulator /tmp/fvs-source
 
-# Configure the build. fvs_source_dir is required; variants defaults to ['pn'].
+# Configure the build. fvs_source_dir is required; variants defaults to ['pn'];
+# profile defaults to reference (goldens-aligned, matches upstream bin/makefile).
 cd /path/to/fvs-build
-meson setup builddir -Dfvs_source_dir=/tmp/fvs-source -Dvariants=pn
+meson setup builddir --buildtype=plain \
+  -Dfvs_source_dir=/tmp/fvs-source \
+  -Dvariants=pn \
+  -Dprofile=reference
 
 # Compile. The first build is ~10 minutes for one variant on a workstation;
 # subsequent incremental rebuilds are seconds.
@@ -141,6 +145,25 @@ meson configure builddir -Dvariants=pn,nc
 meson compile -C builddir
 ```
 
+### Build profiles
+
+CI workflows pass a `profile` input instead of ad-hoc Fortran flag strings.
+
+| Profile | Purpose |
+| ------- | ------- |
+| `reference` (default) | Goldens-aligned build matching upstream `bin/makefile`: `plain` buildtype, `-g`, five-condition FPE traps, no optimization. |
+| `debug` | Paranoid checks for runtime debugging: adds `-O0`, `-fcheck=all`, and sentinel initialization. Not goldens-compatible. |
+
+```bash
+meson setup builddir --buildtype=plain -Dfvs_source_dir=/path/to/fvs -Dprofile=reference
+meson setup builddir --buildtype=plain -Dfvs_source_dir=/path/to/fvs -Dprofile=debug
+```
+
+Local-only Meson options not exposed through workflows:
+
+- `-Dtraps=` — override FPE traps (`default`, `none`, or a verbatim `-ffpe-trap=` value; not goldens-compatible).
+- `-Dextra_fortran_args=` — additive flags for ad-hoc experiments.
+
 ## Calling the workflows as GitHub Automations
 
 Two reusable `workflow_call` workflows wrap the Meson overlay and runtime image build with pinned `ubuntu-24.04` runner, `gfortran-13` toolchain, and `ubuntu:24.04` runtime base.
@@ -154,6 +177,7 @@ jobs:
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: FS2025.4c
+      profile: reference
 ```
 
 Produces a single artifact bundle (per-variant binaries + provenance manifest + SPDX SBOM).
@@ -196,7 +220,8 @@ Two `workflow_dispatch` drivers exercise the reusable workflows for testing purp
 # Native binaries only
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2025.4c
+  -f source_ref=FS2025.4c \
+  -f profile=reference
 
 # Full native + container, dry run (no push)
 gh workflow run dispatch-container-linux.yml \

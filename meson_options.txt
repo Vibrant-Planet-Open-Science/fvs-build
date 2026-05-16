@@ -20,6 +20,21 @@ option(
 )
 
 option(
+  'profile',
+  type: 'combo',
+  choices: ['reference', 'debug'],
+  value: 'reference',
+  description: 'Build profile. reference: goldens-aligned flags matching upstream bin/makefile (unoptimized). debug: paranoid runtime checks for fvs-regression Phase 2 (not goldens-compatible).',
+)
+
+option(
+  'traps',
+  type: 'string',
+  value: 'default',
+  description: 'FPE trap override for local investigation only. default: use the profile trap set; none: omit -ffpe-trap; any other value is passed verbatim to -ffpe-trap=. Not exposed through CI workflows.',
+)
+
+option(
   'extra_fortran_args',
   type: 'array',
   value: [],

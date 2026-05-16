@@ -44,7 +44,8 @@ The three `build-native-*.yml` workflows share the same overall shape; repeated 
 | -------- | ---- |
 | [`tools/ci/expand_variants_matrix.py`](../tools/ci/expand_variants_matrix.py) | Preflight: expand the `variants` CSV into the JSON matrix for `strategy.matrix`. |
 | [`.github/actions/prepare-fvs-native-checkout/action.yml`](../.github/actions/prepare-fvs-native-checkout/action.yml) | Matrix jobs: resolve the overlay repo/ref, check out `fvs-build/` and `fvs-source/`, delete stray `*.mod` under `fvs-source`, emit `source_sha` and `fvs_build_sha` outputs. |
-| [`tools/ci/stage_variant_native.py`](../tools/ci/stage_variant_native.py) | After compile: populate `staging/<variant>/`, tail `meson-log.txt`, invoke `provenance.py write-build-info`. |
+| [`tools/ci/meson_configure_native.sh`](../tools/ci/meson_configure_native.sh) | Matrix jobs: `meson setup` / `--reconfigure` with `profile` and fail-fast validation. |
+| [`tools/ci/stage_variant_native.py`](../tools/ci/stage_variant_native.py) | After compile: populate `staging/<variant>/`, tail `meson-log.txt`, invoke `provenance.py` (`extract-fortran-args`, `write-build-info`). |
 | [`.github/actions/collect-native-bundle/action.yml`](../.github/actions/collect-native-bundle/action.yml) | Collect job: download OS-prefixed `*-variant-*` artifacts, run `provenance.py collect-bundle`, Syft SBOM, upload the final bundle. |
 | [`.github/actions/resolve-fvs-build-ref`](../.github/actions/resolve-fvs-build-ref/action.yml) | Parse `github.workflow_ref` into overlay `owner/name` + ref (used by native matrix/collect steps and by `build-container-linux.yml`). |
 
@@ -62,11 +63,11 @@ Jobs that need the overlay resolve `owner/name` and git ref from `[github.workfl
 | `source_repo`        | string | yes      | —                                                                   | Source repo containing FVS code, in `owner/name` form (e.g. `USDAForestService/ForestVegetationSimulator`, `Vibrant-Planet-Open-Science/fvs-engine`).                                                                                     |
 | `source_ref`         | string | yes      | —                                                                   | Tag, branch, or SHA in `source_repo` to build from.                                                                                                                                                                                       |
 | `variants`           | string | no       | `ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws` | Comma-separated FVS variant codes. Default is the 22 cleanly-buildable US variants. The Canadian variants (`bc`, `on`) are excluded by default; their upstream source lists are incomplete (see `[README.md](../README.md)` for details). |
-| `runner_image`       | string | no       | `ubuntu-24.04`                                                      | GitHub-hosted runner image label. Pinned per ADR-001 to keep the glibc baseline stable and matched to the Ubuntu 24.04 runtime container base.                                                                                            |
-| `gfortran_package`   | string | no       | `gfortran-13`                                                       | apt package providing gfortran. Pinned per ADR-001 so Ubuntu point releases cannot shift the default compiler.                                                                                                                            |
+| `runner_image`       | string | no       | `ubuntu-24.04`                                                      | GitHub-hosted runner image label. Pinned to keep the glibc baseline stable and matched to the Ubuntu 24.04 runtime container base.                                                                                                        |
+| `gfortran_package`   | string | no       | `gfortran-13`                                                       | apt package providing gfortran. Pinned so Ubuntu point releases cannot shift the default compiler.                                                                                                                                          |
 | `gpp_package`        | string | no       | `g++-13`                                                            | apt package providing g++. A handful of variants compile `.cpp` files (`fire/cfim/cfim.cpp`); the C++ compiler is pinned to the same gcc family as gfortran.                                                                                |
 | `meson_version`      | string | no       | `1.5.2`                                                             | Exact Meson version installed via pip. Pinned to the version `fvs-build` was developed against.                                                                                                                                           |
-| `extra_fortran_args` | string | no       | `""`                                                                | Comma-separated extra flags appended to common Fortran compile args (passed verbatim through Meson's `-Dextra_fortran_args=`). Escape hatch for ad-hoc build investigation; production builds should leave this empty.                    |
+| `profile`            | string | no       | `reference`                                                         | Build profile: `reference` (default, goldens-aligned flags matching upstream `bin/makefile`) or `debug` (paranoid runtime checks for regression testing; not goldens-compatible). Both use `--buildtype=plain`.                          |
 | `python_version`     | string | no       | `3.12`                                                              | Version string for `actions/setup-python` (matrix Meson / scripts and the collect job's interpreter when setup-python runs).                                                                                                         |
 
 
@@ -115,7 +116,9 @@ fvs-native-linux-<run_id>/
     "workflow_run_url": "https://github.com/<repo>/actions/runs/12345",
     "generated_at_utc": "2026-05-09T23:10:00Z",
     "variants_input": "ak,bm,...",
-    "variants_built": ["ak", "bm", "..."]
+    "variants_built": ["ak", "bm", "..."],
+    "profile": "reference",
+    "buildtype": "plain"
   },
   "source":    { "repo": "...", "ref": "...", "sha": "..." },
   "fvs_build": { "repo": "...", "ref": "...", "sha": "..." },
@@ -156,10 +159,15 @@ On **Windows**, `artifacts.binaries` use the `.exe` suffix, `artifacts.shared_li
   "toolchain": { /* same shape as manifest.json toolchain */ },
   "build": {
     "workflow_run_id": "12345",
-    "workflow_run_attempt": "1"
+    "workflow_run_attempt": "1",
+    "profile": "reference",
+    "buildtype": "plain",
+    "fortran_args": ["-cpp", "-DCMPgcc", "..."]
   }
 }
 ```
+
+`build.fortran_args` is the resolved flag list from `compile_commands.json` after compile (what gfortran actually received). `build.profile` is the contract-level identifier.
 
 The `toolchain` block is captured per variant during the matrix leg, so a future contributor extending the workflow can see exactly which compiler version produced each binary even if the matrix legs run on different runner image versions.
 
@@ -218,7 +226,7 @@ Build a custom subset of variants:
 
 The default behavior assumes `source_repo` is public; `actions/checkout@v5` works without explicit credentials. If the source repo is private, add `secrets: inherit` to the caller's `uses:` block — see the commented hint in `[dispatch-native-linux.yml](../.github/workflows/dispatch-native-linux.yml)`.
 
-The workflow itself only requests `contents: read`. SBOM generation requires no extra permissions; SLSA build attestation (`id-token: write`) is deferred — the in-bundle `provenance/manifest.json` plus the SPDX SBOM satisfy PRD section 2's "build metadata" requirement for Phase 1 without taking on the operational complexity of attestation right now.
+The workflow itself only requests `contents: read`. SBOM generation requires no extra permissions; SLSA build attestation (`id-token: write`) is deferred — the in-bundle `provenance/manifest.json` plus the SPDX SBOM provide build metadata without the operational complexity of attestation right now.
 
 ### Wall-clock and concurrency
 
@@ -254,7 +262,7 @@ Reusable workflow: **macOS**, **Homebrew** `gcc@N` (default `N=14`) for `gfortra
 
 ## `build-container-linux.yml`
 
-Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 24.04 container image and (optionally) pushes it to GHCR. Per [ADR-001's "container build approach"](adr-001-build-system-build-environment-and-artifact-formats.md), the container does **not** recompile FVS — it copies the already-validated native binaries into a slim runtime image with the matching `libgfortran5` / `libquadmath0` runtime libraries. **Per-variant `STOP 20` smoke runs on the native Linux build runner** before bundling; this workflow does not re-run those binaries inside the image (see the **Validation / smoke testing** subsection later in this document).
+Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 24.04 container image and (optionally) pushes it to GHCR. The container does **not** recompile FVS — it copies the already-validated native binaries into a slim runtime image with the matching `libgfortran5` / `libquadmath0` runtime libraries. **Per-variant `STOP 20` smoke runs on the native Linux build runner** before bundling; this workflow does not re-run those binaries inside the image (see the **Validation / smoke testing** subsection later in this document).
 
 ### Inputs
 
@@ -265,7 +273,7 @@ Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 2
 | `image_name`       | string  | yes      | —              | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs`). Caller picks the namespace.                                             |
 | `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2025.4c`).                                                                                                                    |
 | `image_extra_tags` | string  | no       | `""`           | Comma-separated extra tags applied at push time (e.g. `latest`, `<short-sha>`). Each is `docker tag`ged from the primary and pushed alongside it.                                |
-| `runtime_base`     | string  | no       | `ubuntu:24.04` | Base image for the runtime container. Pinned per ADR-001's matched-base decision (same Ubuntu version as `runner_image`'s `ubuntu-24.04` build runner so glibc baselines match). |
+| `runtime_base`     | string  | no       | `ubuntu:24.04` | Base image for the runtime container. Pinned to `ubuntu:24.04` (same version as the Linux native build runner so glibc baselines match). |
 | `runner_image`     | string  | no       | `ubuntu-24.04` | GitHub-hosted runner image label this workflow runs on.                                                                                                                          |
 | `push`             | boolean | no       | `false`        | Push to the registry after the image build succeeds. Defaults to `false`; production callers explicitly opt in.                                                                  |
 
@@ -369,7 +377,7 @@ jobs:
     secrets: inherit
 ```
 
-`needs: native` enforces ADR-001's "container build depends on native build success" rule via GitHub's job-dependency machinery — a failed native build short-circuits the container build before any image work runs.
+`needs: native` ensures the container build runs only after a successful native build — a failed native job short-circuits the container build before any image work runs.
 
 ### Authentication
 

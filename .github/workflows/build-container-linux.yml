@@ -211,7 +211,7 @@ jobs:
 
       # GHCR login is conditional on push=true AND a ghcr.io image ref.
       # Non-GHCR registries need their own auth and are out of scope for
-      # the Phase 1 dispatch; callers can fork this workflow if needed.
+      # this dispatch workflow; callers can fork if they need other registries.
       - name: Log in to GHCR
         if: inputs.push && startsWith(inputs.image_name, 'ghcr.io/')
         uses: docker/login-action@v3

@@ -20,6 +20,7 @@ on:
       - tools/ci/expand_variants_matrix.py
       - tools/ci/stage_variant_native.py
       - tools/ci/provenance.py
+      - tools/ci/meson_configure_native.sh
       - tools/parse_sourcelist.py
 
 permissions:
@@ -37,7 +38,7 @@ jobs:
       gfortran_package: gfortran-13
       gpp_package: g++-13
       meson_version: "1.5.2"
-      extra_fortran_args: ""
+      profile: reference
 
   windows:
     name: Windows (reusable)
@@ -50,7 +51,7 @@ jobs:
       gfortran_package: mingw-w64-x86_64-gcc-fortran
       gpp_package: mingw-w64-x86_64-gcc
       meson_version: "1.5.2"
-      extra_fortran_args: ""
+      profile: reference
 
   macos:
     name: macOS (reusable)
@@ -62,4 +63,4 @@ jobs:
       runner_image: macos-latest
       brew_gcc_major: "14"
       meson_version: "1.5.2"
-      extra_fortran_args: ""
+      profile: reference
