@@ -66,7 +66,7 @@ on:
         type: string
         # Note: gfortran_package, gpp_package, meson_version, and runtime_base
         # are not exposed here (workflow_dispatch input cap); they follow the
-        # reusable workflows' defaults per ADR-001.
+        # reusable workflows' defaults (pinned runner, toolchain, runtime base).
 
 permissions:
   contents: read

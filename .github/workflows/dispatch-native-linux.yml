@@ -51,10 +51,10 @@ on:
         required: false
         default: "1.5.2"
         type: string
-      extra_fortran_args:
-        description: "Comma-separated extra Fortran compile flags (escape hatch; leave empty for production)"
+      profile:
+        description: "Build profile: reference (default, goldens-aligned) or debug (paranoid checks)"
         required: false
-        default: ""
+        default: "reference"
         type: string
       python_version:
         description: "actions/setup-python version (Meson / CI scripts)"
@@ -77,7 +77,7 @@ jobs:
       gfortran_package: ${{ inputs.gfortran_package }}
       gpp_package: ${{ inputs.gpp_package }}
       meson_version: ${{ inputs.meson_version }}
-      extra_fortran_args: ${{ inputs.extra_fortran_args }}
+      profile: ${{ inputs.profile }}
       python_version: ${{ inputs.python_version }}
     # secrets: inherit  # uncomment if source_repo becomes private and the
     #                   # workflow needs to authenticate the source checkout

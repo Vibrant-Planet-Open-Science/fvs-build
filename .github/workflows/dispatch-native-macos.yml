@@ -41,10 +41,10 @@ on:
         required: false
         default: "1.5.2"
         type: string
-      extra_fortran_args:
-        description: "Comma-separated extra Fortran flags (escape hatch; empty for production)"
+      profile:
+        description: "Build profile: reference (default, goldens-aligned) or debug (paranoid checks)"
         required: false
-        default: ""
+        default: "reference"
         type: string
       python_version:
         description: "actions/setup-python version (preflight, matrix, collect)"
@@ -66,6 +66,6 @@ jobs:
       runner_image: ${{ inputs.runner_image }}
       brew_gcc_major: ${{ inputs.brew_gcc_major }}
       meson_version: ${{ inputs.meson_version }}
-      extra_fortran_args: ${{ inputs.extra_fortran_args }}
+      profile: ${{ inputs.profile }}
       python_version: ${{ inputs.python_version }}
     # secrets: inherit  # uncomment if source_repo is private

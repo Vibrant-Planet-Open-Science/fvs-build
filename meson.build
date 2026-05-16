@@ -17,7 +17,6 @@ project(
   default_options: [
     'c_std=c11',
     'cpp_std=c++14',
-    'buildtype=debugoptimized',
     'warning_level=0',
   ],
 )
@@ -39,7 +38,57 @@ if variants.length() == 0
   error('variants option is empty. Pass -Dvariants=pn (or any subset) to meson setup.')
 endif
 
+profile = get_option('profile')
+traps_opt = get_option('traps')
 extra_fortran_flags = get_option('extra_fortran_args')
+
+# Profile-default FPE trap set (upstream bin/makefile: all five conditions).
+profile_trap_flag = '-ffpe-trap=invalid,zero,underflow,overflow,denormal'
+
+if traps_opt == 'default'
+  trap_flag = profile_trap_flag
+elif traps_opt == 'none'
+  trap_flag = ''
+else
+  trap_flag = '-ffpe-trap=' + traps_opt
+endif
+
+# Shared Fortran args for every profile (upstream bin/makefile + fvs-build).
+fortran_base_args = [
+  '-cpp',
+  '-DCMPgcc',
+  '-DANSI',
+  '-Wall',
+  '-Wno-integer-division',
+  # Upstream F77 uses patterns gfortran's flow analysis flags as uninitialized
+  # (-Wmaybe-uninitialized); not actionable for third-party sources.
+  '-Wno-maybe-uninitialized',
+  '-g',
+  '-fbacktrace',
+  # Downgrade gfortran 10+ argument-type mismatches from error to warning so
+  # legacy FVS calling patterns still build; mismatches remain visible in logs.
+  # Not -std=legacy, which would relax other modern-Fortran checks silently.
+  '-fallow-argument-mismatch',
+]
+
+if profile == 'reference'
+  profile_fortran_args = []
+elif profile == 'debug'
+  profile_fortran_args = [
+    '-O0',
+    '-fcheck=all',
+    '-finit-real=snan',
+    '-finit-integer=-99999',
+  ]
+else
+  error('Unknown profile @0@; expected reference or debug'.format(profile))
+endif
+
+common_fortran_args = fortran_base_args
+if trap_flag != ''
+  common_fortran_args += trap_flag
+endif
+common_fortran_args += profile_fortran_args + extra_fortran_flags
 
 py = find_program('python3')
 parser = files('tools/parse_sourcelist.py')
@@ -93,19 +142,6 @@ common_c_args = [
   '-DSQLITE_THREADSAFE=0',
   '-DSQLITE_OMIT_LOAD_EXTENSION',
 ]
-
-common_fortran_args = [
-  '-cpp',
-  '-DCMPgcc',
-  '-DANSI',
-  '-Wall',
-  '-Wno-integer-division',
-  # Upstream F77 uses patterns gfortran's flow analysis flags as uninitialized
-  # (-Wmaybe-uninitialized); not actionable for third-party sources.
-  '-Wno-maybe-uninitialized',
-  '-ffpe-trap=invalid,zero,underflow,overflow,denormal',
-  '-fbacktrace',
-] + extra_fortran_flags
 
 # Parses one stanza of the parser's delimited text schema. Returns a dict
 # mapping section names to lists of (string) paths.

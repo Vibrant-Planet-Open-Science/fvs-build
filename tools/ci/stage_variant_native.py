@@ -11,6 +11,7 @@ same environment variables previously exported for
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import shutil
 import subprocess
@@ -140,6 +141,22 @@ def main() -> int:
         data = meson_log.read_bytes()
         tail_out.write_bytes(data[-200_000:])
 
+    flags_proc = subprocess.run(
+        [
+            sys.executable,
+            str(provenance_py),
+            "extract-fortran-args",
+            "--build-dir",
+            str(build_dir),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    fortran_args = json.loads(flags_proc.stdout)
+    build_profile = os.environ.get("BUILD_PROFILE", "reference").strip() or "reference"
+    meson_buildtype = os.environ.get("MESON_BUILDTYPE", "plain").strip() or "plain"
+
     out_json = stage / "provenance/build-info.json"
     env = os.environ.copy()
     env.update(
@@ -152,6 +169,9 @@ def main() -> int:
             "GPP_VERSION": gpp_v,
             "NINJA_VERSION": ninja_ver,
             "MESON_VERSION_OUT": meson_ver,
+            "BUILD_PROFILE": build_profile,
+            "MESON_BUILDTYPE": meson_buildtype,
+            "FORTRAN_ARGS_JSON": json.dumps(fortran_args),
         }
     )
     cmd = [

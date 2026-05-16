@@ -7,6 +7,8 @@ variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
 ``collect-bundle``.
 
 * ``write-build-info`` — one per-variant ``build-info.json`` (schema_version 1).
+* ``extract-fortran-args`` — print resolved Fortran compile flags (JSON array)
+  parsed from ``compile_commands.json`` after Ninja has run.
 * ``collect-bundle`` — fan ``staging/<os>-variant-*`` into a **flat** bundle
   root (``FVS<v>`` / ``libFVS<v>.*`` plus ``provenance/``, ``sbom/``).
   Per-variant staging keeps binaries and shared libs at the variant directory
@@ -22,12 +24,46 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+def extract_resolved_fortran_args(build_dir: Path) -> list[str]:
+    """Return project Fortran flags from the first matching compile command.
+
+    Meson's ``meson-log.txt`` does not record per-target Fortran arguments after
+    configure; ``compile_commands.json`` (emitted once Ninja runs) is the
+    authoritative record of flags actually passed to gfortran.
+    """
+    cc_path = build_dir / "compile_commands.json"
+    if not cc_path.is_file():
+        return []
+    entries = json.loads(cc_path.read_text(encoding="utf-8"))
+    marker = "-cpp"
+    for entry in entries:
+        cmd = entry.get("command", "")
+        if marker not in cmd or "-DCMPgcc" not in cmd:
+            continue
+        parts = shlex.split(cmd)
+        try:
+            start = parts.index(marker)
+        except ValueError:
+            continue
+        flags: list[str] = []
+        for arg in parts[start:]:
+            if arg.startswith("-I") or arg.startswith("-J") or arg == "-o":
+                break
+            if arg.endswith((".f", ".F", ".f90", ".F90", ".F77", ".for")):
+                break
+            flags.append(arg)
+        if flags:
+            return flags
+    return []
 
 
 def _require_env(name: str) -> str:
@@ -120,6 +156,9 @@ def _per_variant_document() -> dict[str, Any]:
         "build": {
             "workflow_run_id": _require_env("GITHUB_RUN_ID"),
             "workflow_run_attempt": _require_env("GITHUB_RUN_ATTEMPT"),
+            "profile": _require_env("BUILD_PROFILE"),
+            "buildtype": _require_env("MESON_BUILDTYPE"),
+            "fortran_args": json.loads(_require_env("FORTRAN_ARGS_JSON")),
         },
     }
 
@@ -133,6 +172,13 @@ def _write_json(path: Path, data: dict[str, Any]) -> None:
 def cmd_write_build_info(args: argparse.Namespace) -> int:
     """Write a single per-variant ``build-info.json`` file."""
     _write_json(Path(args.output), _per_variant_document())
+    return 0
+
+
+def cmd_extract_fortran_args(args: argparse.Namespace) -> int:
+    """Print resolved Fortran flags as a JSON array on stdout."""
+    flags = extract_resolved_fortran_args(args.build_dir)
+    sys.stdout.write(json.dumps(flags, ensure_ascii=False) + "\n")
     return 0
 
 
@@ -175,6 +221,8 @@ def _bundle_manifest_document(
             "generated_at_utc": timestamp,
             "variants_input": variants_input,
             "variants_built": [pv["variant"] for pv in per_variant],
+            "profile": first["build"]["profile"],
+            "buildtype": first["build"]["buildtype"],
         },
         "source": first["source"],
         "fvs_build": first["fvs_build"],
@@ -505,6 +553,21 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Path to write (e.g. staging/pn/provenance/build-info.json).",
     )
     p_info.set_defaults(func=cmd_write_build_info)
+
+    p_flags = sub.add_parser(
+        "extract-fortran-args",
+        help=(
+            "Print resolved Fortran compile flags (JSON array) from "
+            "compile_commands.json."
+        ),
+    )
+    p_flags.add_argument(
+        "--build-dir",
+        required=True,
+        type=Path,
+        help="Meson build directory (contains compile_commands.json after compile).",
+    )
+    p_flags.set_defaults(func=cmd_extract_fortran_args)
 
     p_coll = sub.add_parser(
         "collect-bundle",

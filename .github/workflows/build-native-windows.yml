@@ -50,13 +50,13 @@ on:
         required: false
         type: string
         default: "1.5.2"
-      extra_fortran_args:
+      profile:
         description: >-
-          Comma-separated extra Fortran flags passed through
-          `-Dextra_fortran_args=`.
+          Build profile. One of: reference, debug. Goldens are captured
+          against reference only.
         required: false
         type: string
-        default: ""
+        default: "reference"
       python_version:
         description: >-
           Version string for actions/setup-python (preflight, collect-bundle,
@@ -170,32 +170,24 @@ jobs:
           path: _build
           key: >-
             meson-win-${{ matrix.variant }}-${{ inputs.source_ref }}-${{
+              inputs.profile }}-${{
               hashFiles(
                 'fvs-build/meson.build',
                 'fvs-build/meson_options.txt',
                 'fvs-build/tools/parse_sourcelist.py',
-                'fvs-build/tools/ci/provenance.py'
+                'fvs-build/tools/ci/provenance.py',
+                'fvs-build/tools/ci/meson_configure_native.sh'
               )
             }}
 
       - name: Configure Meson
         env:
           VARIANT: ${{ matrix.variant }}
-          EXTRA_FORTRAN: ${{ inputs.extra_fortran_args }}
-        run: |
-          set -euo pipefail
-          ARGS=(
-            -Dfvs_source_dir="${GITHUB_WORKSPACE}/fvs-source"
-            -Dvariants="${VARIANT}"
-          )
-          if [ -n "${EXTRA_FORTRAN}" ]; then
-            ARGS+=(-Dextra_fortran_args="${EXTRA_FORTRAN}")
-          fi
-          if [ -d _build ]; then
-            meson setup --reconfigure _build fvs-build "${ARGS[@]}"
-          else
-            meson setup _build fvs-build "${ARGS[@]}"
-          fi
+          PROFILE: ${{ inputs.profile }}
+          FVS_SOURCE: ${{ github.workspace }}/fvs-source
+          BUILD_DIR: _build
+          OVERLAY_DIR: fvs-build
+        run: bash fvs-build/tools/ci/meson_configure_native.sh
 
       - name: Compile (Ninja)
         run: ninja -C _build -k 0
@@ -225,6 +217,8 @@ jobs:
       - name: Stage artifacts and per-variant build-info
         env:
           FVS_NATIVE_PLATFORM: windows
+          BUILD_PROFILE: ${{ inputs.profile }}
+          MESON_BUILDTYPE: plain
           VARIANT: ${{ matrix.variant }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
