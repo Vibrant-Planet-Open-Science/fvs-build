@@ -52,8 +52,9 @@ on:
         default: "1.5.2"
       profile:
         description: >-
-          Build profile. One of: reference, debug. Goldens are captured
-          against reference only.
+          Build profile. One of: reference, debug. reference is designed
+          to support evaluation against goldens, while debug is intended
+          to ensure no runtime checks trip.
         required: false
         type: string
         default: "reference"
