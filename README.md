@@ -6,7 +6,7 @@ Reusable build machinery for the Forest Vegetation Simulator (FVS).
 
 This repo covers **Linux** (`ubuntu-24.04`), **Windows** (MSYS2 MINGW64), and **macOS** (Homebrew `gcc@N`) native bundles via reusable workflows; see [`docs/workflow-interface.md`](docs/workflow-interface.md). The Meson overlay configures on all three hosts locally as well.
 
-## Key contentd
+## Key contents
 
 - [`meson.build`](meson.build) — the overlay project. Reads options, parses the upstream `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
 - [`meson_options.txt`](meson_options.txt) — build-time options (`fvs_source_dir`, `variants`, `extra_fortran_args`).
