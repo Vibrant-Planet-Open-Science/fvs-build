@@ -10,7 +10,7 @@ This repo covers **Linux** (`ubuntu-24.04`), **Windows** (MSYS2 MINGW64), and **
 
 - [`meson.build`](meson.build) — the overlay project. Reads options, parses the upstream `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
 - [`meson_options.txt`](meson_options.txt) — build-time options (`fvs_source_dir`, `variants`, `extra_fortran_args`).
-- [`tools/parse_sourcelist.py`](tools/parse_sourcelist.py) — stdlib-only Python helper that turns one source list into the categorized file lists Meson consumes. Invoked once per variant via `run_command()`.
+- [`tools/parse_sourcelist.py`](tools/parse_sourcelist.py) — turns one source list into the categorized file lists Meson consumes. Invoked once per variant via `run_command()`.
 - [`.github/workflows/build-native-linux.yml`](.github/workflows/build-native-linux.yml), [`.github/workflows/build-native-windows.yml`](.github/workflows/build-native-windows.yml), [`.github/workflows/build-native-macos.yml`](.github/workflows/build-native-macos.yml) — reusable `workflow_call` workflows that wrap the Meson overlay per OS. Each produces a per-run artifact bundle (binaries + provenance + SBOM); see [`docs/workflow-interface.md`](docs/workflow-interface.md).
 - [`.github/workflows/build-container-linux.yml`](.github/workflows/build-container-linux.yml) — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image (no recompile inside Docker per ADR-001), with optional GHCR push.
 - [`.github/workflows/dispatch-native-linux.yml`](.github/workflows/dispatch-native-linux.yml), [`.github/workflows/dispatch-native-windows.yml`](.github/workflows/dispatch-native-windows.yml), [`.github/workflows/dispatch-native-macos.yml`](.github/workflows/dispatch-native-macos.yml) — manual drivers for each native OS workflow (`workflow_dispatch`).
@@ -23,7 +23,7 @@ This repo covers **Linux** (`ubuntu-24.04`), **Windows** (MSYS2 MINGW64), and **
 ### Prerequisites
 
 - Linux x86_64
-- `gfortran` and `gcc` (Phase 1 pins to `gfortran-13` at the workflow level;
+- `gfortran` and `gcc` (currently pins to `gfortran-13` at the workflow level;
 any reasonably recent gfortran works for local-dev experimentation)
 - `meson >= 1.1`, `ninja`
 - `python3` (stdlib only — no third-party packages)
@@ -55,7 +55,7 @@ mkdir -p /tmp/fvs-smoke && cd /tmp/fvs-smoke
 
 ### `fort.<N>` artifacts after a run
 
-When a Fortran program does I/O on a unit number that hasn't been explicitly `OPEN`ed, gfortran creates a file named `fort.<unit>` in the current working directory. FVS reads keyword input from unit 15 and writes a run summary to unit 16, so a smoke run via `./builddir/FVSpn </dev/null` from the repo root leaves `fort.15` and `fort.16` next to `meson.build`. They are harmless, empty-or-near-empty, and matched by the `fort.*` line in `.gitignore`, but the cleanest pattern is to run FVS from a throwaway directory (as in the quickstart above) so the build tree stays tidy.
+When a Fortran program does I/O on a unit number that hasn't been explicitly `OPEN`ed, gfortran creates a file named `fort.<unit>` in the current working directory. FVS reads keyword input from unit 15 and writes a run summary to unit 16, so a smoke test run via `./builddir/FVSpn </dev/null` from the repo root leaves `fort.15` and `fort.16` next to `meson.build`. They are harmless, empty-or-near-empty, and matched by the `fort.*` line in `.gitignore`, but the cleanest pattern is to run FVS from a throwaway directory (as in the quickstart above) so the build tree stays tidy.
 
 ### Cleaning up
 
@@ -133,75 +133,12 @@ the upstream tree.
 | `wc` | West Cascades                               | builds + smoke-tests cleanly                   |
 | `ws` | West Sierras                                | builds + smoke-tests cleanly                   |
 
-
-### Known upstream issue: `bc` and `on` source lists are incomplete
-
-`bin/FVSbc_sourceList.txt` and `bin/FVSon_sourceList.txt` reference Fortran routines (`dbs_fiavbc_cutlst`, `dbs_fiavbc_atrtls`, `dbs_fiavbc_trls`, `dbsreference`) from `vbase/cuts.f` and `base/fvs.f` but do not include the files that **define** those routines — `dbsqlite/dbs_fiavbc_*.f` and `vdbsqlite/dbsreference.f`, all of which are present in the `pn`/`nc`/etc. source lists. The result is undefined-symbol errors at the final shared-library link step:
-
-```
-undefined reference to `dbs_fiavbc_cutlst_'
-undefined reference to `dbsreference_'
-```
-
-This is a source-list completeness bug in upstream `USDAForestService/ForestVegetationSimulator`, not an issue in this overlay. This repo deliberately does **not** carry source patches; the fix belongs in upstream. Until it lands, omit `bc` and `on` from the `variants` option.
-
-There is also a separate `canada/bin/FVSon_sourceList.txt` in the upstream tree (a shorter list, ~520 lines vs. the canonical ~700-line `bin/FVSon`), used by an internal Canada-specific build flow. The overlay does not consume it — see `tools/parse_sourcelist.py` for the canonical-source-list rationale.
-
-## Important: source tree must be free of stale build artifacts
-
-The overlay adds parent directories of `.F77`, `.inc`, and `.h` entries from the source list to gfortran's `-I` path so Fortran `INCLUDE` statements and C `#include` directives resolve. **gfortran's `-I` flag also searches for `.mod` files**, so any stale `.mod` files left in those directories from a prior in-place build will be picked up before the freshly-built ones — and since they may be from a different gfortran version or partial build, you get cryptic errors like:
-
-```
-f951: Fatal Error: Reading module 'charmod.mod' at line 1 column 2: Unexpected EOF
-```
-
-If your source tree was previously built in-place (the upstream `bin/makefile` does this in `bin/FVS<variant>_buildDir/`, but stray runs of `gfortran` at the source root can leave `.mod` files in subdirectories like `volume/NVEL/`), clean it before building with this overlay:
-
-```bash
-cd /path/to/fvs-source
-git clean -fdx           # removes all untracked files including .mod / .o
-# or, more conservatively:
-find . -name '*.mod' -not -path './bin/FVS*_buildDir/*' -delete
-```
-
-The native Linux GitHub Actions workflow also deletes `*.mod` under the checked-out source tree before running Meson, since upstream repos can ship empty or stale module files under paths such as `volume/NVEL/`.
-
-## How the parser categorizes source-list entries
-
-`tools/parse_sourcelist.py` reads the upstream manifest format (newline-delimited paths relative to `bin/`, typically prefixed with `../`) and emits six sections that `meson.build` consumes:
-
-
-| Section           | Contents                                                                                       |
-| ----------------- | ---------------------------------------------------------------------------------------------- |
-| `fortran_sources` | `.f`, `.for`, `.F` files **excluding** `main.f`                                                |
-| `main_source`     | the single `main.f` for this variant (matched by basename)                                     |
-| `c_sources_sql`   | `sqlite3.c`, `fvsqlite3.c`, `apisubsc.c` (categorized following upstream `bin/CMakeLists.txt`) |
-| `c_sources_fofem` | other C / C++ sources (FOFEM fire-effects code)                                                |
-| `include_dirs`    | deduplicated parent directories of `.F77`, `.inc`, `.h` entries                                |
-| `mod_sources`     | subset of `fortran_sources` matching `*_mod.f` (informational)                                 |
-
-
-Run the helper directly to inspect a variant's parsed schema:
-
-```bash
-python3 tools/parse_sourcelist.py \
-  --source-dir /tmp/fvs-source \
-  --variant pn
-```
-
-### Invariants worth knowing if you touch this code
-
-- `**.F77` files are never compiled.** They are Fortran fixed-form **include** files (common blocks). Meson's default Fortran extension set does not cover `.F77`, which is exactly what we want: only their parent directories go on the include path.
-- `**main.f` is identified by basename, not by source-list position.** The upstream source list places `../base/main.f` near the middle of the file, not at a fixed line. The parser walks the entire list and pulls out the single `main.f` entry by basename.
-- **All paths in the parser output are absolute**, resolved against the `--source-dir` argument. Meson supports absolute paths in `static_library` source lists; we use that to avoid mutating the upstream tree.
-- `**apisubsc.c` references Fortran-defined symbols.** Upstream's `bin/CMakeLists.txt` puts it in the `FVSsql` library group, but in a build that uses `-Wl,--no-undefined` (Meson's default for shared libraries) that creates a circular dependency between `libFVSsql` and `libFVS<v>`. To avoid the cycle, this overlay collapses all C and Fortran objects (other than `main.f`) into a single `libFVS<v>.so` per variant — matching the topology of upstream's `bin/makefile` and the goal of creating a single shared library per variant.
-
 ## Outputs
 
 For variant `<v>`, `meson compile` produces in `builddir/`:
 
-- `FVS<v>` — standalone executable (consumes `main.f` linked against the shared library; the binary callers like FVSOnLocal users run directly)
-- `libFVS<v>.so` — shared library (consumed by `microfvs`, `rFVS`, `fvs2py`, and other library-mode callers)
+- `FVS<v>` — standalone executable 
+- `libFVS<v>.so` — shared library 
 - `libfvs_<v>_objs.a` — internal PIC static library used as the carrier between the compile pass and the two link products; not a deliverable
 
 Build provenance metadata captured by Meson at configure time (compiler versions, linker, host machine) is in `builddir/meson-logs/`.
@@ -314,22 +251,34 @@ OCI provenance labels (`org.opencontainers.image.*` plus custom `org.vibrantplan
 docker inspect ghcr.io/<owner>/usfs-fvs:FS2025.4c | jq '.[0].Config.Labels'
 ```
 
-## Linting
+### Known upstream issue: `bc` and `on` source lists are incomplete
 
-Repo-wide hygiene is enforced via [`pre-commit`](https://pre-commit.com/). The same hooks that run in CI ([`.github/workflows/lint.yml`](.github/workflows/lint.yml)) are wired up for local commits via [`.pre-commit-config.yaml`](.pre-commit-config.yaml):
+`bin/FVSbc_sourceList.txt` and `bin/FVSon_sourceList.txt` reference Fortran routines (`dbs_fiavbc_cutlst`, `dbs_fiavbc_atrtls`, `dbs_fiavbc_trls`, `dbsreference`) from `vbase/cuts.f` and `base/fvs.f` but do not include the files that **define** those routines — `dbsqlite/dbs_fiavbc_*.f` and `vdbsqlite/dbsreference.f`, all of which are present in the `pn`/`nc`/etc. source lists. The result is undefined-symbol errors at the final shared-library link step:
 
-- [`actionlint`](https://github.com/rhysd/actionlint) — workflow-aware static analysis for `.github/workflows/`, including `${{ ... }}` expression type-checking and `shellcheck` over `run:` blocks.
-- [`yamllint`](https://github.com/adrienverge/yamllint) — YAML hygiene with the relaxed profile in [`.yamllint`](.yamllint).
-- [`Ruff`](https://docs.astral.sh/ruff/) (`ruff check` + `ruff format`) — Python lint and formatting per [`ruff.toml`](ruff.toml): **88** columns everywhere (code, docstrings, comments; Black-style default), Google-style docstrings on `[tools/parse_sourcelist.py](tools/parse_sourcelist.py)`.
-- [`hadolint`](https://github.com/hadolint/hadolint) (via Docker) — Dockerfile lint for [`docker/Dockerfile.runtime`](docker/Dockerfile.runtime); ignores in [`.hadolint.yaml`](.hadolint.yaml).
-- Generic hygiene from `pre-commit-hooks`: trailing whitespace, missing trailing newlines, accidentally committed merge markers, oversized files.
-
-To enable locally:
-
-```bash
-pip install pre-commit       # or: pipx install pre-commit
-pre-commit install           # one-time, installs the git hook
-pre-commit run --all-files   # run all hooks against the whole tree
+```
+undefined reference to `dbs_fiavbc_cutlst_'
+undefined reference to `dbsreference_'
 ```
 
-CI is the authoritative gate — local hooks can be bypassed with `--no-verify`, but [`lint.yml`](.github/workflows/lint.yml) runs `pre-commit run --all-files` on every PR and push to `main` and will block merges on any failure.
+This is a source-list completeness bug in upstream `USDAForestService/ForestVegetationSimulator`. Until a fix lands there, omit `bc` and `on` from the `variants` option.
+
+There is also a separate `canada/bin/FVSon_sourceList.txt` in the upstream tree (a shorter list, ~520 lines vs. the canonical ~700-line `bin/FVSon`), used by an internal Canada-specific build flow. The overlay does not consume it — see `tools/parse_sourcelist.py` for the canonical-source-list rationale.
+
+## Known upstream issue: source tree must be free of stale build artifacts (`.mod` files)
+
+The Meson overlay adds parent directories of `.F77`, `.inc`, and `.h` entries from the source list to gfortran's `-I` path so Fortran `INCLUDE` statements and C `#include` directives resolve. **gfortran's `-I` flag also searches for `.mod` files**, so any stale `.mod` files left in those directories from a prior in-place build will be picked up before the freshly-built ones — and since they may be from a different gfortran version or partial build, you get cryptic errors like:
+
+```
+f951: Fatal Error: Reading module 'charmod.mod' at line 1 column 2: Unexpected EOF
+```
+
+If your source tree was previously built in-place (the upstream `bin/makefile` does this in `bin/FVS<variant>_buildDir/`, but stray runs of `gfortran` at the source root can leave `.mod` files in subdirectories like `volume/NVEL/`), clean it before building with this overlay:
+
+```bash
+cd /path/to/fvs-source
+git clean -fdx           # removes all untracked files including .mod / .o
+# or, more conservatively:
+find . -name '*.mod' -not -path './bin/FVS*_buildDir/*' -delete
+```
+
+The native Linux GitHub Actions workflow also deletes `*.mod` under the checked-out source tree before running Meson, since upstream repos can ship empty or stale module files under paths such as `volume/NVEL/`.
