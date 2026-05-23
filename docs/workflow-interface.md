@@ -26,13 +26,15 @@ Three reusable workflows share the same job shape (preflight → per-variant mat
 
 | OS      | Workflow                 | `FVS_NATIVE_PLATFORM` | Uploaded bundle name              | Executable at bundle root | Shared library at bundle root | SBOM relative path                          |
 | ------- | ------------------------ | --------------------- | --------------------------------- | ------------------------- | ----------------------------- | ------------------------------------------- |
-| Linux   | `build-native-linux.yml` | `linux`               | `fvs-native-linux-<run_id>`     | `FVS<v>`                  | `libFVS<v>.so`                | `sbom/fvs-native-linux.spdx.json`           |
-| Windows | `build-native-windows.yml` | `windows`           | `fvs-native-windows-<run_id>`   | `FVS<v>.exe`              | `libFVS<v>.dll`               | `sbom/fvs-native-windows.spdx.json`         |
-| macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`                  | `libFVS<v>.dylib`             | `sbom/fvs-native-macos.spdx.json`           |
+| Linux   | `build-native-linux.yml` | `linux`               | `fvs-native-linux-<run_id>`     | `FVS<v>`                  | `FVS<v>.so`                   | `sbom/fvs-native-linux.spdx.json`           |
+| Windows | `build-native-windows.yml` | `windows`           | `fvs-native-windows-<run_id>`   | `FVS<v>.exe`              | `FVS<v>.dll`                  | `sbom/fvs-native-windows.spdx.json`         |
+| macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`                  | `FVS<v>.dylib`                | `sbom/fvs-native-macos.spdx.json`           |
 
 `provenance/manifest.json` and each `provenance/per-variant/FVS<v>.json` use the **`binary`** and **`shared_library`** basenames from this table (including extensions on Windows). The manifest’s `toolchain.gfortran_package` and `toolchain.gpp_package` fields are **human-readable labels** (apt names on Linux, MSYS2 pacman package names on Windows, `gcc@N` on macOS), not a portable schema across OSes.
 
-During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs the Linux, macOS, and Windows reusable workflows in the **same** workflow run — for example `[ci-test-reusable-native.yml](../.github/workflows/ci-test-reusable-native.yml)`. Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (e.g. `libFVSak.dylib` instead of `.so`). The final bundle artifact names (`fvs-native-*-<run_id>`) are unchanged.
+During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs the Linux, macOS, and Windows reusable workflows in the **same** workflow run — for example `[ci-test-reusable-native.yml](../.github/workflows/ci-test-reusable-native.yml)`. Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (e.g. `FVSak.dylib` instead of `.so`). The final bundle artifact names (`fvs-native-*-<run_id>`) are unchanged.
+
+The **executable** and **shared library** are independent link products (upstream `bin/makefile` `%.prg` rules): CLI runs do not require the `.so` / `.dll` / `.dylib` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). The shared library keeps the **`FVS<v>`** basename without a `lib` prefix (embedders formerly used `libFVS<v>.*` — **breaking rename**).
 
 The Linux container workflow consumes **only** the Linux bundle; Windows and macOS bundles are for native delivery on those platforms.
 
@@ -85,12 +87,12 @@ The workflow uploads exactly one artifact with the canonical layout below. This 
 
 ```
 fvs-native-linux-<run_id>/
-├── FVSak                 # standalone executable, +x (flat bundle root)
+├── FVSak                 # standalone CLI executable, +x (flat bundle root)
 ├── FVSbm
 ├── ...                   # one `FVS<v>` per requested variant
-├── libFVSak.so           # shared library; consumed by microfvs, rFVS, fvs2py
-├── libFVSbm.so
-├── ...                   # one `libFVS<v>.so` per requested variant
+├── FVSak.so              # embedder shared library (microfvs, rFVS, fvs2py)
+├── FVSbm.so
+├── ...                   # one `FVS<v>.so` per requested variant
 ├── provenance/
 │   ├── manifest.json     # aggregated build provenance (top-level)
 │   ├── per-variant/
@@ -135,7 +137,7 @@ fvs-native-linux-<run_id>/
   },
   "artifacts": {
     "binaries":         ["FVSak", "FVSbm", "..."],
-    "shared_libraries": ["libFVSak.so", "libFVSbm.so", "..."],
+    "shared_libraries": ["FVSak.so", "FVSbm.so", "..."],
     "sbom": "sbom/fvs-native-linux.spdx.json"
   }
 }
@@ -150,7 +152,7 @@ On **Windows**, `artifacts.binaries` use the `.exe` suffix, `artifacts.shared_li
   "schema_version": 1,
   "variant": "ak",
   "binary": "FVSak",
-  "shared_library": "libFVSak.so",
+  "shared_library": "FVSak.so",
   "binary_sha256": "...",
   "shared_library_sha256": "...",
   "compiled_at_utc": "2026-05-09T23:00:00Z",
@@ -181,7 +183,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
 ```
 
 Pin to a specific `fvs-build` ref (tag or SHA) for reproducible release pipelines:
@@ -198,7 +200,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
 
   use-binaries:
     needs: fvs-binaries
@@ -209,7 +211,7 @@ jobs:
           name: ${{ needs.fvs-binaries.outputs.artifact_name }}
           path: fvs-bundle
       - run: |
-          ls -1 fvs-bundle/FVS* fvs-bundle/libFVS*.so
+          ls -1 fvs-bundle/FVS* fvs-bundle/FVS*.so
           jq . fvs-bundle/provenance/manifest.json
 ```
 
@@ -218,7 +220,7 @@ Build a custom subset of variants:
 ```yaml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
       variants: pn,wc,nc
 ```
 
@@ -241,7 +243,7 @@ Until `fvs-engine`'s release pipeline or the upstream tracker is wired up, valid
 ```bash
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2025.4c
+  -f source_ref=FS2026.1
 ```
 
 The same pattern applies on **Windows** and **macOS** via [`dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) and [`dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml) (substitute the workflow file name in `gh workflow run`).
@@ -250,13 +252,13 @@ This invokes the reusable workflow with the same inputs an external caller would
 
 ## `build-native-windows.yml`
 
-Reusable workflow: **Windows x86_64**, **MSYS2 `MINGW64`**, gfortran/gcc from `pacman`, Meson from **pip** (MINGW64 Python). Outputs **`fvs-native-windows-<run_id>`** with `FVS<v>.exe` and `libFVS<v>.dll`. See the workflow file for the full input list; notable inputs include `runner_image` (default `windows-latest`), `gfortran_package` / `gpp_package` (provenance labels for MSYS2 packages), `meson_version`, `python_version` (default `3.12` for `actions/setup-python`), and `variants` (same CSV default as Linux).
+Reusable workflow: **Windows x86_64**, **MSYS2 `MINGW64`**, gfortran/gcc from `pacman`, Meson from **pip** (MINGW64 Python). Outputs **`fvs-native-windows-<run_id>`** with static standalone `FVS<v>.exe` and embedder `FVS<v>.dll`. See the workflow file for the full input list; notable inputs include `runner_image` (default `windows-latest`), `gfortran_package` / `gpp_package` (provenance labels for MSYS2 packages), `meson_version`, `python_version` (default `3.12` for `actions/setup-python`), and `variants` (same CSV default as Linux).
 
 **Calling pattern** is the same as Linux: `uses: <owner>/fvs-build/.github/workflows/build-native-windows.yml@<ref>` with `with: source_repo`, `source_ref`, and optional `variants`.
 
 ## `build-native-macos.yml`
 
-Reusable workflow: **macOS**, **Homebrew** `gcc@N` (default `N=14`) for `gfortran-N` / `gcc-N` / `g++-N`, **Ninja** from Homebrew, Meson from **pip**. Outputs **`fvs-native-macos-<run_id>`** with extensionless `FVS<v>` and `libFVS<v>.dylib`. Inputs include `runner_image` (default `macos-latest`), `brew_gcc_major` (must match the installed `gcc@N` formula), `meson_version`, `python_version` (default `3.12`), and `variants`.
+Reusable workflow: **macOS**, **Homebrew** `gcc@N` (default `N=14`) for `gfortran-N` / `gcc-N` / `g++-N`, **Ninja** from Homebrew, Meson from **pip**. Outputs **`fvs-native-macos-<run_id>`** with extensionless standalone `FVS<v>` and embedder `FVS<v>.dylib`. Inputs include `runner_image` (default `macos-latest`), `brew_gcc_major` (must match the installed `gcc@N` formula), `meson_version`, `python_version` (default `3.12`), and `variants`.
 
 **Calling pattern** matches Linux/Windows; consume `outputs.artifact_name` the same way.
 
@@ -271,7 +273,7 @@ Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 2
 | ------------------ | ------- | -------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `artifact_name`    | string  | yes      | —              | Name of the bundle artifact produced by a prior `build-native-linux.yml` job in the same workflow run. Pass through the upstream job's `artifact_name` output.                   |
 | `image_name`       | string  | yes      | —              | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs`). Caller picks the namespace.                                             |
-| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2025.4c`).                                                                                                                    |
+| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2026.1`).                                                                                                                    |
 | `image_extra_tags` | string  | no       | `""`           | Comma-separated extra tags applied at push time (e.g. `latest`, `<short-sha>`). Each is `docker tag`ged from the primary and pushed alongside it.                                |
 | `runtime_base`     | string  | no       | `ubuntu:24.04` | Base image for the runtime container. Pinned to `ubuntu:24.04` (same version as the Linux native build runner so glibc baselines match). |
 | `runner_image`     | string  | no       | `ubuntu-24.04` | GitHub-hosted runner image label this workflow runs on.                                                                                                                          |
@@ -336,7 +338,7 @@ Inspect on a built image with `docker inspect <image_ref> | jq '.[0].Config.Labe
 | Path                                           | Content                                                                                         |
 | ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `/usr/local/bin/FVS<v>`                        | per-variant standalone executable, +x, on `PATH`                                                |
-| `/usr/local/lib/libFVS<v>.so`                  | per-variant shared library                                                                      |
+| `/usr/local/lib/FVS<v>.so`                     | per-variant embedder shared library                                                             |
 | `/usr/share/fvs-build/manifest.json`           | the bundle's top-level provenance manifest                                                      |
 | `/usr/share/fvs-build/sbom-binaries.spdx.json` | the bundle's binary-only SBOM (the image-level SBOM is uploaded as a sibling workflow artifact) |
 
@@ -363,7 +365,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
 
   container:
     needs: native
@@ -371,7 +373,7 @@ jobs:
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2025.4c
+      image_tag: FS2026.1
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -400,9 +402,9 @@ Use the orchestrator dispatch driver:
 ```bash
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2025.4c \
-  -f image_tag=FS2025.4c \
+  -f source_ref=FS2026.1 \
+  -f image_tag=FS2026.1 \
   -f push=false
 ```
 
-`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2025.4c` once you're confident the image is ready for the registry.
+`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2026.1` once you're confident the image is ready for the registry.

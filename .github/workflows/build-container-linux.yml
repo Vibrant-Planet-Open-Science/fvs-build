@@ -51,7 +51,7 @@ on:
         type: string
       image_tag:
         description: >-
-          Primary tag for the built image, e.g. `FS2025.4c` for an
+          Primary tag for the built image, e.g. `FS2026.1` for an
           upstream USFS release or a calver tag for a fvs-engine release.
         required: true
         type: string
@@ -146,14 +146,14 @@ jobs:
           done
           shopt -s nullglob
           bins=(bundle/FVS*)
-          libs=(bundle/libFVS*.so)
+          libs=(bundle/FVS*.so)
           shopt -u nullglob
           if [ "${#bins[@]}" -eq 0 ]; then
             echo "ERROR: no bundle/FVS* executables at bundle root" >&2
             exit 1
           fi
           if [ "${#libs[@]}" -eq 0 ]; then
-            echo "ERROR: no bundle/libFVS*.so at bundle root" >&2
+            echo "ERROR: no bundle/FVS*.so at bundle root" >&2
             exit 1
           fi
           echo "Bundle layout OK; executables:"

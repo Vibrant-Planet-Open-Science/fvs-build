@@ -54,9 +54,9 @@ the upstream tree.
 ## Outputs
 
 For variant `<v>`, `meson compile` produces in `builddir/`:
-- `FVS<v>` — standalone executable
-- `libFVS<v>.so` — shared library
-- `libfvs_<v>_objs.a` — internal PIC static library used as the carrier between the compile pass and the two link products; not a deliverable
+- `FVS<v>` (or `FVS<v>.exe` on Windows) — **standalone CLI executable**; does not load the embedder shared library at runtime (matches upstream `bin/makefile` `%.prg` linking)
+- `FVS<v>.so` / `.dll` / `.dylib` — **embedder shared library** for PyFVS, rFVS, fvs2py (no `lib` prefix; same basename as upstream)
+- `libfvs_<v>_objs.a` — internal static object carrier; not a deliverable
 
 Build provenance metadata captured by Meson at configure time (compiler versions, linker, host machine) is in `builddir/meson-logs/`.
 
@@ -89,8 +89,8 @@ meson setup builddir --buildtype=plain \
 meson compile -C builddir
 
 # Verify outputs.
-test -x builddir/FVSpn          # executable
-test -f builddir/libFVSpn.so    # shared library
+test -x builddir/FVSpn          # standalone executable
+test -f builddir/FVSpn.so       # embedder shared library
 
 # Smoke run — prints the variant banner, prompts for keyword file,
 # stops with exit 20 when stdin is empty (this is upstream behavior).
@@ -176,7 +176,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
       profile: reference
 ```
 
@@ -194,7 +194,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
 
   container:
     needs: native
@@ -202,7 +202,7 @@ jobs:
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2025.4c
+      image_tag: FS2026.1
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -220,20 +220,20 @@ Two `workflow_dispatch` drivers exercise the reusable workflows for testing purp
 # Native binaries only
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2025.4c \
+  -f source_ref=FS2026.1 \
   -f profile=reference
 
 # Full native + container, dry run (no push)
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2025.4c \
-  -f image_tag=FS2025.4c
+  -f source_ref=FS2026.1 \
+  -f image_tag=FS2026.1
 
-# Same, but actually push to ghcr.io/<owner>/fvs-upstream:FS2025.4c
+# Same, but actually push to ghcr.io/<owner>/fvs-upstream:FS2026.1
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2025.4c \
-  -f image_tag=FS2025.4c \
+  -f source_ref=FS2026.1 \
+  -f image_tag=FS2026.1 \
   -f push=true
 ```
 
@@ -244,34 +244,34 @@ The image has no entrypoint shim — invoke FVS with its native command line. Ea
 ```bash
 docker run --rm \
   -v "$PWD:/data" \
-  ghcr.io/<owner>/usfs-fvs:FS2025.4c \
+  ghcr.io/<owner>/usfs-fvs:FS2026.1 \
   FVSak --keywordfile=mykeyfile.key
 ```
 
 Pass-through FVS options work without any wrapper:
 
 ```bash
-docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2025.4c \
+docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.1 \
   FVSak --keywordfile=mykey.key --stoppoint=1,2040,mykey.stop
 
-docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2025.4c \
+docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.1 \
   FVSak --restart=mykey.stop
 ```
 
 The image can also be used as a build stage in downstream Dockerfiles to extract just the binaries you need:
 
 ```dockerfile
-FROM ghcr.io/<owner>/usfs-fvs:FS2025.4c AS fvs
+FROM ghcr.io/<owner>/usfs-fvs:FS2026.1 AS fvs
 FROM ubuntu:24.04
 COPY --from=fvs /usr/local/bin/FVSak /usr/local/bin/
-COPY --from=fvs /usr/local/lib/libFVSak.so /usr/local/lib/
+COPY --from=fvs /usr/local/lib/FVSak.so /usr/local/lib/
 RUN apt-get update && apt-get install -y libgfortran5 libquadmath0 && rm -rf /var/lib/apt/lists/*
 ```
 
 OCI provenance labels (`org.opencontainers.image.*` plus custom `org.vibrantplanet.fvs.*`) record the source repo, ref, SHA, toolchain versions, and variant set baked in. Inspect with:
 
 ```bash
-docker inspect ghcr.io/<owner>/usfs-fvs:FS2025.4c | jq '.[0].Config.Labels'
+docker inspect ghcr.io/<owner>/usfs-fvs:FS2026.1 | jq '.[0].Config.Labels'
 ```
 
 ## Known upstream issues in `USDAForestService/ForestVegetationSimulator`

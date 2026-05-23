@@ -213,21 +213,22 @@ jobs:
         run: |
           set -euo pipefail
           BIN_REL="_build/FVS${VARIANT}"
-          if [ ! -x "$BIN_REL" ]; then
-            echo "ERROR: ${BIN_REL} missing or not executable" >&2
+          test -x "$BIN_REL"
+          if ldd "$BIN_REL" | grep -q "FVS${VARIANT}\.so"; then
+            echo "ERROR: ${BIN_REL} must not depend on FVS${VARIANT}.so at runtime" >&2
             exit 1
           fi
-          BIN_ABS=$(realpath "$BIN_REL")
           SMOKE_DIR=$(mktemp -d)
-          OUTPUT="$( (cd "$SMOKE_DIR" && "$BIN_ABS" </dev/null 2>&1) || true )"
+          cp "$BIN_REL" "$SMOKE_DIR/"
+          OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}" </dev/null 2>&1) || true )"
           rm -rf "$SMOKE_DIR"
           echo "----- smoke output (first 30 lines) -----"
           printf '%s\n' "$OUTPUT" | head -n 30
           echo "----- end smoke output -----"
-          if ! printf '%s\n' "$OUTPUT" | grep -q 'STOP 20'; then
+          printf '%s\n' "$OUTPUT" | grep -q 'STOP 20' || {
             echo "ERROR: smoke test for FVS${VARIANT} did not reach STOP 20" >&2
             exit 1
-          fi
+          }
 
       - name: Stage artifacts and per-variant build-info
         env:

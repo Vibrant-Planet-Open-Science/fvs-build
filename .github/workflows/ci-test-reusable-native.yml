@@ -32,7 +32,7 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: ubuntu-24.04
       gfortran_package: gfortran-13
@@ -45,7 +45,7 @@ jobs:
     uses: ./.github/workflows/build-native-windows.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: windows-latest
       gfortran_package: mingw-w64-x86_64-gcc-fortran
@@ -58,7 +58,7 @@ jobs:
     uses: ./.github/workflows/build-native-macos.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: macos-latest
       brew_gcc_major: "14"
