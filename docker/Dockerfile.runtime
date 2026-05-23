@@ -14,7 +14,7 @@
 #   ./bundle/                     unpacked from the build-native-linux.yml
 #                                 artifact `fvs-native-linux-<run_id>`
 #   ./bundle/FVS<v>               per-variant executable (+x) at bundle root
-#   ./bundle/libFVS<v>.so
+#   ./bundle/FVS<v>.so          embedder shared library (not required for CLI)
 #   ./bundle/provenance/manifest.json
 #   ./bundle/provenance/per-variant/FVS<v>.json
 #   ./bundle/sbom/fvs-native-linux.spdx.json
@@ -61,9 +61,15 @@ RUN apt-get update \
   ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Flat bundle root: copy by prefix into FHS locations.
-COPY bundle/FVS*       /usr/local/bin/
-COPY bundle/libFVS*.so /usr/local/lib/
+# Flat bundle root: FVS<v> executables have no extension; FVS<v>.so are embedder libs.
+COPY bundle/ /opt/fvs-bundle/
+RUN set -eux; \
+  for f in /opt/fvs-bundle/FVS*; do \
+    case "$f" in \
+      *.so) install -D -m 644 "$f" "/usr/local/lib/$(basename "$f")" ;; \
+      *) install -D -m 755 "$f" "/usr/local/bin/$(basename "$f")" ;; \
+    esac; \
+  done
 
 # Provenance: manifest + SBOM from the plan-1 bundle, kept in /usr/share
 # so consumers can read them with

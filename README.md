@@ -54,9 +54,9 @@ the upstream tree.
 ## Outputs
 
 For variant `<v>`, `meson compile` produces in `builddir/`:
-- `FVS<v>` — standalone executable
-- `libFVS<v>.so` — shared library
-- `libfvs_<v>_objs.a` — internal PIC static library used as the carrier between the compile pass and the two link products; not a deliverable
+- `FVS<v>` (or `FVS<v>.exe` on Windows) — **standalone CLI executable**; does not load the embedder shared library at runtime (matches upstream `bin/makefile` `%.prg` linking)
+- `FVS<v>.so` / `.dll` / `.dylib` — **embedder shared library** for PyFVS, rFVS, fvs2py (no `lib` prefix; same basename as upstream)
+- `libfvs_<v>_objs.a` — internal static object carrier; not a deliverable
 
 Build provenance metadata captured by Meson at configure time (compiler versions, linker, host machine) is in `builddir/meson-logs/`.
 
@@ -89,8 +89,8 @@ meson setup builddir --buildtype=plain \
 meson compile -C builddir
 
 # Verify outputs.
-test -x builddir/FVSpn          # executable
-test -f builddir/libFVSpn.so    # shared library
+test -x builddir/FVSpn          # standalone executable
+test -f builddir/FVSpn.so       # embedder shared library
 
 # Smoke run — prints the variant banner, prompts for keyword file,
 # stops with exit 20 when stdin is empty (this is upstream behavior).
@@ -264,7 +264,7 @@ The image can also be used as a build stage in downstream Dockerfiles to extract
 FROM ghcr.io/<owner>/usfs-fvs:FS2025.4c AS fvs
 FROM ubuntu:24.04
 COPY --from=fvs /usr/local/bin/FVSak /usr/local/bin/
-COPY --from=fvs /usr/local/lib/libFVSak.so /usr/local/lib/
+COPY --from=fvs /usr/local/lib/FVSak.so /usr/local/lib/
 RUN apt-get update && apt-get install -y libgfortran5 libquadmath0 && rm -rf /var/lib/apt/lists/*
 ```
 

@@ -8,6 +8,11 @@
 # Supported hosts: Linux, macOS (darwin), Windows (e.g. MinGW-w64 / MSYS2 with
 # gfortran). Flags follow USDAForestService `bin/makefile` where applicable;
 # macOS shared libraries use `.dylib` (Meson default on darwin).
+#
+# Per variant: FVS<v> executable (standalone CLI) + FVS<v>.{so,dll,dylib}
+# embedder shared library (name_prefix '' — no lib prefix; matches upstream).
+# The exe and shlib are independent links from fvs_objs + main (exe only),
+# not exe-at-runtime-via-DLL.
 
 project(
   'fvs-build',
@@ -115,12 +120,11 @@ endif
 # (fvsSQL.c and related).
 if host_sys == 'windows'
   os_c_args = ['-DWINDOWS']
-  # w64 link recipe: static DLL (incl. libgfortran/libquadmath) + export all
-  # symbols. Do not use `-static` on the `.exe`: it pulls libgfortran.a into the
-  # main program while `link_with` already uses the DLL import lib, which
-  # duplicates Fortran runtime entry points (`_gfortran_set_args`, etc.).
+  # w64: upstream %.prg — static shared lib (embedders) + static exe (CLI).
+  # Exe must link_whole fvs_objs only, not link_with the DLL (duplicate
+  # Fortran runtime entry points if both are static).
   shlib_link_args = ['-static', '-shared', '-Wl,--export-all-symbols']
-  exe_link_args = []
+  exe_link_args = ['-static']
   objs_pic = false
 else
   os_c_args = ['-Dunix']
@@ -231,27 +235,28 @@ foreach v : variants
     install: false,
   )
 
-  # Shared library: libFVS<v>.so (Linux), libFVS<v>.dylib (macOS), libFVS<v>.dll
-  # (Windows). link_whole pulls in every object from the static carrier; libm
-  # comes through from the static lib's deps on Unix.
+  # Shared library: FVS<v>.so / .dylib / .dll (embedders; no lib prefix).
   fvs_lib = shared_library(
     'FVS' + v,
     [],
+    name_prefix: '',
     link_whole: fvs_objs,
     dependencies: [m_dep, quadmath_dep],
     link_args: shlib_link_args,
     install: false,
   )
 
-  # FVS<v> executable (.exe on Windows). main.f is matched by basename in the
-  # parser, so this works even if upstream reorders entries in the source
-  # list across releases.
-  executable(
+  # FVS<v> executable: standalone CLI (all objects + main; upstream %.prg).
+  fvs_exe = executable(
     'FVS' + v,
     [main_source],
     fortran_args: common_fortran_args + inc_args,
-    link_with: [fvs_lib],
+    link_whole: [fvs_objs],
+    dependencies: [m_dep, quadmath_dep],
     link_args: exe_link_args,
     install: false,
   )
+
+  # Ensure embedder shared lib is built whenever the exe is (no runtime link).
+  alias_target('fvs_' + v + '_artifacts', [fvs_lib, fvs_exe])
 endforeach

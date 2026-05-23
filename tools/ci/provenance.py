@@ -10,7 +10,7 @@ variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
 * ``extract-fortran-args`` — print resolved Fortran compile flags (JSON array)
   parsed from ``compile_commands.json`` after Ninja has run.
 * ``collect-bundle`` — fan ``staging/<os>-variant-*`` into a **flat** bundle
-  root (``FVS<v>`` / ``libFVS<v>.*`` plus ``provenance/``, ``sbom/``).
+  root (``FVS<v>`` / ``FVS<v>.{so,dll,dylib}`` plus ``provenance/``, ``sbom/``).
   Per-variant staging keeps binaries and shared libs at the variant directory
   root (not under a ``lib/`` subdirectory). Artifact names use an ``<os>``
   prefix (``linux-``, ``macos-``, ``windows-``) so parallel reusable native
@@ -106,10 +106,10 @@ def _binary_filename(variant: str) -> str:
 def _shared_library_filename(variant: str) -> str:
     plat = _native_platform()
     if plat == "windows":
-        return f"libFVS{variant}.dll"
+        return f"FVS{variant}.dll"
     if plat == "darwin":
-        return f"libFVS{variant}.dylib"
-    return f"libFVS{variant}.so"
+        return f"FVS{variant}.dylib"
+    return f"FVS{variant}.so"
 
 
 def _sbom_relative_path() -> str:

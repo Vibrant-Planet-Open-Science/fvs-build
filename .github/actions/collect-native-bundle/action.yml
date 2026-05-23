@@ -57,7 +57,7 @@ inputs:
     default: "3.12"
   run_staging_diagnostics:
     description: >
-      If the string "true", list staging after download (find FVS/libFVS paths).
+      If the string "true", list staging after download (find FVS binaries and shlibs).
     required: false
     default: "true"
 
@@ -100,8 +100,8 @@ runs:
         cd "${GITHUB_WORKSPACE}"
         echo "== top: staging =="
         ls -la staging
-        echo "== FVS* and libFVS* under staging (maxdepth 5) =="
-        find staging -maxdepth 5 -type f \( -name 'FVS*' -o -name 'libFVS*' \) | sort | head -500
+        echo "== FVS* binaries and shared libs under staging (maxdepth 5) =="
+        find staging -maxdepth 5 -type f -name 'FVS*' ! -path '*/provenance/*' | sort | head -500
 
     - name: Fan into canonical bundle layout
       id: bundle

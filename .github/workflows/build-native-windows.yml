@@ -199,21 +199,23 @@ jobs:
         run: |
           set -euo pipefail
           BIN_REL="_build/FVS${VARIANT}.exe"
-          if [ ! -f "$BIN_REL" ]; then
-            echo "ERROR: ${BIN_REL} missing" >&2
+          test -f "$BIN_REL"
+          # Standalone static exe: must not load embedder DLL or MSYS2 libgfortran at runtime.
+          if objdump -p "$BIN_REL" | grep 'DLL Name:' | grep -qiE "FVS${VARIANT}\.dll|libgfortran"; then
+            echo "ERROR: ${BIN_REL} imports embedder DLL or libgfortran" >&2
             exit 1
           fi
-          BIN_ABS=$(realpath "$BIN_REL" 2>/dev/null || cygpath -am "$BIN_REL")
           SMOKE_DIR=$(mktemp -d)
-          OUTPUT="$( (cd "$SMOKE_DIR" && "$BIN_ABS" </dev/null 2>&1) || true )"
+          cp "$BIN_REL" "$SMOKE_DIR/"
+          OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" </dev/null 2>&1) || true )"
           rm -rf "$SMOKE_DIR"
           echo "----- smoke output (first 30 lines) -----"
           printf '%s\n' "$OUTPUT" | head -n 30
           echo "----- end smoke output -----"
-          if ! printf '%s\n' "$OUTPUT" | grep -q 'STOP 20'; then
+          printf '%s\n' "$OUTPUT" | grep -q 'STOP 20' || {
             echo "ERROR: smoke test for FVS${VARIANT} did not reach STOP 20" >&2
             exit 1
-          fi
+          }
 
       - name: Stage artifacts and per-variant build-info
         env:

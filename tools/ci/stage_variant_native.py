@@ -72,16 +72,16 @@ def _artifact_paths(
     if platform == "windows":
         return (
             build_dir / f"FVS{variant}.exe",
-            build_dir / f"libFVS{variant}.dll",
+            build_dir / f"FVS{variant}.dll",
             f"FVS{variant}.exe",
-            f"libFVS{variant}.dll",
+            f"FVS{variant}.dll",
         )
     ext = ".dylib" if platform == "darwin" else ".so"
     return (
         build_dir / f"FVS{variant}",
-        build_dir / f"libFVS{variant}{ext}",
+        build_dir / f"FVS{variant}{ext}",
         f"FVS{variant}",
-        f"libFVS{variant}{ext}",
+        f"FVS{variant}{ext}",
     )
 
 
@@ -106,7 +106,7 @@ def main() -> int:
         if platform == "linux":
             msg += (
                 "       (meson.build must keep a single unversioned "
-                f"libFVS{variant}.so per variant)\n"
+                f"FVS{variant}.so per variant; name_prefix '')\n"
             )
         sys.stderr.write(msg)
         return 1
