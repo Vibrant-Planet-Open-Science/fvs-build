@@ -15,6 +15,8 @@ variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
   root (not under a ``lib/`` subdirectory). Artifact names use an ``<os>``
   prefix (``linux-``, ``macos-``, ``windows-``) so parallel reusable native
   workflows in the **same** GitHub Actions run do not collide on ``variant-<v>``.
+  When only one artifact is downloaded, ``actions/download-artifact`` may leave
+  files at the staging root; those are moved into ``<os>-variant-<v>/`` first.
 * ``manifest-to-github-env`` — append Docker-related variables to
   ``$GITHUB_ENV`` from ``bundle/provenance/manifest.json``.
 """
@@ -95,6 +97,46 @@ def _variant_artifact_staging_prefix() -> str:
     if plat == "darwin":
         return "macos-variant-"
     return "windows-variant-"
+
+
+def _normalize_flat_single_variant_staging(
+    staging_dir: Path,
+    dir_prefix: str,
+) -> str | None:
+    """Re-home a lone artifact downloaded flat into ``<dir_prefix><variant>/``.
+
+    ``actions/download-artifact`` with ``pattern`` places each match under
+    ``path/<artifact-name>/`` only when **two or more** artifacts match. A
+    single match (e.g. ``variants=pn`` → only ``linux-variant-pn``) is
+    extracted directly into ``path/``, which matches per-variant upload layout
+    (``FVSpn``, ``FVSpn.so``, ``provenance/`` at the staging root).
+    """
+    info_path = staging_dir / "provenance" / "build-info.json"
+    if not info_path.is_file():
+        return None
+    try:
+        info = json.loads(info_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    variant = info.get("variant")
+    if not isinstance(variant, str) or not variant.strip():
+        return None
+    variant = variant.strip()
+    target = staging_dir / f"{dir_prefix}{variant}"
+    if target.is_dir() and any(target.iterdir()):
+        return target.name
+    target.mkdir(parents=True, exist_ok=True)
+    for child in list(staging_dir.iterdir()):
+        if child.resolve() == target.resolve():
+            continue
+        dest = target / child.name
+        if dest.exists():
+            if dest.is_dir():
+                shutil.rmtree(dest)
+            else:
+                dest.unlink()
+        shutil.move(str(child), str(dest))
+    return target.name
 
 
 def _binary_filename(variant: str) -> str:
@@ -359,6 +401,11 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
         (bundle / sub).mkdir(parents=True, exist_ok=True)
 
     dir_prefix = _variant_artifact_staging_prefix()
+    normalized = _normalize_flat_single_variant_staging(staging_dir, dir_prefix)
+    if normalized:
+        print(
+            f"collect-bundle: normalized flat single-artifact staging → {normalized}/",
+        )
     variant_dirs = sorted(staging_dir.glob(f"{dir_prefix}*/"))
     if not variant_dirs:
         sys.stderr.write(
@@ -397,10 +444,13 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
                 f"  staging directory does not exist: {abs_staging}\n",
             )
         sys.stderr.write(
-            "  hint: with multiple artifacts, download-artifact extracts each "
-            "into staging/<artifact-name>/ by default. "
-            "merge-multiple=true places all files directly in path/ and breaks "
-            "this layout.\n",
+            "  hint: with two or more matched artifacts, download-artifact "
+            "extracts each into staging/<artifact-name>/ by default. A single "
+            "matched artifact is extracted directly into staging/ (no "
+            "subdirectory); collect-bundle re-homes that when "
+            "staging/provenance/build-info.json exists. "
+            "merge-multiple=true with multiple artifacts places all files "
+            "directly in path/ and breaks this layout.\n",
         )
         sys.exit(1)
 
