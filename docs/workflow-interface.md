@@ -183,7 +183,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
 ```
 
 Pin to a specific `fvs-build` ref (tag or SHA) for reproducible release pipelines:
@@ -200,7 +200,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
 
   use-binaries:
     needs: fvs-binaries
@@ -220,7 +220,7 @@ Build a custom subset of variants:
 ```yaml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
       variants: pn,wc,nc
 ```
 
@@ -243,7 +243,7 @@ Until `fvs-engine`'s release pipeline or the upstream tracker is wired up, valid
 ```bash
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2025.4c
+  -f source_ref=FS2026.1
 ```
 
 The same pattern applies on **Windows** and **macOS** via [`dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) and [`dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml) (substitute the workflow file name in `gh workflow run`).
@@ -273,7 +273,7 @@ Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 2
 | ------------------ | ------- | -------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `artifact_name`    | string  | yes      | —              | Name of the bundle artifact produced by a prior `build-native-linux.yml` job in the same workflow run. Pass through the upstream job's `artifact_name` output.                   |
 | `image_name`       | string  | yes      | —              | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs`). Caller picks the namespace.                                             |
-| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2025.4c`).                                                                                                                    |
+| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2026.1`).                                                                                                                    |
 | `image_extra_tags` | string  | no       | `""`           | Comma-separated extra tags applied at push time (e.g. `latest`, `<short-sha>`). Each is `docker tag`ged from the primary and pushed alongside it.                                |
 | `runtime_base`     | string  | no       | `ubuntu:24.04` | Base image for the runtime container. Pinned to `ubuntu:24.04` (same version as the Linux native build runner so glibc baselines match). |
 | `runner_image`     | string  | no       | `ubuntu-24.04` | GitHub-hosted runner image label this workflow runs on.                                                                                                                          |
@@ -365,7 +365,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2025.4c
+      source_ref: FS2026.1
 
   container:
     needs: native
@@ -373,7 +373,7 @@ jobs:
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2025.4c
+      image_tag: FS2026.1
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -402,9 +402,9 @@ Use the orchestrator dispatch driver:
 ```bash
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2025.4c \
-  -f image_tag=FS2025.4c \
+  -f source_ref=FS2026.1 \
+  -f image_tag=FS2026.1 \
   -f push=false
 ```
 
-`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2025.4c` once you're confident the image is ready for the registry.
+`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2026.1` once you're confident the image is ready for the registry.

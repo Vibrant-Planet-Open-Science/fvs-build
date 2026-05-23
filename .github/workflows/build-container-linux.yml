@@ -51,7 +51,7 @@ on:
         type: string
       image_tag:
         description: >-
-          Primary tag for the built image, e.g. `FS2025.4c` for an
+          Primary tag for the built image, e.g. `FS2026.1` for an
           upstream USFS release or a calver tag for a fvs-engine release.
         required: true
         type: string

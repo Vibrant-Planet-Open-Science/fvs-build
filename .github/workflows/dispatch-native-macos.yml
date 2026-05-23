@@ -19,7 +19,7 @@ on:
       source_ref:
         description: "Source ref (tag, branch, or SHA)"
         required: true
-        default: "FS2025.4c"
+        default: "FS2026.1"
         type: string
       variants:
         description: "Comma-separated FVS variant codes (default: 22 US variants)"
