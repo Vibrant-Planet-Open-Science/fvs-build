@@ -9,14 +9,14 @@ The interface is **source-agnostic**: callers supply a source repo URL plus a co
 
 | File                                                                                                  | Purpose                                                                                    | Caller surface      | Status    |
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------- | --------- |
-| `[.github/workflows/build-native-linux.yml](../.github/workflows/build-native-linux.yml)`             | Native Linux x86_64 binaries + provenance + SBOM                                           | `workflow_call`     | available |
+| [`.github/workflows/build-native-linux.yml`](../.github/workflows/build-native-linux.yml)             | Native Linux x86_64 binaries + provenance + SBOM                                           | `workflow_call`     | available |
 | `[.github/workflows/build-container-linux.yml](../.github/workflows/build-container-linux.yml)`       | Linux container image (Ubuntu 24.04 runtime) packaging the native binaries, pushed to GHCR | `workflow_call`     | available |
-| `[.github/workflows/dispatch-native-linux.yml](../.github/workflows/dispatch-native-linux.yml)`       | Manual driver around `build-native-linux.yml` for local validation                         | `workflow_dispatch` | available |
-| `[.github/workflows/dispatch-native-windows.yml](../.github/workflows/dispatch-native-windows.yml)` | Manual driver around `build-native-windows.yml` for local validation                       | `workflow_dispatch` | available |
-| `[.github/workflows/dispatch-native-macos.yml](../.github/workflows/dispatch-native-macos.yml)`     | Manual driver around `build-native-macos.yml` for local validation                         | `workflow_dispatch` | available |
-| `[.github/workflows/dispatch-container-linux.yml](../.github/workflows/dispatch-container-linux.yml)` | Manual orchestrator running native + container in sequence                                 | `workflow_dispatch` | available |
-| `[.github/workflows/build-native-windows.yml](../.github/workflows/build-native-windows.yml)`       | Native Windows x86_64 (MSYS2 MINGW64) binaries + provenance + SBOM                       | `workflow_call`     | available |
-| `[.github/workflows/build-native-macos.yml](../.github/workflows/build-native-macos.yml)`           | Native macOS (Homebrew `gcc@N`) binaries + provenance + SBOM                               | `workflow_call`     | available |
+| [`.github/workflows/dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml)       | Manual driver around `build-native-linux.yml` for local validation                         | `workflow_dispatch` | available |
+| [`.github/workflows/dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) | Manual driver around `build-native-windows.yml` for local validation                       | `workflow_dispatch` | available |
+| [`.github/workflows/dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml)     | Manual driver around `build-native-macos.yml` for local validation                         | `workflow_dispatch` | available |
+| [`.github/workflows/dispatch-container-linux.yml`](../.github/workflows/dispatch-container-linux.yml) | Manual orchestrator running native + container in sequence                                 | `workflow_dispatch` | available |
+| [`.github/workflows/build-native-windows.yml`](../.github/workflows/build-native-windows.yml)       | Native Windows x86_64 (MSYS2 MINGW64) binaries + provenance + SBOM                       | `workflow_call`     | available |
+| [`.github/workflows/build-native-macos.yml`](../.github/workflows/build-native-macos.yml)           | Native macOS (Homebrew `gcc@N`) binaries + provenance + SBOM                               | `workflow_call`     | available |
 | Upstream-tracking automation                                                                          | Cron-driven detection of new USFS releases plus pruning of evicted images                  | scheduled           | planned   |
 
 
@@ -32,7 +32,7 @@ Three reusable workflows share the same job shape (preflight → per-variant mat
 
 `provenance/manifest.json` and each `provenance/per-variant/FVS<v>.json` use the **`binary`** and **`shared_library`** basenames from this table (including extensions on Windows). The manifest’s `toolchain.gfortran_package` and `toolchain.gpp_package` fields are **human-readable labels** (apt names on Linux, MSYS2 pacman package names on Windows, `gcc@N` on macOS), not a portable schema across OSes.
 
-During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs the Linux, macOS, and Windows reusable workflows in the **same** workflow run — for example `[ci-test-reusable-native.yml](../.github/workflows/ci-test-reusable-native.yml)`. Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (e.g. `FVSak.dylib` instead of `.so`). The final bundle artifact names (`fvs-native-*-<run_id>`) are unchanged.
+During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs the Linux, macOS, and Windows reusable workflows in the **same** workflow run — for example [`ci-test-reusable-native.yml`](../.github/workflows/ci-test-reusable-native.yml). Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (e.g. `FVSak.dylib` instead of `.so`). The final bundle artifact names (`fvs-native-*-<run_id>`) are unchanged.
 
 The **executable** and **shared library** are independent link products (upstream `bin/makefile` `%.prg` rules): CLI runs do not require the `.so` / `.dll` / `.dylib` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). The shared library keeps the **`FVS<v>`** basename without a `lib` prefix (embedders formerly used `libFVS<v>.*` — **breaking rename**).
 
@@ -55,7 +55,7 @@ The three `build-native-*.yml` workflows share the same overall shape; repeated 
 
 Builds Linux x86_64 native binaries for one or more FVS variants from any source repo + ref using the `fvs-build` [Meson overlay](../meson.build), and uploads a single artifact bundle containing every variant's binary plus aggregated provenance and an SBOM.
 
-Jobs that need the overlay resolve `owner/name` and git ref from `[github.workflow_ref](https://docs.github.com/en/actions/learn-github-actions/contexts#github-context)` (the invoked reusable workflow file) via the shared `[.github/actions/resolve-fvs-build-ref](../.github/actions/resolve-fvs-build-ref/action.yml)` composite action, then check out this repository before cloning FVS source.
+Jobs that need the overlay resolve `owner/name` and git ref from [`github.workflow_ref`](https://docs.github.com/en/actions/learn-github-actions/contexts#github-context) (the invoked reusable workflow file) via the shared [`.github/actions/resolve-fvs-build-ref`](../.github/actions/resolve-fvs-build-ref/action.yml) composite action, then check out this repository before cloning FVS source.
 
 ### Inputs
 
@@ -83,7 +83,7 @@ Jobs that need the overlay resolve `owner/name` and git ref from `[github.workfl
 
 ### Artifact contract
 
-The workflow uploads exactly one artifact with the canonical layout below. This layout is the public contract; downstream consumers (the container workflow, regression test runners, release-attachment scripts, fork CI) depend on these paths. The JSON under `provenance/` is assembled by `[tools/ci/provenance.py](../tools/ci/provenance.py)` (invoked from the workflows).
+The workflow uploads exactly one artifact with the canonical layout below. This layout is the public contract; downstream consumers (the container workflow, regression test runners, release-attachment scripts, fork CI) depend on these paths. The JSON under `provenance/` is assembled by [`tools/ci/provenance.py`](../tools/ci/provenance.py) (invoked from the workflows).
 
 ```
 fvs-native-linux-<run_id>/
@@ -226,7 +226,7 @@ Build a custom subset of variants:
 
 ### Authentication
 
-The default behavior assumes `source_repo` is public; `actions/checkout@v5` works without explicit credentials. If the source repo is private, add `secrets: inherit` to the caller's `uses:` block — see the commented hint in `[dispatch-native-linux.yml](../.github/workflows/dispatch-native-linux.yml)`.
+The default behavior assumes `source_repo` is public; `actions/checkout@v5` works without explicit credentials. If the source repo is private, add `secrets: inherit` to the caller's `uses:` block — see the commented hint in [`dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml).
 
 The workflow itself only requests `contents: read`. SBOM generation requires no extra permissions; SLSA build attestation (`id-token: write`) is deferred — the in-bundle `provenance/manifest.json` plus the SPDX SBOM provide build metadata without the operational complexity of attestation right now.
 
@@ -238,7 +238,7 @@ Per-variant Fortran compile time dominates. Caching the Meson build directory (`
 
 ### Local validation before any external caller exists
 
-Until `fvs-engine`'s release pipeline or the upstream tracker is wired up, validate end-to-end via `[dispatch-native-linux.yml](../.github/workflows/dispatch-native-linux.yml)`:
+Until `fvs-engine`'s release pipeline or the upstream tracker is wired up, validate end-to-end via [`dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml):
 
 ```bash
 gh workflow run dispatch-native-linux.yml \
@@ -291,9 +291,9 @@ Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 2
 
 ### What the workflow does
 
-1. Self-checkout `fvs-build` at the ref implied by `github.workflow_ref` using `[.github/actions/resolve-fvs-build-ref](../.github/actions/resolve-fvs-build-ref/action.yml)` (for `[docker/Dockerfile.runtime](../docker/Dockerfile.runtime)`).
+1. Self-checkout `fvs-build` at the ref implied by `github.workflow_ref` using [`.github/actions/resolve-fvs-build-ref`](../.github/actions/resolve-fvs-build-ref/action.yml) (for [`docker/Dockerfile.runtime`](../docker/Dockerfile.runtime)).
 2. Download the named artifact bundle into `bundle/` and verify the layout.
-3. Extract source repo/ref/sha and toolchain versions from `bundle/provenance/manifest.json` via `[tools/ci/provenance.py](../tools/ci/provenance.py)` (`manifest-to-github-env`); pass them into `docker buildx build` as `--build-arg` values which become OCI image labels.
+3. Extract source repo/ref/sha and toolchain versions from `bundle/provenance/manifest.json` via [`tools/ci/provenance.py`](../tools/ci/provenance.py) (`manifest-to-github-env`); pass them into `docker buildx build` as `--build-arg` values which become OCI image labels.
 4. `docker buildx build --load --platform linux/amd64` produces the image into the local Docker daemon (no push yet).
 5. If `push: true` and `image_name` starts with `ghcr.io/`: log in to GHCR with `${{ secrets.GITHUB_TOKEN }}`, push the primary tag, then tag-and-push each `image_extra_tags` entry.
 6. Generate an SPDX SBOM of the *built image* via `syft` (separate from the binary-only SBOM in the bundle — the image SBOM also captures the Ubuntu base layers and `libgfortran5`). Upload as a sibling `container-sbom-<run_id>` artifact.
