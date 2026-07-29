@@ -51,10 +51,8 @@ jobs:
           # Monitored paths: anything that can change native build output.
           # Keep in sync with the dispatch/build workflows this exercises.
           changed=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
-            docker/Dockerfile.runtime \
             .github/actions/collect-native-bundle/action.yml \
             .github/actions/prepare-fvs-native-checkout/action.yml \
-            .github/workflows/build-container-linux.yml \
             .github/workflows/build-native-linux.yml \
             .github/workflows/build-native-windows.yml \
             .github/workflows/build-native-macos.yml \
