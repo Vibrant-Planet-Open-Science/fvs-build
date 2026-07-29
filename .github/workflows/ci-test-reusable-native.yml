@@ -23,6 +23,14 @@ on:
       - tools/ci/meson_configure_native.sh
       - tools/parse_sourcelist.py
 
+# Cancel an in-progress run for a PR when a new commit is pushed to it. These
+# native builds fan out across three OSes and many variants, so superseding
+# stale runs saves substantial runner time. Keyed by PR number (falling back to
+# ref) so distinct PRs never cancel each other.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -32,7 +40,7 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: ubuntu-24.04
       gfortran_package: gfortran-13
@@ -45,7 +53,7 @@ jobs:
     uses: ./.github/workflows/build-native-windows.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: windows-latest
       gfortran_package: mingw-w64-x86_64-gcc-fortran
@@ -58,7 +66,7 @@ jobs:
     uses: ./.github/workflows/build-native-macos.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: macos-latest
       brew_gcc_major: "14"
