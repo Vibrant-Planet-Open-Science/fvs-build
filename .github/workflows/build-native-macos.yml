@@ -224,7 +224,7 @@ jobs:
               | grep -Ev '^(/usr/lib/|/System/)' || true)"
             if [ -n "$leaks" ]; then
               echo "ERROR: $f has non-system runtime dependencies:" >&2
-              printf '  %s\n' $leaks >&2
+              printf '%s\n' "$leaks" | sed 's/^/  /' >&2
               status=1
             fi
           done
