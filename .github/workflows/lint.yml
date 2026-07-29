@@ -13,15 +13,13 @@ name: lint
 
 on:
   pull_request:
-  push:
-    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
   pre-commit:
-    name: pre-commit run --all-files
+    name: lint
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
