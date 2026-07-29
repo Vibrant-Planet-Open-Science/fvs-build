@@ -27,7 +27,7 @@ on:
       source_ref:
         description: "Source ref (tag, branch, or SHA)"
         required: true
-        default: "FS2026.1"
+        default: "FS2026.2"
         type: string
       variants:
         description: "Comma-separated FVS variant codes (default: 22 known-good US variants)"
@@ -42,7 +42,7 @@ on:
       image_tag:
         description: "Primary image tag (typically matches source_ref)"
         required: true
-        default: "FS2026.1"
+        default: "FS2026.2"
         type: string
       image_extra_tags:
         description: "Comma-separated extra tags (e.g. latest)"
