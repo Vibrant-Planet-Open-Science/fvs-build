@@ -1,6 +1,14 @@
 # Runs the three reusable native build workflows from the PR head commit when
 # native-related files change (see README / docs/workflow-interface.md). Same
 # idea as a branch-only push trigger, but scoped to pull requests into main.
+#
+# This workflow triggers on *every* PR into main so it can serve as a required
+# status check: `paths:` filters suppress the run entirely, which leaves a
+# required check permanently pending. Instead the `changes` job diffs the PR
+# against its base and the build matrix is gated on that result, and the
+# terminal `native-builds` job always reports — success (nothing to build) or
+# the aggregated matrix result. Make **`native-builds`** the required check;
+# the fanned-out reusable-workflow job names are not stable check names.
 
 name: Test reusable native workflows (pull request)
 
@@ -8,20 +16,6 @@ on:
   pull_request:
     branches:
       - main
-    paths:
-      - .github/actions/collect-native-bundle/action.yml
-      - .github/actions/prepare-fvs-native-checkout/action.yml
-      - .github/workflows/build-native-linux.yml
-      - .github/workflows/build-native-windows.yml
-      - .github/workflows/build-native-macos.yml
-      - .github/workflows/ci-test-reusable-native.yml
-      - meson.build
-      - meson_options.txt
-      - tools/ci/expand_variants_matrix.py
-      - tools/ci/stage_variant_native.py
-      - tools/ci/provenance.py
-      - tools/ci/meson_configure_native.sh
-      - tools/parse_sourcelist.py
 
 # Cancel an in-progress run for a PR when a new commit is pushed to it. These
 # native builds fan out across three OSes and many variants, so superseding
@@ -35,8 +29,64 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect native build changes
+    runs-on: ubuntu-24.04
+    outputs:
+      native: ${{ steps.filter.outputs.native }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # Full history so the PR base commit is present for the diff below.
+          fetch-depth: 0
+
+      - name: Diff monitored paths against PR base
+        id: filter
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          # Monitored paths: anything that can change native build output.
+          # Keep in sync with the dispatch/build workflows this exercises.
+          changed=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
+            docker/Dockerfile.runtime \
+            .github/actions/collect-native-bundle/action.yml \
+            .github/actions/prepare-fvs-native-checkout/action.yml \
+            .github/workflows/build-container-linux.yml \
+            .github/workflows/build-native-linux.yml \
+            .github/workflows/build-native-windows.yml \
+            .github/workflows/build-native-macos.yml \
+            .github/workflows/ci-test-reusable-native.yml \
+            meson.build \
+            meson_options.txt \
+            tools/ci/expand_variants_matrix.py \
+            tools/ci/stage_variant_native.py \
+            tools/ci/provenance.py \
+            tools/ci/meson_configure_native.sh \
+            tools/parse_sourcelist.py)
+
+          if [ -n "$changed" ]; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            {
+              echo "### Native build matrix: running"
+              echo
+              echo "Changed monitored paths:"
+              echo '```'
+              echo "$changed"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"
+            echo "### Native build matrix: skipped (no monitored paths changed)" \
+              >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   linux:
     name: Linux (reusable)
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
@@ -50,6 +100,8 @@ jobs:
 
   windows:
     name: Windows (reusable)
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     uses: ./.github/workflows/build-native-windows.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
@@ -63,6 +115,8 @@ jobs:
 
   macos:
     name: macOS (reusable)
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     uses: ./.github/workflows/build-native-macos.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
@@ -72,3 +126,46 @@ jobs:
       brew_gcc_major: "14"
       meson_version: "1.5.2"
       profile: reference
+
+  # Stable terminal check. Runs on every PR into main regardless of whether the
+  # matrix ran, so it is the job to mark as a required status check.
+  native-builds:
+    name: Native builds
+    if: always()
+    needs:
+      - changes
+      - linux
+      - windows
+      - macos
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Aggregate matrix result
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          NATIVE: ${{ needs.changes.outputs.native }}
+          LINUX: ${{ needs.linux.result }}
+          WINDOWS: ${{ needs.windows.result }}
+          MACOS: ${{ needs.macos.result }}
+        run: |
+          set -euo pipefail
+
+          if [ "$CHANGES" != "success" ]; then
+            echo "Change detection did not succeed (result: $CHANGES)."
+            exit 1
+          fi
+
+          if [ "$NATIVE" != "true" ]; then
+            echo "No monitored native build paths changed; nothing to build."
+            exit 0
+          fi
+
+          status=0
+          for pair in "Linux:$LINUX" "Windows:$WINDOWS" "macOS:$MACOS"; do
+            name=${pair%%:*}
+            result=${pair#*:}
+            echo "$name: $result"
+            if [ "$result" != "success" ]; then
+              status=1
+            fi
+          done
+          exit "$status"

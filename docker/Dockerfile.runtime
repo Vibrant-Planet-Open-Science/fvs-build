@@ -1,14 +1,14 @@
 # Runtime container image for FVS native binaries.
 #
-# Per ADR-001: this is a runtime-only image. The compile happens on a native
-# GitHub-hosted ubuntu-24.04 runner (build-native-linux.yml). This Dockerfile
-# only consumes the resulting binaries from the unpacked plan-1 artifact
-# bundle and copies them into a slim ubuntu:24.04 runtime alongside the
-# matching libgfortran5 / libquadmath0 packages.
+# This is a runtime-only image. The compile happens on a native GitHub-hosted
+# ubuntu-24.04 runner (build-native-linux.yml). This Dockerfile only consumes
+# the resulting binaries from the unpacked artifact bundle and copies them into
+# a slim ubuntu:24.04 runtime alongside the matching libgfortran5 / libquadmath0
+# packages.
 #
-# Pinning ubuntu:24.04 here matches the ubuntu-24.04 build runner per
-# ADR-001's "matched Ubuntu base" decision: identical glibc baseline on
-# both sides means the copied binary loads cleanly without surprises.
+# Pinning ubuntu:24.04 here matches the ubuntu-24.04 build runner: identical
+# glibc baseline on both sides means the copied binary loads cleanly without
+# surprises.
 #
 # Build context expectations (set up by build-container-linux.yml):
 #   ./bundle/                     unpacked from the build-native-linux.yml
@@ -55,6 +55,7 @@ ENV FVS_VERSION=${SOURCE_REF}
 # the Fortran runtime; libquadmath0 covers IEEE quad-precision math
 # referenced by the FVS shared library.
 RUN apt-get update \
+  && apt-get upgrade \
   && apt-get install -y --no-install-recommends \
   libgfortran5 \
   libquadmath0 \
