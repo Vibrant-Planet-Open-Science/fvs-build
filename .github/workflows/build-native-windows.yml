@@ -159,8 +159,12 @@ jobs:
           MESON_VERSION: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
-          python -m pip install --upgrade pip
-          python -m pip install "meson==${MESON_VERSION}"
+          # MSYS2's mingw python is PEP 668 "externally managed" (marker added
+          # with the Python 3.14 packages), so pip refuses to install into it
+          # without an override. The runner is ephemeral and Meson is not
+          # packaged at a pinnable version in pacman, so overriding is fine;
+          # pacman-managed pip is left alone (no self-upgrade).
+          python -m pip install --break-system-packages "meson==${MESON_VERSION}"
           meson --version
           ninja --version
           gfortran --version | head -n 1
