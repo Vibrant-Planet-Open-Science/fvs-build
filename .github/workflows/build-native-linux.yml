@@ -230,6 +230,31 @@ jobs:
             exit 1
           }
 
+      - name: Verify artifacts have no baked-in search paths (readelf)
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          # Linux intentionally dynamic-links libgfortran.so.5 by SONAME (see
+          # meson.build: no -static-libgfortran on linux); the loader resolves
+          # it from the runtime container's glibc/gfortran baseline. Unlike
+          # macOS Mach-O, ELF DT_NEEDED records sonames -- never the build
+          # machine's absolute path -- so that failure class cannot occur here.
+          # The remaining Linux analog is a build-tree or toolchain search path
+          # leaking into DT_RPATH/DT_RUNPATH; guard both the exe and the .so.
+          status=0
+          for f in "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"; do
+            test -f "$f"
+            echo "----- readelf -d $f -----"
+            readelf -d "$f" | grep -E 'NEEDED|RPATH|RUNPATH' || true
+            if readelf -d "$f" | grep -qE '\((RPATH|RUNPATH)\)'; then
+              echo "ERROR: $f has a baked-in RPATH/RUNPATH" >&2
+              readelf -d "$f" | grep -E '\((RPATH|RUNPATH)\)' >&2
+              status=1
+            fi
+          done
+          exit $status
+
       - name: Stage artifacts and per-variant build-info
         env:
           FVS_NATIVE_PLATFORM: linux

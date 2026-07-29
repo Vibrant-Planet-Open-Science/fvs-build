@@ -128,11 +128,30 @@ if host_sys == 'windows'
   objs_pic = false
 else
   os_c_args = ['-Dunix']
-  shlib_link_args = []
-  exe_link_args = []
   # Linux (l64): USFS uses -fPIC. macOS: PIC for dylib objects (departure from
   # USFS empty PIC on osx).
   objs_pic = true
+  if host_sys == 'darwin'
+    # Embed the gfortran runtime in the artifact so it does not hard-depend on
+    # a Homebrew gcc at an absolute path (e.g.
+    # /opt/homebrew/opt/gcc@14/lib/gcc/14/libgfortran.5.dylib), which is baked
+    # into the Mach-O load commands by the build machine's gfortran and is
+    # absent on end-user Macs -> dlopen/OSError. Mirrors the Windows `-static`
+    # intent; macOS cannot fully static-link libSystem, so we static-link only
+    # the GCC runtime libs (libgfortran/libgcc/libquadmath). Verify with
+    # `otool -L FVS<v>.dylib`: no /opt/homebrew/.../libgfortran line should
+    # remain.
+    fortran_runtime_static = [
+      '-static-libgfortran',
+      '-static-libgcc',
+      '-static-libquadmath',
+    ]
+    shlib_link_args = fortran_runtime_static
+    exe_link_args = fortran_runtime_static
+  else
+    shlib_link_args = []
+    exe_link_args = []
+  endif
 endif
 
 # Compiler flags transcribed from upstream bin/makefile. We pin them here rather
@@ -222,8 +241,7 @@ foreach v : variants
   #
   # Meson auto-discovers Fortran `module`/`use` dependencies across these
   # sources (including the *_mod.f files in volume/NVEL/) and orders
-  # compilation correctly without manual declarations — the headline
-  # reason ADR-001 picked Meson over CMake for this codebase.
+  # compilation correctly without manual declarations
   fvs_objs = static_library(
     'fvs_' + v + '_objs',
     fortran_sources + c_sources_sql + c_sources_fofem,
@@ -241,6 +259,11 @@ foreach v : variants
     [],
     name_prefix: '',
     link_whole: fvs_objs,
+    # Force the gfortran driver to link this library. Its source list is empty
+    # (objects come via link_whole), so Meson would otherwise pick the C linker
+    # (clang/cc), which does not understand -static-libgfortran and would leave
+    # the absolute Homebrew libgfortran dependency in place.
+    link_language: 'fortran',
     dependencies: [m_dep, quadmath_dep],
     link_args: shlib_link_args,
     install: false,
@@ -252,6 +275,12 @@ foreach v : variants
     [main_source],
     fortran_args: common_fortran_args + inc_args,
     link_whole: [fvs_objs],
+    # Force the gfortran driver. main_source is Fortran, but fvs_objs also
+    # carries C/C++ objects, so Meson's link-language resolution otherwise
+    # picks the C driver (gcc), which does not add libquadmath automatically.
+    # With -static-libgfortran the static libgfortran.a needs libquadmath's
+    # quadmath_snprintf/strtoflt128, and only the gfortran driver pulls it in.
+    link_language: 'fortran',
     dependencies: [m_dep, quadmath_dep],
     link_args: exe_link_args,
     install: false,
