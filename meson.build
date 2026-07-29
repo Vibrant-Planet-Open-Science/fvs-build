@@ -275,6 +275,12 @@ foreach v : variants
     [main_source],
     fortran_args: common_fortran_args + inc_args,
     link_whole: [fvs_objs],
+    # Force the gfortran driver. main_source is Fortran, but fvs_objs also
+    # carries C/C++ objects, so Meson's link-language resolution otherwise
+    # picks the C driver (gcc), which does not add libquadmath automatically.
+    # With -static-libgfortran the static libgfortran.a needs libquadmath's
+    # quadmath_snprintf/strtoflt128, and only the gfortran driver pulls it in.
+    link_language: 'fortran',
     dependencies: [m_dep, quadmath_dep],
     link_args: exe_link_args,
     install: false,
