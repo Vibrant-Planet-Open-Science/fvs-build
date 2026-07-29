@@ -200,11 +200,6 @@ jobs:
           set -euo pipefail
           BIN_REL="_build/FVS${VARIANT}.exe"
           test -f "$BIN_REL"
-          # Standalone static exe: must not load embedder DLL or MSYS2 libgfortran at runtime.
-          if objdump -p "$BIN_REL" | grep 'DLL Name:' | grep -qiE "FVS${VARIANT}\.dll|libgfortran"; then
-            echo "ERROR: ${BIN_REL} imports embedder DLL or libgfortran" >&2
-            exit 1
-          fi
           SMOKE_DIR=$(mktemp -d)
           cp "$BIN_REL" "$SMOKE_DIR/"
           OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" </dev/null 2>&1) || true )"
@@ -216,6 +211,31 @@ jobs:
             echo "ERROR: smoke test for FVS${VARIANT} did not reach STOP 20" >&2
             exit 1
           }
+
+      - name: Verify artifacts are self-contained (objdump)
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          # -static build: neither the standalone exe nor the embedder DLL may
+          # import a MinGW/MSYS2 runtime DLL (absent on end-user Windows) and
+          # the exe must not import the embedder DLL. Denylist the runtime DLLs
+          # rather than allowlist the (large, unstable) Windows system set.
+          runtime='libgfortran|libgcc_s|libquadmath|libwinpthread|libstdc\+\+|libssp'
+          status=0
+          check() {
+            f="$1"; pat="$2"
+            test -f "$f"
+            echo "----- objdump -p $f (DLL imports) -----"
+            objdump -p "$f" | grep 'DLL Name:' || true
+            if objdump -p "$f" | grep 'DLL Name:' | grep -qiE "$pat"; then
+              echo "ERROR: $f imports a runtime/embedder DLL it must not" >&2
+              status=1
+            fi
+          }
+          check "_build/FVS${VARIANT}.exe" "FVS${VARIANT}\.dll|${runtime}"
+          check "_build/FVS${VARIANT}.dll" "${runtime}"
+          exit $status
 
       - name: Stage artifacts and per-variant build-info
         env:

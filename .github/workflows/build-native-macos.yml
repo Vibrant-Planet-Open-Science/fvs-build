@@ -199,6 +199,37 @@ jobs:
             exit 1
           }
 
+      - name: Verify artifacts are self-contained (otool)
+        env:
+          VARIANT: ${{ matrix.variant }}
+        run: |
+          set -euo pipefail
+          # Both the standalone exe and the fvs2py-loaded embedder dylib must
+          # depend only on base-system libraries. A leaked Homebrew gcc runtime
+          # (e.g. /opt/homebrew/opt/gcc@14/lib/gcc/14/libgfortran.5.dylib) or an
+          # unresolved @rpath entry is absent on end-user Macs and fails at
+          # dlopen/ctypes with OSError. With -static-libgfortran/-libgcc/
+          # -libquadmath only /usr/lib and /System deps should remain.
+          status=0
+          for f in "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.dylib"; do
+            test -f "$f"
+            echo "----- otool -L $f -----"
+            otool -L "$f"
+            base="$(basename "$f")"
+            # Drop the header line, drop the lib's own install-id (matched by
+            # basename so an @rpath/-prefixed id is handled too), then flag any
+            # remaining dependency path outside the system prefixes.
+            leaks="$(otool -L "$f" | tail -n +2 | awk '{print $1}' \
+              | awk -v b="$base" '{ n=$0; sub(/.*\//,"",n); if (n != b) print }' \
+              | grep -Ev '^(/usr/lib/|/System/)' || true)"
+            if [ -n "$leaks" ]; then
+              echo "ERROR: $f has non-system runtime dependencies:" >&2
+              printf '  %s\n' $leaks >&2
+              status=1
+            fi
+          done
+          exit $status
+
       - name: Stage artifacts and per-variant build-info
         env:
           FVS_NATIVE_PLATFORM: darwin
