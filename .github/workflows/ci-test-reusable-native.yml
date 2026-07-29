@@ -9,8 +9,10 @@ on:
     branches:
       - main
     paths:
+      - docker/Dockerfile.runtime
       - .github/actions/collect-native-bundle/action.yml
       - .github/actions/prepare-fvs-native-checkout/action.yml
+      - .github/workflows/build-container-linux.yml
       - .github/workflows/build-native-linux.yml
       - .github/workflows/build-native-windows.yml
       - .github/workflows/build-native-macos.yml
