@@ -1,0 +1,65 @@
+# Builds and smoke-tests the FVSOnLocal (fvsOL) GUI container image from the PR
+# head commit when GUI-related files change. The reusable container workflow
+# runs the smoke test (tools/ci/smoke_fvs_gui.sh) before its push gate, so this
+# exercises the whole image end-to-end -- catching a broken Dockerfile, a patch
+# that no longer applies, or an R-dep/app regression before merge. Nothing is
+# published (push: false).
+#
+# The GUI image build (apt + pip + install.packages + rFVS/fvsOL) is expected
+# to dominate wall-clock; GitHub Actions layer caching (type=gha, added in
+# build-container-fvs-gui-linux.yml) keeps warm runs to a few minutes.
+
+name: Test FVS GUI container (pull request)
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - docker/Dockerfile.fvs-gui
+      - docker/fvs-gui/**
+      - .github/workflows/build-container-fvs-gui-linux.yml
+      - .github/workflows/ci-test-fvs-gui-container.yml
+      - tools/ci/smoke_fvs_gui.sh
+
+# Cancel superseded runs on the same PR -- the build is expensive.
+concurrency:
+  group: ci-fvs-gui-${{ github.ref }}
+  cancel-in-progress: true
+
+# packages: write is granted but never exercised -- this workflow always calls
+# the reusable build with push: false. A called reusable workflow cannot request
+# more permissions than its caller grants, and build-container-fvs-gui-linux.yml
+# declares packages: write for its (optional) GHCR push. Without the grant here
+# the run dies with a startup_failure before any job is created.
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Native .so bundle the GUI image consumes. The full 22-variant matrix builds
+  # in ~2-3 min on GitHub runners, so build them all for a representative image
+  # rather than a subset (`variants` omitted -> the workflow's default set).
+  native:
+    name: Native binary build
+    uses: ./.github/workflows/build-native-linux.yml
+    with:
+      source_repo: USDAForestService/ForestVegetationSimulator
+      source_ref: FS2026.2
+      runner_image: ubuntu-24.04
+      profile: reference
+
+  # Build the GUI image from that bundle + the pinned Interface source, then
+  # smoke-test it. push: false with a non-ghcr image_name means the GHCR
+  # login/push steps are skipped -- CI never publishes.
+  fvs-gui-container:
+    name: FVS GUI container build + smoke
+    needs: native
+    uses: ./.github/workflows/build-container-fvs-gui-linux.yml
+    with:
+      artifact_name: ${{ needs.native.outputs.artifact_name }}
+      # Upstream main at the RSQLite temp-table fix; the FS2026.2 tag predates it.
+      interface_ref: 92dc046adc1d16ddd320b79e9239abd832cbb069
+      image_name: usfs-fvs-gui
+      image_tag: ci-${{ github.run_id }}
+      push: false

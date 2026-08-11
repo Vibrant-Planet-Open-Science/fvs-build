@@ -1,0 +1,133 @@
+# Local-dev driver for the native + FVS GUI container pipeline.
+#
+# Thin workflow_dispatch wrapper demonstrating the orchestrator pattern:
+# call build-native-linux first (produces the FVS<v>.so bundle), then call
+# build-container-fvs-gui-linux with `needs:` on the native job, passing the
+# artifact name through. The GUI image reuses the native .so (ADR-001: FVS is
+# never compiled in Docker; only the rFVS/fvsOL R layer is -- see docs/adr-002).
+#
+# Defaults assume an upstream-tracking build (USDAForestService FVS source +
+# USDAForestService Interface source + ghcr.io/<owner>/usfs-fvs-gui namespace).
+# `push` defaults to false so a manual dispatch never accidentally publishes.
+#
+# NOTE: for mybinder.org to launch the image it must be pushed (push=true) AND
+# the GHCR package must be made public. See the README Binder section.
+#
+# This is NOT a caller interface for other repos -- they should compose the
+# two reusable workflows themselves. See docs/workflow-interface.md.
+
+name: Dispatch native + FVS GUI container build (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_repo:
+        description: "FVS source repo (owner/name)"
+        required: true
+        default: "USDAForestService/ForestVegetationSimulator"
+        type: string
+      source_ref:
+        description: "FVS source ref (tag, branch, or SHA)"
+        required: true
+        default: "FS2026.2"
+        type: string
+      variants:
+        description: "Comma-separated FVS variant codes (default: 22 known-good US variants)"
+        required: false
+        default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
+        type: string
+      interface_repo:
+        description: "Interface repo providing rFVS + fvsOL (owner/name); override for a fork"
+        required: false
+        default: "USDAForestService/ForestVegetationSimulator-Interface"
+        type: string
+      interface_ref:
+        description: >-
+          Interface source ref (tag, branch, or SHA). Default pins upstream main
+          at the RSQLite temp-table fix; the FS2026.2 tag predates it and will
+          fail the Dockerfile's guard.
+        required: true
+        default: "92dc046adc1d16ddd320b79e9239abd832cbb069"
+        type: string
+      image_name:
+        description: "Fully-qualified image name without tag (defaults to usfs-fvs-gui namespace)"
+        required: false
+        default: ""
+        type: string
+      image_tag:
+        description: "Primary image tag (typically matches interface_ref)"
+        required: true
+        default: "FS2026.2"
+        type: string
+      image_extra_tags:
+        description: "Comma-separated extra tags (e.g. latest)"
+        required: false
+        default: ""
+        type: string
+      push:
+        description: "Push to GHCR after the container image build succeeds"
+        required: false
+        default: false
+        type: boolean
+      runner_image:
+        description: "Runner image label"
+        required: false
+        default: "ubuntu-24.04"
+        type: string
+        # Note: python_version is not exposed here (workflow_dispatch caps
+        # inputs at 10); the native Linux build job follows its own default
+        # (actions/setup-python 3.12).
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  # Compute the default image_name when the operator leaves it blank.
+  # workflow_dispatch input defaults cannot reference github.repository_owner
+  # at definition time, so we derive it here and hand it to the container
+  # workflow via `with:`.
+  resolve-image-name:
+    name: Resolve image_name default
+    runs-on: ${{ inputs.runner_image }}
+    outputs:
+      image_name: ${{ steps.resolve.outputs.image_name }}
+    steps:
+      - name: Pick image_name
+        id: resolve
+        env:
+          INPUT_IMAGE_NAME: ${{ inputs.image_name }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_IMAGE_NAME}" ]; then
+            IMAGE_NAME="${INPUT_IMAGE_NAME}"
+          else
+            OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+            IMAGE_NAME="ghcr.io/${OWNER_LC}/usfs-fvs-gui"
+          fi
+          echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+          echo "image_name resolved to: ${IMAGE_NAME}"
+
+  native:
+    name: Native binary build
+    uses: ./.github/workflows/build-native-linux.yml
+    with:
+      source_repo: ${{ inputs.source_repo }}
+      source_ref: ${{ inputs.source_ref }}
+      variants: ${{ inputs.variants }}
+      runner_image: ${{ inputs.runner_image }}
+
+  fvs-gui-container:
+    name: FVS GUI container build
+    needs: [resolve-image-name, native]
+    uses: ./.github/workflows/build-container-fvs-gui-linux.yml
+    with:
+      artifact_name: ${{ needs.native.outputs.artifact_name }}
+      interface_repo: ${{ inputs.interface_repo }}
+      interface_ref: ${{ inputs.interface_ref }}
+      image_name: ${{ needs.resolve-image-name.outputs.image_name }}
+      image_tag: ${{ inputs.image_tag }}
+      image_extra_tags: ${{ inputs.image_extra_tags }}
+      runner_image: ${{ inputs.runner_image }}
+      push: ${{ inputs.push }}
+    secrets: inherit
