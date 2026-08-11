@@ -21,8 +21,14 @@
 #      way. Sources predating PR #29 are a separate concern, caught at build
 #      time by Dockerfile.fvs-gui's guard, not here.
 #   4. the app boots headless via launch.R and serves an HTTP 200 Shiny page.
-#   5. jupyter-server-proxy serves the app at the /fvs-gui/ subpath (the Binder
-#      entrypoint end-to-end: proxy config + SHINY_PORT online mode).
+#   5. jupyter-server-proxy serves the app at the /fvs-gui/ subpath, under a
+#      base_url prefix like the one JupyterHub assigns (proxy config +
+#      SHINY_PORT online mode + prefix handling).
+#   6. jupyterhub-singleuser exists. BinderHub never runs `jupyter lab` or
+#      `jupyter notebook` -- JupyterHub spawns jupyterhub-singleuser. Check 5
+#      passes without it, so nothing else here catches its absence; when it is
+#      missing the single-user server never starts and every /user/<id>/ path
+#      404s on Binder while the image looks perfectly healthy locally.
 #
 # Usage: tools/ci/smoke_fvs_gui.sh [IMAGE_REF]     (default: usfs-fvs-gui:local)
 # Env:   SMOKE_VARIANT=<code>  override the variant used in check 2 (default:
@@ -118,23 +124,38 @@ docker rm -f "$cid" >/dev/null; CIDS=()
 pass "launch.R serves a Shiny page on :${APP_PORT}"
 
 # --- 5. jupyter-server-proxy path -------------------------------------------
-info "5. jupyter-server-proxy serves /fvs-gui/"
+# Served under a base_url prefix, because that is what JupyterHub does: it
+# assigns /user/<id>/ and the proxy must build asset URLs relative to it. A bare
+# / prefix would not exercise that.
+BASE_URL="/user/smoke/"
+info "5. jupyter-server-proxy serves ${BASE_URL}fvs-gui/"
 cid=$(docker run -d -p "${JUP_PORT}:${JUP_PORT}" "$IMAGE" \
-  jupyter lab --ip=0.0.0.0 --no-browser --ServerApp.token='' --ServerApp.password='')
+  jupyter lab --ip=0.0.0.0 --no-browser --ServerApp.token='' --ServerApp.password='' \
+  --ServerApp.base_url="${BASE_URL}")
 CIDS+=("$cid")
-if ! wait_http "http://localhost:${JUP_PORT}/api" 90; then
+if ! wait_http "http://localhost:${JUP_PORT}${BASE_URL}api" 90; then
   echo "--- jupyter container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
   die "jupyter server did not come up"
 fi
 # First hit launches the proxied app; the proxy waits up to its own timeout.
 html=$(mktemp); TMPFILES+=("$html")
-code=$(curl -s -o "$html" -w '%{http_code}' -L --max-time 150 "http://localhost:${JUP_PORT}/fvs-gui/")
+code=$(curl -s -o "$html" -w '%{http_code}' -L --max-time 150 "http://localhost:${JUP_PORT}${BASE_URL}fvs-gui/")
 if [ "$code" != "200" ]; then
   echo "--- jupyter container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "/fvs-gui/ returned HTTP ${code} (expected 200)"
+  die "${BASE_URL}fvs-gui/ returned HTTP ${code} (expected 200)"
 fi
-grep -qi 'shiny' "$html" || { head -c 800 "$html" >&2; die "/fvs-gui/ response is not a Shiny page"; }
+grep -qi 'shiny' "$html" || { head -c 800 "$html" >&2; die "${BASE_URL}fvs-gui/ response is not a Shiny page"; }
 docker rm -f "$cid" >/dev/null; CIDS=()
-pass "jupyter-server-proxy serves fvsOL at /fvs-gui/"
+pass "jupyter-server-proxy serves fvsOL at ${BASE_URL}fvs-gui/"
+
+# --- 6. Binder entrypoint present -------------------------------------------
+# Checks 4 and 5 both start the server themselves, so neither notices that the
+# binary BinderHub actually spawns is missing. Without this the image passes
+# every other check and still 404s on every Binder path.
+info "6. jupyterhub-singleuser on PATH (the binary BinderHub spawns)"
+docker run --rm "$IMAGE" sh -c 'command -v jupyterhub-singleuser >/dev/null && echo hub-ok' \
+  | grep -q '^hub-ok$' \
+  || die "jupyterhub-singleuser not found: BinderHub cannot start this image (install the jupyterhub pip package)"
+pass "jupyterhub-singleuser present"
 
 printf '\n\033[32mALL SMOKE TESTS PASSED\033[0m (%s)\n' "$IMAGE"

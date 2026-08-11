@@ -473,7 +473,7 @@ The same OCI standard labels and `org.vibrantplanet.fvs.*` labels as the runtime
 | `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary-only SBOM                                                      |
 
 
-The image has **no `ENTRYPOINT`**. Binder/repo2docker starts the Jupyter server; jupyter-server-proxy launches `Rscript /opt/fvs/launch.R {port}` on first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the FVS `.so` live under `/opt/fvs/FVSbin` (`FVSOL_BIN`).
+The image has **no `ENTRYPOINT`**. On Binder, JupyterHub spawns `jupyterhub-singleuser` (supplied by the `jupyterhub` pip package — **not** `jupyter lab` or `jupyter notebook`, a distinction that matters: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404 while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the FVS `.so` live under `/opt/fvs/FVSbin` (`FVSOL_BIN`).
 
 ### Online-mode UX trade-off
 
@@ -501,7 +501,8 @@ Unlike [`build-container-linux.yml`](#build-container-linuxyml) — which skips 
 | 2. an `FVS<v>.so` loads via `rFVS::fvsLoad` with its expected C API symbols | a copied `.so` not runnable in-image (glibc/libgfortran mismatch) |
 | 3. the `temporary = TRUE` write pattern works + the default `FVS_Data.db` opens | a *future* RSQLite breaking the call style `fvsOL` relies on — r2u installs it unpinned, and it broke once already. Sources predating the fix are caught earlier, by the Dockerfile guard |
 | 4. the app boots headless via `launch.R` → HTTP 200 Shiny page | `fvsOL()` startup errors, hardcoded `launch.browser`, missing assets |
-| 5. jupyter-server-proxy serves the app at `/fvs-gui/` | the Binder entrypoint end-to-end (proxy config + `SHINY_PORT` online mode) |
+| 5. jupyter-server-proxy serves the app at `<base_url>/fvs-gui/`, under a JupyterHub-style prefix | proxy config, `SHINY_PORT` online mode, and prefix handling |
+| 6. `jupyterhub-singleuser` is on `PATH` | the binary BinderHub actually spawns being absent — checks 4 and 5 start the server themselves, so nothing else notices, and the image 404s on every Binder path while looking healthy locally |
 
 Run it locally against a `--load`ed image before committing:
 
