@@ -286,11 +286,12 @@ docker inspect ghcr.io/<owner>/usfs-fvs:FS2026.2 | jq '.[0].Config.Labels'
 
 Click the badge to launch **FVSOnLocal** — the `fvsOL` R-Shiny GUI over FVS — on [mybinder.org](https://mybinder.org). Binder builds the thin [`binder/Dockerfile`](binder/Dockerfile) (a single `FROM ghcr.io/.../usfs-fvs-gui:<tag>`) in seconds and opens the app at the `/fvs-gui/` subpath (the trailing slash in `?urlpath=fvs-gui/` matters).
 
-The heavy image behind that shim is built by [`build-container-fvs-gui-linux.yml`](.github/workflows/build-container-fvs-gui-linux.yml): it reuses the native `FVS<v>.so` set (FVS is never compiled in Docker) and builds the `rFVS`/`fvsOL` R layer on `rocker/r2u:noble`, with Jupyter + `jupyter-server-proxy`.
+The heavy image behind that shim is built by [`build-container-fvs-gui-linux.yml`](.github/workflows/build-container-fvs-gui-linux.yml): it reuses the native `FVS<v>.so` set (FVS is never compiled in Docker) and builds the `rFVS`/`fvsOL` R layer on `rocker/r2u:noble`, with Jupyter, `jupyter-server-proxy`, and `jupyterhub` — the last because JupyterHub spawns `jupyterhub-singleuser`, not `jupyter lab`.
 
-Two things to know:
+Three things to know:
 
-- **The GHCR image must be public.** mybinder.org pulls the image referenced by `binder/Dockerfile` anonymously, so publish it (`push: true`) and mark the GHCR package public before the badge works. Bump the pinned tag in `binder/Dockerfile` when a newer GUI image ships.
+- **The GHCR image must be public.** mybinder.org pulls the image referenced by `binder/Dockerfile` anonymously, so publish it (`push: true`) and mark the GHCR package public before the badge works.
+- **Re-publishing a tag does not reach an existing Binder.** mybinder caches builds by *repo ref*, not by the digest behind the tag in `binder/Dockerfile`. Once it has built this repo at a given commit it will not re-pull GHCR. A new commit on the branch the badge points at is what forces a rebuild — deleting or overwriting the GHCR tag does not.
 - **Online-mode UX caveat.** Behind the proxy subpath the app runs in `fvsOL`'s "Online" mode so SVS tree-diagram PNGs render correctly. Online mode hides two controls that only appear in Local mode — the "Change Working Directory" chooser and the "upload project backup zip" input. For a Binder demo (which ships a writable starter project) that's an acceptable trade-off; restoring them for a hosted context would need an upstream `fvsOL` patch. Binder sessions are ephemeral — nothing you do persists after the session ends.
 
 To build the GUI image yourself (dry run, no push):
