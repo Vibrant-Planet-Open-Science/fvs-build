@@ -23,7 +23,7 @@ The interface is **source-agnostic**: callers supply a source repo URL plus a co
 
 
 ## Native bundles (Linux, Windows, macOS)
-
+These workflow produces shared libraries and executables for each FVS variant, and can do so for each of the supported operating systems.
 Three reusable workflows share the same job shape (preflight → per-variant matrix → collect) and the same provenance tool, [`tools/ci/provenance.py`](../tools/ci/provenance.py). Workflows set **`FVS_NATIVE_PLATFORM`** for `write-build-info` and `collect-bundle` so bundle filenames and SBOM paths match the OS:
 
 | OS      | Workflow                 | `FVS_NATIVE_PLATFORM` | Uploaded bundle name              | Executable at bundle root | Shared library at bundle root | SBOM relative path                          |
@@ -240,7 +240,7 @@ Per-variant Fortran compile time dominates. Caching the Meson build directory (`
 
 ### Local validation before any external caller exists
 
-Until `fvs-engine`'s release pipeline or the upstream tracker is wired up, validate end-to-end via [`dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml):
+Validate end-to-end via [`dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml):
 
 ```bash
 gh workflow run dispatch-native-linux.yml \
@@ -251,18 +251,6 @@ gh workflow run dispatch-native-linux.yml \
 The same pattern applies on **Windows** and **macOS** via [`dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) and [`dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml) (substitute the workflow file name in `gh workflow run`).
 
 This invokes the reusable workflow with the same inputs an external caller would supply.
-
-## `build-native-windows.yml`
-
-Reusable workflow: **Windows x86_64**, **MSYS2 `MINGW64`**, gfortran/gcc from `pacman`, Meson from **pip** (MINGW64 Python). Outputs **`fvs-native-windows-<run_id>`** with static standalone `FVS<v>.exe` and embedder `FVS<v>.dll`. See the workflow file for the full input list; notable inputs include `runner_image` (default `windows-latest`), `gfortran_package` / `gpp_package` (provenance labels for MSYS2 packages), `meson_version`, `python_version` (default `3.12` for `actions/setup-python`), and `variants` (same CSV default as Linux).
-
-**Calling pattern** is the same as Linux: `uses: <owner>/fvs-build/.github/workflows/build-native-windows.yml@<ref>` with `with: source_repo`, `source_ref`, and optional `variants`.
-
-## `build-native-macos.yml`
-
-Reusable workflow: **macOS**, **Homebrew** `gcc@N` (default `N=14`) for `gfortran-N` / `gcc-N` / `g++-N`, **Ninja** from Homebrew, Meson from **pip**. Outputs **`fvs-native-macos-<run_id>`** with extensionless standalone `FVS<v>` and embedder `FVS<v>.dylib`. Inputs include `runner_image` (default `macos-latest`), `brew_gcc_major` (must match the installed `gcc@N` formula), `meson_version`, `python_version` (default `3.12`), and `variants`.
-
-**Calling pattern** matches Linux/Windows; consume `outputs.artifact_name` the same way.
 
 ## `build-container-linux.yml`
 
@@ -467,11 +455,10 @@ The same OCI standard labels and `org.vibrantplanet.fvs.*` labels as the runtime
 | Path                                        | Content                                                                                     |
 | ------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | `/opt/fvs/FVSbin/FVS<v>.so`                 | per-variant embedder shared library (the `.so` set; `rFVS::fvsLoad()` globs these)          |
-| `/opt/fvs/launch.R`                         | launch shim ([`docker/fvs-gui/launch.R`](../docker/fvs-gui/launch.R)) — neutralizes `launch.browser=TRUE`, pins host/port, calls `shiny::runApp()` |
-| `/etc/jupyter/jupyter_server_config.py`     | jupyter-server-proxy `fvs-gui` entry ([`docker/fvs-gui/jupyter_server_config.py`](../docker/fvs-gui/jupyter_server_config.py)) — `SHINY_PORT` forces Online mode, `timeout: 120`, `absolute_url: False` |
+| `/opt/fvs/launch.R`                         | launch shim ([`docker/fvs-gui/launch.R`](../docker/fvs-gui/launch.R)) — neutralizes `launch.browser=TRUE`, pins host/port, and calls `shiny::runApp()` inside a **supervise loop**: `fvsOL` calls `stopApp()` on every session end, which makes `runApp()` return, and jupyter-server-proxy never respawns a cleanly-exited process. A fast-exit guard (3 consecutive exits under 5s) fails loudly instead of spinning. See smoke check 9 |
+| `jupyter-fvsol-proxy` (pip-installed into `/opt/venv`) | registers the `fvs-gui` proxy entry via the `jupyter_serverproxy_servers` entry point ([`docker/fvs-gui/jupyter-fvsol-proxy/`](../docker/fvs-gui/jupyter-fvsol-proxy/)) — `SHINY_PORT` forces Online mode, `timeout: 120`, `absolute_url: False`, plus the launcher icon. Deliberately **not** a config file under `/etc/jupyter`: mybinder mounts a Kubernetes ConfigMap there, replacing the directory from the image, so a config in that location is invisible on Binder while `docker run` still works. Entry points live in package metadata, which no mount can shadow — the same mechanism `jupyter-rsession-proxy` and `rocker-org/binder` use. See smoke checks 7 and 8 |
 | `/usr/share/fvs-build/manifest.json`        | the native bundle's top-level provenance manifest                                           |
 | `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary-only SBOM                                                      |
-
 
 The image has **no `ENTRYPOINT`**. On Binder, JupyterHub spawns `jupyterhub-singleuser` (supplied by the `jupyterhub` pip package — **not** `jupyter lab` or `jupyter notebook`, a distinction that matters: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404 while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the FVS `.so` live under `/opt/fvs/FVSbin` (`FVSOL_BIN`).
 
@@ -491,9 +478,9 @@ That fix is on upstream `main` but has **not yet appeared in a release tag** —
 
 ### Smoke test
 
-Unlike [`build-container-linux.yml`](#build-container-linuxyml) — which skips in-image smoke tests and leans on the native `STOP 20` gate — this workflow **smoke-tests the built image before pushing**. The GUI image has no equivalent upstream gate for its R/Shiny layer, and several failure modes (packages not attaching, a copied `.so` not loadable in-image, the RSQLite regression, a broken proxy path) only surface at runtime, so the test earns its keep here.
+Unlike [`build-container-linux.yml`](#build-container-linuxyml) — which skips in-image smoke tests and leans on the native `STOP 20` gate — this workflow **smoke-tests the built image before pushing**. The GUI image has no equivalent upstream gate for its R/Shiny layer, and several failure modes (packages not attaching, a copied `.so` not loadable in-image, the RSQLite regression, a broken proxy path) only surface at runtime.
 
-[`tools/ci/smoke_fvs_gui.sh`](../tools/ci/smoke_fvs_gui.sh) runs against an already-built image (it does not build) and is the single source of truth for both CI and local runs. The workflow invokes it after `docker buildx build --load` and **before** the GHCR login/push, so a failure blocks publication; `--load` has already placed the image in the local daemon, so no registry access is needed. Checks:
+[`tools/ci/smoke_fvs_gui.sh`](../tools/ci/smoke_fvs_gui.sh) runs against an already-built image (it does not build). The workflow invokes it after `docker buildx build --load` and **before** the GHCR login/push, so a failure blocks publication; `--load` has already placed the image in the local daemon, so no registry access is needed. Checks:
 
 | Check | Catches |
 | ----- | ------- |
@@ -503,6 +490,9 @@ Unlike [`build-container-linux.yml`](#build-container-linuxyml) — which skips 
 | 4. the app boots headless via `launch.R` → HTTP 200 Shiny page | `fvsOL()` startup errors, hardcoded `launch.browser`, missing assets |
 | 5. jupyter-server-proxy serves the app at `<base_url>/fvs-gui/`, under a JupyterHub-style prefix | proxy config, `SHINY_PORT` online mode, and prefix handling |
 | 6. `jupyterhub-singleuser` is on `PATH` | the binary BinderHub actually spawns being absent — checks 4 and 5 start the server themselves, so nothing else notices, and the image 404s on every Binder path while looking healthy locally |
+| 7. `<base_url>/fvs-gui/` still serves with an empty dir mounted over `/etc/jupyter`, and `server-proxy/icon/fvs-gui` returns `image/png` | the proxy registration living only where mybinder's ConfigMap mount shadows it. Reproduces the Binder failure exactly (302 to the slash-less path, then a Jupyter 404) in a plain container. The icon assertion is second evidence the entry point loaded, since the tile and the route share one registration |
+| 8. the `jupyter_serverproxy_servers` entry point is registered and its returned config validates as a `ServerProcess` | a broken entry point. jupyter-server-proxy `warn()`s and skips one that raises, so the only symptom is a silent 404 — no startup error, and every other check still passes |
+| 9. `launch.R` relaunches `fvsOL` after `stopApp()` | the supervise loop regressing. `fvsOL` calls `stopApp()` from `onSessionEnded` on every ordinary session end (closed tab, reload, uncaught observer error), and jupyter-server-proxy never respawns a process that exits cleanly — so without the loop, closing the tab bricks the Binder session until the Jupyter server restarts |
 
 Run it locally against a `--load`ed image before committing:
 

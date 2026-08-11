@@ -29,6 +29,21 @@
 #      passes without it, so nothing else here catches its absence; when it is
 #      missing the single-user server never starts and every /user/<id>/ path
 #      404s on Binder while the image looks perfectly healthy locally.
+#   7. the proxy registration still applies with /etc/jupyter masked, and the
+#      launcher icon is served. mybinder mounts a Kubernetes ConfigMap there,
+#      replacing the whole directory from the image; a registration that lives
+#      in a config file under /etc/jupyter vanishes on Binder and /fvs-gui/ 404s
+#      while checks 1-6 all still pass.
+#   8. the jupyter_serverproxy_servers entry point is registered and loads.
+#      jupyter-server-proxy warn()s and skips an entry point that raises, so a
+#      broken one is a SILENT 404 -- no startup error, no failed check anywhere
+#      else. This is the cheap static guard for that path.
+#   9. launch.R's supervise loop relaunches the app after stopApp(). fvsOL calls
+#      stopApp() from onSessionEnded on EVERY ordinary session end (closed tab,
+#      reload, uncaught observer error), which makes runApp() return; and
+#      jupyter-server-proxy never respawns a process that exits cleanly. Without
+#      the loop, closing the tab bricks the session until the Jupyter server
+#      itself restarts.
 #
 # Usage: tools/ci/smoke_fvs_gui.sh [IMAGE_REF]     (default: usfs-fvs-gui:local)
 # Env:   SMOKE_VARIANT=<code>  override the variant used in check 2 (default:
@@ -38,13 +53,17 @@ set -euo pipefail
 IMAGE="${1:-usfs-fvs-gui:local}"
 APP_PORT="${SMOKE_APP_PORT:-3838}"
 JUP_PORT="${SMOKE_JUP_PORT:-8888}"
+MASK_PORT="${SMOKE_MASK_PORT:-8890}"
+SUP_PORT="${SMOKE_SUP_PORT:-8891}"
 
 CIDS=()
 TMPFILES=()
+TMPDIRS=()
 cleanup() {
-  local c f
+  local c f d
   for c in "${CIDS[@]:-}"; do [ -n "$c" ] && docker rm -f "$c" >/dev/null 2>&1 || true; done
   for f in "${TMPFILES[@]:-}"; do [ -n "$f" ] && rm -f "$f" || true; done
+  for d in "${TMPDIRS[@]:-}"; do [ -n "$d" ] && rmdir "$d" 2>/dev/null || true; done
 }
 trap cleanup EXIT
 
@@ -157,5 +176,115 @@ docker run --rm "$IMAGE" sh -c 'command -v jupyterhub-singleuser >/dev/null && e
   | grep -q '^hub-ok$' \
   || die "jupyterhub-singleuser not found: BinderHub cannot start this image (install the jupyterhub pip package)"
 pass "jupyterhub-singleuser present"
+
+# --- 7. proxy registration survives a masked /etc/jupyter --------------------
+# mybinder.org mounts a Kubernetes ConfigMap at /etc/jupyter, which replaces the
+# whole directory from the image. Mounting an empty dir there reproduces that
+# faithfully: if the "fvs-gui" server were registered by a config file under
+# /etc/jupyter, ServerProxy would come up with no named servers and /fvs-gui/
+# would 302 to the slash-less path and 404 -- exactly the Binder failure, while
+# every other check here still passes.
+info "7. ${BASE_URL}fvs-gui/ still served with /etc/jupyter masked (Binder ConfigMap)"
+maskdir=$(mktemp -d); TMPDIRS+=("$maskdir")
+cid=$(docker run -d -p "${MASK_PORT}:${MASK_PORT}" -v "${maskdir}:/etc/jupyter:ro" "$IMAGE" \
+  jupyter lab --ip=0.0.0.0 --port="${MASK_PORT}" --no-browser \
+  --ServerApp.token='' --ServerApp.password='' --ServerApp.base_url="${BASE_URL}")
+CIDS+=("$cid")
+if ! wait_http "http://localhost:${MASK_PORT}${BASE_URL}api" 90; then
+  echo "--- jupyter container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
+  die "jupyter server did not come up with /etc/jupyter masked"
+fi
+html=$(mktemp); TMPFILES+=("$html")
+code=$(curl -s -o "$html" -w '%{http_code}' -L --max-time 150 "http://localhost:${MASK_PORT}${BASE_URL}fvs-gui/")
+if [ "$code" != "200" ]; then
+  echo "--- jupyter container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
+  die "with /etc/jupyter masked, ${BASE_URL}fvs-gui/ returned HTTP ${code} (expected 200): the fvs-gui route must be registered by the jupyter_serverproxy_servers entry point, which no mount can shadow"
+fi
+grep -qi 'shiny' "$html" || { head -c 800 "$html" >&2; die "masked-config response is not a Shiny page"; }
+
+# The launcher tile and the route come from the same registration, so a served
+# icon is direct evidence the entry point loaded -- and it catches a package
+# that installed without its icons/ data files.
+ctype=$(curl -s -o /dev/null -w '%{content_type}' --max-time 30 \
+  "http://localhost:${MASK_PORT}${BASE_URL}server-proxy/icon/fvs-gui")
+case "$ctype" in
+  image/png*) ;;
+  *) die "launcher icon: expected image/png from ${BASE_URL}server-proxy/icon/fvs-gui, got '${ctype}'" ;;
+esac
+docker rm -f "$cid" >/dev/null; CIDS=()
+pass "proxy registration survives a masked /etc/jupyter, icon served"
+
+# --- 8. entry point is registered and loads ----------------------------------
+# get_entrypoint_server_processes() wraps entry_point.load() in a try/except that
+# warn()s and continues, so a broken entry point produces a silent 404 rather
+# than a startup failure. Construct ServerProcess exactly as it does, which also
+# validates the returned traits.
+info "8. jupyter_serverproxy_servers entry point registered and loadable"
+docker run --rm "$IMAGE" python -c 'import os; \
+from importlib.metadata import entry_points; \
+from jupyter_server_proxy.config import ServerProcess; \
+eps = {e.name: e for e in entry_points(group="jupyter_serverproxy_servers")}; \
+assert "fvs-gui" in eps, "fvs-gui entry point is not registered"; \
+sp = ServerProcess(name="fvs-gui", **eps["fvs-gui"].load()()); \
+assert sp.command[0] == "Rscript", sp.command; \
+assert os.path.exists(sp.command[1]), "launch shim missing: " + sp.command[1]; \
+assert sp.timeout >= 60, sp.timeout; \
+assert sp.absolute_url is False, "absolute_url must stay False"; \
+assert sp.environment.get("SHINY_PORT"), "SHINY_PORT must be non-empty"; \
+assert os.path.exists(sp.launcher_entry.icon_path), "launcher icon missing"; \
+print("entrypoint-ok")' | grep -q '^entrypoint-ok$' \
+  || die "fvs-gui entry point missing or invalid: jupyter-server-proxy would warn() and skip it, leaving a silent 404 on ${BASE_URL}fvs-gui/"
+pass "fvs-gui entry point registered and valid"
+
+# --- 9. supervise loop relaunches the app after stopApp() --------------------
+# fvsOL's session$onSessionEnded calls stopApp() on every ordinary session end,
+# which makes runApp() return; jupyter-server-proxy then never respawns it
+# (ensure_process only clears state["proc"] on a failed START), so the app is
+# gone until the Jupyter server restarts. launch.R wraps runApp in a supervise
+# loop to survive that.
+#
+# Driving this through a real Shiny session would mean hand-rolling a websocket
+# client against Shiny's wire protocol -- fragile, and it would break on any
+# Shiny upgrade. Instead a wrapper schedules a `later` callback on the very
+# event loop runApp services, which calls stopApp() when a sentinel file
+# appears. That exercises the exact code path (runApp returns -> loop relaunches)
+# with no timing race: the sentinel is only created once the app is confirmed
+# serving. The callback does not reschedule itself after firing, so exactly one
+# restart happens.
+info "9. launch.R relaunches fvsOL after stopApp() (closed tab / observer error)"
+wrap=$(mktemp); TMPFILES+=("$wrap"); chmod 644 "$wrap"
+cat > "$wrap" <<'RWRAP'
+watch <- function() {
+  if (file.exists("/tmp/fvs-stop")) {
+    shiny::stopApp()
+    return(invisible(NULL))
+  }
+  later::later(watch, 1)
+}
+later::later(watch, 1)
+source("/opt/fvs/launch.R")
+RWRAP
+cid=$(docker run -d -p "${SUP_PORT}:${SUP_PORT}" -v "${wrap}:/tmp/wrap.R:ro" "$IMAGE" \
+  Rscript /tmp/wrap.R "${SUP_PORT}")
+CIDS+=("$cid")
+if ! wait_http "http://localhost:${SUP_PORT}/" 180; then
+  echo "--- app container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
+  die "app did not serve before the supervise-loop test could start"
+fi
+docker exec "$cid" touch /tmp/fvs-stop
+deadline=$((SECONDS + 120))
+until docker logs "$cid" 2>&1 | grep -q 'relaunching on port'; do
+  if [ "$SECONDS" -ge "$deadline" ]; then
+    echo "--- app container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
+    die "launch.R did not relaunch fvsOL after stopApp(): a closed tab would brick the Binder session"
+  fi
+  sleep 2
+done
+if ! wait_http "http://localhost:${SUP_PORT}/" 180; then
+  echo "--- app container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
+  die "fvsOL relaunched but never served again after stopApp()"
+fi
+docker rm -f "$cid" >/dev/null; CIDS=()
+pass "supervise loop relaunches fvsOL after stopApp()"
 
 printf '\n\033[32mALL SMOKE TESTS PASSED\033[0m (%s)\n' "$IMAGE"

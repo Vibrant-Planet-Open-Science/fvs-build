@@ -1,0 +1,30 @@
+# jupyter-fvsol-proxy -- registers the FVSOnLocal (fvsOL) Shiny app with
+# jupyter-server-proxy via the `jupyter_serverproxy_servers` entry point.
+#
+# Vendored rather than published: it is only ever installed into this image's
+# venv (see docker/Dockerfile.fvs-gui), and keeping it in-repo means the proxy
+# contract stays reviewable alongside launch.R.
+#
+# The entry point NAME is the URL segment. jupyter-server-proxy builds the route
+# as `<base_url>/<name>/` and defaults the launcher's path_info to `<name>/`, so
+# `fvs-gui` here is what makes the README badge's `?urlpath=fvs-gui/` resolve.
+# Renaming it silently breaks the badge; nothing else in the image encodes it.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "jupyter-fvsol-proxy"
+version = "1.0.0"
+description = "jupyter-server-proxy registration for the FVSOnLocal (fvsOL) R-Shiny GUI"
+requires-python = ">=3.10"
+# 4.1 is the floor for the entry-point discovery this package relies on; the
+# image currently resolves 4.5.0.
+dependencies = ["jupyter-server-proxy>=4.1"]
+
+[project.entry-points."jupyter_serverproxy_servers"]
+fvs-gui = "jupyter_fvsol_proxy:setup_fvs_gui"
+
+[tool.hatch.build.targets.wheel]
+packages = ["jupyter_fvsol_proxy"]

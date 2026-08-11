@@ -288,6 +288,8 @@ Click the badge to launch **FVSOnLocal** — the `fvsOL` R-Shiny GUI over FVS �
 
 The heavy image behind that shim is built by [`build-container-fvs-gui-linux.yml`](.github/workflows/build-container-fvs-gui-linux.yml): it reuses the native `FVS<v>.so` set (FVS is never compiled in Docker) and builds the `rFVS`/`fvsOL` R layer on `rocker/r2u:noble`, with Jupyter, `jupyter-server-proxy`, and `jupyterhub` — the last because JupyterHub spawns `jupyterhub-singleuser`, not `jupyter lab`.
 
+The `/fvs-gui/` route is registered by [`docker/fvs-gui/jupyter-fvsol-proxy/`](docker/fvs-gui/jupyter-fvsol-proxy/), a small package that declares a `jupyter_serverproxy_servers` entry point — the same mechanism [`jupyter-rsession-proxy`](https://github.com/jupyterhub/jupyter-rsession-proxy) and [`rocker-org/binder`](https://github.com/rocker-org/binder) use. It is not a Jupyter config file on purpose: mybinder mounts a Kubernetes ConfigMap over `/etc/jupyter` at runtime, replacing that directory from the image, so anything registered there is invisible on Binder even though `docker run` works perfectly.
+
 Three things to know:
 
 - **The GHCR image must be public.** mybinder.org pulls the image referenced by `binder/Dockerfile` anonymously, so publish it (`push: true`) and mark the GHCR package public before the badge works.
