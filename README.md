@@ -1,5 +1,7 @@
 # fvs-build
 
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=fvs-gui/)
+
 Reusable build machinery for the Forest Vegetation Simulator (FVS).
 
 `fvs-build` provides a thin Meson overlay that compiles FVS native binaries (executables and shared libraries) from any source repository following the upstream USDA Forest Service layout. It is **source-agnostic**: callers point `fvs-build` at a checked-out source tree (e.g., a tag of `USDAForestService/ForestVegetationSimulator`) and a set of variant codes, and Meson produces the corresponding native artifacts.
@@ -13,9 +15,13 @@ This repo covers **Linux** (`ubuntu-24.04`), **Windows** (MSYS2 MINGW64), and **
 - [`tools/parse_sourcelist.py`](tools/parse_sourcelist.py) — turns one source list into the categorized file lists Meson consumes. Invoked once per variant via `run_command()`.
 - [`.github/workflows/build-native-linux.yml`](.github/workflows/build-native-linux.yml), [`.github/workflows/build-native-windows.yml`](.github/workflows/build-native-windows.yml), [`.github/workflows/build-native-macos.yml`](.github/workflows/build-native-macos.yml) — reusable `workflow_call` workflows that wrap the Meson overlay per OS. Each produces a per-run artifact bundle (binaries + provenance + SBOM); see [`docs/workflow-interface.md`](docs/workflow-interface.md).
 - [`.github/workflows/build-container-linux.yml`](.github/workflows/build-container-linux.yml) — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image (no recompile inside Docker), with optional GHCR push.
+- [`.github/workflows/build-container-fvs-gui-linux.yml`](.github/workflows/build-container-fvs-gui-linux.yml) — reusable `workflow_call` workflow that builds the Binder-ready FVSOnLocal (`fvsOL`) GUI image: it reuses the native `FVS<v>.so` set and builds the `rFVS`/`fvsOL` R layer on `rocker/r2u:noble`.
 - [`.github/workflows/dispatch-native-linux.yml`](.github/workflows/dispatch-native-linux.yml), [`.github/workflows/dispatch-native-windows.yml`](.github/workflows/dispatch-native-windows.yml), [`.github/workflows/dispatch-native-macos.yml`](.github/workflows/dispatch-native-macos.yml) — manual drivers for each native OS workflow (`workflow_dispatch`).
 - [`.github/workflows/dispatch-container-linux.yml`](.github/workflows/dispatch-container-linux.yml) — manual orchestrator running native + container in sequence.
+- [`.github/workflows/dispatch-container-fvs-gui-linux.yml`](.github/workflows/dispatch-container-fvs-gui-linux.yml) — manual orchestrator running native + FVS GUI container in sequence.
 - [`docker/Dockerfile.runtime`](docker/Dockerfile.runtime) — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; no entrypoint shim, native FVS CLI invocation).
+- [`docker/Dockerfile.fvs-gui`](docker/Dockerfile.fvs-gui) — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the FVS `.so`, builds `rFVS`/`fvsOL`). Its baked-in launch shim and proxy config live under [`docker/fvs-gui/`](docker/fvs-gui/).
+- [`binder/Dockerfile`](binder/Dockerfile) — thin `FROM ghcr.io/.../usfs-fvs-gui:<tag>` shim so mybinder.org launches the GUI image in seconds.
 
 ## Variants supported
 
@@ -166,7 +172,7 @@ Local-only Meson options not exposed through workflows:
 
 ## Calling the workflows as GitHub Automations
 
-Two reusable `workflow_call` workflows wrap the Meson overlay and runtime image build with pinned `ubuntu-24.04` runner, `gfortran-13` toolchain, and `ubuntu:24.04` runtime base.
+Five reusable `workflow_call` workflows wrap the Meson overlay (one per OS), the runtime image build, and the FVS GUI image build, with pinned `ubuntu-24.04` runner, `gfortran-13` toolchain, and `ubuntu:24.04` runtime base.
 
 ### Native binaries only
 
@@ -176,7 +182,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
       profile: reference
 ```
 
@@ -194,7 +200,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
 
   container:
     needs: native
@@ -202,7 +208,7 @@ jobs:
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2026.1
+      image_tag: FS2026.2
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -214,26 +220,26 @@ See [**`docs/workflow-interface.md`**](docs/workflow-interface.md) for the full 
 
 ### Manual / local-dev drivers
 
-Two `workflow_dispatch` drivers exercise the reusable workflows for testing purposes and release mirroring use cases from this repo:
+Five `workflow_dispatch` drivers exercise the reusable workflows for testing purposes and release mirroring use cases from this repo:
 
 ```bash
 # Native binaries only
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.1 \
+  -f source_ref=FS2026.2 \
   -f profile=reference
 
 # Full native + container, dry run (no push)
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.1 \
-  -f image_tag=FS2026.1
+  -f source_ref=FS2026.2 \
+  -f image_tag=FS2026.2
 
-# Same, but actually push to ghcr.io/<owner>/fvs-upstream:FS2026.1
+# Same, but actually push to ghcr.io/<owner>/fvs-upstream:FS2026.2
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.1 \
-  -f image_tag=FS2026.1 \
+  -f source_ref=FS2026.2 \
+  -f image_tag=FS2026.2 \
   -f push=true
 ```
 
@@ -244,24 +250,24 @@ The image has no entrypoint shim — invoke FVS with its native command line. Ea
 ```bash
 docker run --rm \
   -v "$PWD:/data" \
-  ghcr.io/<owner>/usfs-fvs:FS2026.1 \
+  ghcr.io/<owner>/usfs-fvs:FS2026.2 \
   FVSak --keywordfile=mykeyfile.key
 ```
 
 Pass-through FVS options work without any wrapper:
 
 ```bash
-docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.1 \
+docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.2 \
   FVSak --keywordfile=mykey.key --stoppoint=1,2040,mykey.stop
 
-docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.1 \
+docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.2 \
   FVSak --restart=mykey.stop
 ```
 
 The image can also be used as a build stage in downstream Dockerfiles to extract just the binaries you need:
 
 ```dockerfile
-FROM ghcr.io/<owner>/usfs-fvs:FS2026.1 AS fvs
+FROM ghcr.io/<owner>/usfs-fvs:FS2026.2 AS fvs
 FROM ubuntu:24.04
 COPY --from=fvs /usr/local/bin/FVSak /usr/local/bin/
 COPY --from=fvs /usr/local/lib/FVSak.so /usr/local/lib/
@@ -271,7 +277,29 @@ RUN apt-get update && apt-get install -y libgfortran5 libquadmath0 && rm -rf /va
 OCI provenance labels (`org.opencontainers.image.*` plus custom `org.vibrantplanet.fvs.*`) record the source repo, ref, SHA, toolchain versions, and variant set baked in. Inspect with:
 
 ```bash
-docker inspect ghcr.io/<owner>/usfs-fvs:FS2026.1 | jq '.[0].Config.Labels'
+docker inspect ghcr.io/<owner>/usfs-fvs:FS2026.2 | jq '.[0].Config.Labels'
+```
+
+## Run the FVS GUI on Binder
+
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=fvs-gui/)
+
+Click the badge to launch **FVSOnLocal** — the `fvsOL` R-Shiny GUI over FVS — on [mybinder.org](https://mybinder.org). Binder builds the thin [`binder/Dockerfile`](binder/Dockerfile) (a single `FROM ghcr.io/.../usfs-fvs-gui:<tag>`) in seconds and opens the app at the `/fvs-gui/` subpath (the trailing slash in `?urlpath=fvs-gui/` matters).
+
+The heavy image behind that shim is built by [`build-container-fvs-gui-linux.yml`](.github/workflows/build-container-fvs-gui-linux.yml): it reuses the native `FVS<v>.so` set (FVS is never compiled in Docker) and builds the `rFVS`/`fvsOL` R layer on `rocker/r2u:noble`, with Jupyter + `jupyter-server-proxy`.
+
+Two things to know:
+
+- **The GHCR image must be public.** mybinder.org pulls the image referenced by `binder/Dockerfile` anonymously, so publish it (`push: true`) and mark the GHCR package public before the badge works. Bump the pinned tag in `binder/Dockerfile` when a newer GUI image ships.
+- **Online-mode UX caveat.** Behind the proxy subpath the app runs in `fvsOL`'s "Online" mode so SVS tree-diagram PNGs render correctly. Online mode hides two controls that only appear in Local mode — the "Change Working Directory" chooser and the "upload project backup zip" input. For a Binder demo (which ships a writable starter project) that's an acceptable trade-off; restoring them for a hosted context would need an upstream `fvsOL` patch. Binder sessions are ephemeral — nothing you do persists after the session ends.
+
+To build the GUI image yourself (dry run, no push):
+
+```bash
+gh workflow run dispatch-container-fvs-gui-linux.yml \
+  -f source_ref=FS2026.2 \
+  -f interface_ref=92dc046adc1d16ddd320b79e9239abd832cbb069 \
+  -f image_tag=FS2026.2
 ```
 
 ## Known upstream issues in `USDAForestService/ForestVegetationSimulator`

@@ -23,7 +23,7 @@
 # under its native name, so the image is invoked with the natural FVS
 # command line:
 #
-#   docker run --rm -v $PWD:/data ghcr.io/.../usfs-fvs:FS2026.1 \
+#   docker run --rm -v $PWD:/data ghcr.io/.../usfs-fvs:FS2026.2 \
 #     FVSak --keywordfile=mykey.key
 #
 # WORKDIR is /data so relative paths in the keyfile resolve and FVS

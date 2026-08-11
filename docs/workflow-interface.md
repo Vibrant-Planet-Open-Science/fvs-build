@@ -11,10 +11,12 @@ The interface is **source-agnostic**: callers supply a source repo URL plus a co
 | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------- | --------- |
 | [`.github/workflows/build-native-linux.yml`](../.github/workflows/build-native-linux.yml)             | Native Linux x86_64 binaries + provenance + SBOM                                           | `workflow_call`     | available |
 | [`.github/workflows/build-container-linux.yml`](../.github/workflows/build-container-linux.yml)       | Linux container image (Ubuntu 24.04 runtime) packaging the native binaries, pushed to GHCR | `workflow_call`     | available |
+| [`.github/workflows/build-container-fvs-gui-linux.yml`](../.github/workflows/build-container-fvs-gui-linux.yml) | Binder-ready FVSOnLocal (fvsOL) GUI image: reuses the native `.so` set, builds the rFVS/fvsOL R layer | `workflow_call`     | available |
 | [`.github/workflows/dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml)       | Manual driver around `build-native-linux.yml` for local validation                         | `workflow_dispatch` | available |
 | [`.github/workflows/dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) | Manual driver around `build-native-windows.yml` for local validation                       | `workflow_dispatch` | available |
 | [`.github/workflows/dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml)     | Manual driver around `build-native-macos.yml` for local validation                         | `workflow_dispatch` | available |
 | [`.github/workflows/dispatch-container-linux.yml`](../.github/workflows/dispatch-container-linux.yml) | Manual orchestrator running native + container in sequence                                 | `workflow_dispatch` | available |
+| [`.github/workflows/dispatch-container-fvs-gui-linux.yml`](../.github/workflows/dispatch-container-fvs-gui-linux.yml) | Manual orchestrator running native + FVS GUI container in sequence                         | `workflow_dispatch` | available |
 | [`.github/workflows/build-native-windows.yml`](../.github/workflows/build-native-windows.yml)       | Native Windows x86_64 (MSYS2 MINGW64) binaries + provenance + SBOM                       | `workflow_call`     | available |
 | [`.github/workflows/build-native-macos.yml`](../.github/workflows/build-native-macos.yml)           | Native macOS (Homebrew `gcc@N`) binaries + provenance + SBOM                               | `workflow_call`     | available |
 | Upstream-tracking automation                                                                          | Cron-driven detection of new USFS releases plus pruning of evicted images                  | scheduled           | planned   |
@@ -183,7 +185,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
 ```
 
 Pin to a specific `fvs-build` ref (tag or SHA) for reproducible release pipelines:
@@ -200,7 +202,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
 
   use-binaries:
     needs: fvs-binaries
@@ -220,7 +222,7 @@ Build a custom subset of variants:
 ```yaml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
       variants: pn,wc,nc
 ```
 
@@ -243,7 +245,7 @@ Until `fvs-engine`'s release pipeline or the upstream tracker is wired up, valid
 ```bash
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.1
+  -f source_ref=FS2026.2
 ```
 
 The same pattern applies on **Windows** and **macOS** via [`dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) and [`dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml) (substitute the workflow file name in `gh workflow run`).
@@ -273,7 +275,7 @@ Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 2
 | ------------------ | ------- | -------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `artifact_name`    | string  | yes      | —              | Name of the bundle artifact produced by a prior `build-native-linux.yml` job in the same workflow run. Pass through the upstream job's `artifact_name` output.                   |
 | `image_name`       | string  | yes      | —              | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs`). Caller picks the namespace.                                             |
-| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2026.1`).                                                                                                                    |
+| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2026.2`).                                                                                                                    |
 | `image_extra_tags` | string  | no       | `""`           | Comma-separated extra tags applied at push time (e.g. `latest`, `<short-sha>`). Each is `docker tag`ged from the primary and pushed alongside it.                                |
 | `runtime_base`     | string  | no       | `ubuntu:24.04` | Base image for the runtime container. Pinned to `ubuntu:24.04` (same version as the Linux native build runner so glibc baselines match). |
 | `runner_image`     | string  | no       | `ubuntu-24.04` | GitHub-hosted runner image label this workflow runs on.                                                                                                                          |
@@ -365,7 +367,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.1
+      source_ref: FS2026.2
 
   container:
     needs: native
@@ -373,7 +375,7 @@ jobs:
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2026.1
+      image_tag: FS2026.2
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -402,9 +404,124 @@ Use the orchestrator dispatch driver:
 ```bash
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.1 \
-  -f image_tag=FS2026.1 \
+  -f source_ref=FS2026.2 \
+  -f image_tag=FS2026.2 \
   -f push=false
 ```
 
-`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2026.1` once you're confident the image is ready for the registry.
+`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2026.2` once you're confident the image is ready for the registry.
+
+## `build-container-fvs-gui-linux.yml`
+
+Builds a **Binder-ready FVSOnLocal (`fvsOL`) GUI image** and (optionally) pushes it to GHCR. Like `build-container-linux.yml`, it does **not** compile FVS: it reuses the `FVS<v>.so` embedder set from a prior `build-native-linux.yml` bundle. What it *does* build in Docker is the pure-R glue layer — `rFVS` and `fvsOL` from `USDAForestService/ForestVegetationSimulator-Interface` — on top of `rocker/r2u:noble` (Ubuntu 24.04, r2u + bspm for signed apt R binaries), together with a Jupyter + `jupyter-server-proxy` stack so the Shiny app is reachable at the `/fvs-gui/` subpath. Building the R layer in Docker preserves the "FVS is never compiled in Docker" rule: no second FVS binary is produced, only the pure-R glue around the one the native build already made.
+
+### Inputs
+
+
+| Input              | Type    | Required | Default                                                          | Description                                                                                                                       |
+| ------------------ | ------- | -------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `artifact_name`    | string  | yes      | —                                                                | Name of the `build-native-linux.yml` bundle produced in the same run. Only its `FVS<v>.so` set is consumed.                       |
+| `interface_repo`   | string  | no       | `USDAForestService/ForestVegetationSimulator-Interface`          | Source repo (`owner/name`) providing the `rFVS` + `fvsOL` R packages.                                                             |
+| `interface_ref`    | string  | no       | `92dc046adc1d16ddd320b79e9239abd832cbb069`                       | Tag, branch, or SHA in `interface_repo` for the `rFVS`/`fvsOL` sources. Defaults to upstream `main` at the RSQLite fix — see below. |
+| `image_name`       | string  | yes      | —                                                                | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`).                      |
+| `image_tag`        | string  | yes      | —                                                                | Primary tag, typically matching `interface_ref` (e.g. `FS2026.2`).                                                               |
+| `image_extra_tags` | string  | no       | `""`                                                             | Comma-separated extra tags applied at push time (e.g. `latest`).                                                                  |
+| `runner_image`     | string  | no       | `ubuntu-24.04`                                                   | GitHub-hosted runner image label this workflow runs on.                                                                           |
+| `push`             | boolean | no       | `false`                                                          | Push to the registry after the build succeeds. **For mybinder.org to pull the image it must be pushed AND made public.**          |
+
+
+### Outputs
+
+
+| Output         | Description                                                                                            |
+| -------------- | ------------------------------------------------------------------------------------------------------ |
+| `image_ref`    | Primary image reference: `<image_name>:<image_tag>`.                                                   |
+| `image_digest` | Image digest (`sha256:...`). Empty when `push: false` since digests are only stable for pushed images. |
+
+
+### What the workflow does
+
+1. Self-checkout `fvs-build` at the ref implied by `github.workflow_ref` (for [`docker/Dockerfile.fvs-gui`](../docker/Dockerfile.fvs-gui) and the files baked into the image).
+2. Download the named native bundle into `bundle/` and verify it provides the `FVS<v>.so` set.
+3. Check out `interface_repo` at `interface_ref` into `interface/`, then **stage** the `rFVS` and `fvsOL` package roots into `fvs-gui-context/rFVS` and `fvs-gui-context/fvsOL`. The package roots are located by their `DESCRIPTION` files (`Package: rFVS` / `Package: fvsOL`), so the Dockerfile's `COPY` paths stay stable regardless of where the packages live inside the Interface repo. The resolved interface commit SHA is captured for provenance.
+4. Extract FVS source/toolchain/variant provenance from `bundle/provenance/manifest.json` via [`tools/ci/provenance.py`](../tools/ci/provenance.py) (`manifest-to-github-env`).
+5. `docker buildx build --load --platform linux/amd64 -f docker/Dockerfile.fvs-gui .` with the bundle + interface provenance passed as `--build-arg` values (which become OCI labels).
+6. If `push: true` and `image_name` starts with `ghcr.io/`: log in to GHCR and push the primary tag plus any `image_extra_tags`.
+7. Generate an SPDX SBOM of the built image via `syft` and upload it as `container-fvs-gui-sbom-<run_id>`.
+
+### OCI labels applied to the image
+
+The same OCI standard labels and `org.vibrantplanet.fvs.*` labels as the runtime image (source repo/ref/sha, fvs-build repo/ref/sha, variants, gfortran/meson versions; `title` is `usfs-fvs-gui`), **plus** three labels recording the R-layer source:
+
+
+| Label                                    | Source                                                        |
+| ---------------------------------------- | ------------------------------------------------------------- |
+| `org.vibrantplanet.fvs.interface-repo`   | Interface repo (e.g. `USDAForestService/ForestVegetationSimulator-Interface`) |
+| `org.vibrantplanet.fvs.interface-ref`    | Interface ref the `rFVS`/`fvsOL` layer was built from         |
+| `org.vibrantplanet.fvs.interface-sha`    | Interface commit SHA                                          |
+
+
+### Files baked into the image
+
+
+| Path                                        | Content                                                                                     |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `/opt/fvs/FVSbin/FVS<v>.so`                 | per-variant embedder shared library (the `.so` set; `rFVS::fvsLoad()` globs these)          |
+| `/opt/fvs/launch.R`                         | launch shim ([`docker/fvs-gui/launch.R`](../docker/fvs-gui/launch.R)) — neutralizes `launch.browser=TRUE`, pins host/port, calls `shiny::runApp()` |
+| `/etc/jupyter/jupyter_server_config.py`     | jupyter-server-proxy `fvs-gui` entry ([`docker/fvs-gui/jupyter_server_config.py`](../docker/fvs-gui/jupyter_server_config.py)) — `SHINY_PORT` forces Online mode, `timeout: 120`, `absolute_url: False` |
+| `/usr/share/fvs-build/manifest.json`        | the native bundle's top-level provenance manifest                                           |
+| `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary-only SBOM                                                      |
+
+
+The image has **no `ENTRYPOINT`**. Binder/repo2docker starts the Jupyter server; jupyter-server-proxy launches `Rscript /opt/fvs/launch.R {port}` on first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the FVS `.so` live under `/opt/fvs/FVSbin` (`FVSOL_BIN`).
+
+### Online-mode UX trade-off
+
+Behind the proxy subpath, `fvsOL`'s **Local** mode is broken (SVS tree-diagram PNGs are emitted as origin-absolute `/www/…` URLs that 404 under the proxy). The image therefore runs in **Online** mode (non-empty `SHINY_PORT`), where those URLs are proxy-relative and render correctly. Online mode hides two `isLocal()`-gated UI controls — the "Change Working Directory" chooser and the "upload project backup zip" input. For a Binder demo that ships a default project this is acceptable; restoring them for a hosted context would need an upstream `fvsOL` patch (out of scope).
+
+### Why `interface_ref` defaults to a commit SHA
+
+`fvsOL` used to write scratch tables with `dbWriteTable(con, DBI::SQL("temp.X"), …)`. On **RSQLite ≥ 3.53.1** that call fails with `Named parameters not used in query: name`, which greys out the app the moment a stand is selected. Upstream fixed it in **[ForestVegetationSimulator-Interface PR #29](https://github.com/USDAForestService/ForestVegetationSimulator-Interface/pull/29)**, rewriting those calls as `dbWriteTable(con, "X", …, temporary = TRUE, overwrite = TRUE)`.
+
+That fix is on upstream `main` but has **not yet appeared in a release tag** — the newest tag, `FS2026.2`, predates it. So `interface_ref` defaults to the `main` commit carrying the fix (`92dc046`) rather than to a tag. A SHA rather than the `main` branch name keeps the image reproducible and the `org.vibrantplanet.fvs.interface-sha` label meaningful.
+
+`Dockerfile.fvs-gui` asserts the staged sources contain no `DBI::SQL("temp…")` in `fvsOL/R` and fails the build otherwise, so pointing `interface_ref` back at an affected ref is caught at build time instead of surfacing as a broken UI.
+
+**Follow-up:** once a release tag ships that includes the fix, move `interface_ref` back to that tag and drop the guard.
+
+### Smoke test
+
+Unlike [`build-container-linux.yml`](#build-container-linuxyml) — which skips in-image smoke tests and leans on the native `STOP 20` gate — this workflow **smoke-tests the built image before pushing**. The GUI image has no equivalent upstream gate for its R/Shiny layer, and several failure modes (packages not attaching, a copied `.so` not loadable in-image, the RSQLite regression, a broken proxy path) only surface at runtime, so the test earns its keep here.
+
+[`tools/ci/smoke_fvs_gui.sh`](../tools/ci/smoke_fvs_gui.sh) runs against an already-built image (it does not build) and is the single source of truth for both CI and local runs. The workflow invokes it after `docker buildx build --load` and **before** the GHCR login/push, so a failure blocks publication; `--load` has already placed the image in the local daemon, so no registry access is needed. Checks:
+
+| Check | Catches |
+| ----- | ------- |
+| 1. `fvsOL` + `rFVS` attach (`library()`) | `Depends` not attaching (e.g. unqualified `addResourcePath`) |
+| 2. an `FVS<v>.so` loads via `rFVS::fvsLoad` with its expected C API symbols | a copied `.so` not runnable in-image (glibc/libgfortran mismatch) |
+| 3. the `temporary = TRUE` write pattern works + the default `FVS_Data.db` opens | a *future* RSQLite breaking the call style `fvsOL` relies on — r2u installs it unpinned, and it broke once already. Sources predating the fix are caught earlier, by the Dockerfile guard |
+| 4. the app boots headless via `launch.R` → HTTP 200 Shiny page | `fvsOL()` startup errors, hardcoded `launch.browser`, missing assets |
+| 5. jupyter-server-proxy serves the app at `/fvs-gui/` | the Binder entrypoint end-to-end (proxy config + `SHINY_PORT` online mode) |
+
+Run it locally against a `--load`ed image before committing:
+
+```bash
+docker buildx build --load -t usfs-fvs-gui:local -f docker/Dockerfile.fvs-gui .
+tools/ci/smoke_fvs_gui.sh usfs-fvs-gui:local
+```
+
+(Override the variant used in check 2 with `SMOKE_VARIANT=<code>`; it otherwise auto-detects one from `/opt/fvs/FVSbin`.)
+
+### Local validation
+
+Use the orchestrator dispatch driver:
+
+```bash
+gh workflow run dispatch-container-fvs-gui-linux.yml \
+  -f source_ref=FS2026.2 \
+  -f interface_ref=92dc046adc1d16ddd320b79e9239abd832cbb069 \
+  -f image_tag=FS2026.2 \
+  -f push=false
+```
+
+`push=false` (the default) builds the GUI image without publishing, confirming the native→image handoff and the R-layer build. Set `-f push=true` to publish to `ghcr.io/<your-account>/usfs-fvs-gui:FS2026.2`; then make the GHCR package **public** before pointing mybinder.org at it (see the README Binder section).
