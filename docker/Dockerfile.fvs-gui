@@ -1,0 +1,200 @@
+# FVSOnLocal (fvsOL) GUI container image -- Binder-ready.
+#
+# This image runs the R-Shiny FVSOnLocal app (fvsOL, which depends on rFVS)
+# from USDAForestService/ForestVegetationSimulator-Interface, launchable on
+# mybinder.org with one click via a thin binder/Dockerfile shim.
+#
+# The FVS<v>.so embedder libraries are COPYed from a prior build-native-linux.yml
+# bundle. Only the *R glue layer* (rFVS + fvsOL, both pure R) is built here as
+# an R package build+install.
+#
+# Base: rocker/r2u:noble -- Ubuntu 24.04 "noble", glibc-identical to the
+# ubuntu-24.04 native build runner so the copied .so load cleanly. r2u + bspm
+# are preconfigured so install.packages() pulls signed apt binaries and
+# auto-resolves system deps (Cairo, rgl, leaflet, openxlsx, RSQLite, ...).
+#
+# Build context expectations (set up by build-container-fvs-gui-linux.yml):
+#   ./bundle/                     unpacked fvs-native-linux-<run_id> artifact
+#   ./bundle/FVS<v>.so            embedder shared libraries (the .so set)
+#   ./bundle/provenance/manifest.json
+#   ./bundle/sbom/fvs-native-linux.spdx.json
+#   ./fvs-gui-context/rFVS/       rFVS R package source (staged by the workflow)
+#   ./fvs-gui-context/fvsOL/      fvsOL R package source (staged, sibling of rFVS)
+#
+# The image has no ENTRYPOINT; Binder/repo2docker starts the Jupyter server
+# and jupyter-server-proxy serves the app at the /fvs-gui/ subpath.
+
+FROM rocker/r2u:noble
+
+# Provenance ARGs mirror Dockerfile.runtime (derived from the bundle's
+# manifest.json by the workflow), extended with the Interface source provenance.
+# Kept as ARGs so ad-hoc local builds can pass --build-arg.
+ARG SOURCE_REPO
+ARG SOURCE_REF
+ARG SOURCE_SHA
+ARG FVS_BUILD_REPO
+ARG FVS_BUILD_REF
+ARG FVS_BUILD_SHA
+ARG VARIANTS
+ARG GFORTRAN_VERSION
+ARG MESON_VERSION
+ARG TIMESTAMP
+ARG INTERFACE_REPO
+ARG INTERFACE_REF
+ARG INTERFACE_SHA
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV FVS_VERSION=${SOURCE_REF}
+# Binder identity. Jupyter and the app run as this unprivileged user.
+ENV USER=jovyan
+ENV HOME=/home/jovyan
+# Python venv holding the Binder/Jupyter stack, on PATH for every user so
+# `jupyter` resolves without --break-system-packages against noble's PEP 668
+# externally-managed system Python.
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH=/opt/venv/bin:${PATH}
+# rgl runs headless in the container/Binder: use its null device instead of
+# trying (and failing) to open an X11/OpenGL display.
+ENV RGL_USE_NULL=TRUE
+
+# FVS runtime libraries r2u will NOT pull (they satisfy the copied FVS<v>.so's
+# Fortran/quad-precision runtime), plus build glue: make/git for the R package
+# data-gen makefiles, python3-venv for the Jupyter venv, ca-certificates.
+RUN apt-get update \
+  && apt-get upgrade -y --no-install-recommends \
+  && apt-get install -y --no-install-recommends \
+  libgfortran5 \
+  libquadmath0 \
+  make \
+  git \
+  python3-venv \
+  ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
+
+# Binder stack. notebook>=7 is the jupyter-server-backed line (avoid classic
+# notebook 6); jupyter-server-proxy reverse-proxies the Shiny app.
+RUN python3 -m venv "${VIRTUAL_ENV}" \
+  && pip install --no-cache-dir \
+  "notebook>=7" \
+  jupyterlab \
+  jupyter-server-proxy
+
+# fvsOL/rFVS build + runtime R dependencies. Under r2u+bspm these resolve to
+# signed apt binaries and their system libraries automatically. devtools /
+# roxygen2 / remotes are needed because neither package ships NAMESPACE/man,
+# so the build must run devtools::document() before install. `parallel` is
+# base R and needs no install.
+RUN Rscript -e 'pkgs <- c( \
+  "devtools", "roxygen2", "remotes", \
+  "shiny", "Cairo", "rhandsontable", "ggplot2", "RSQLite", "plyr", "dplyr", \
+  "colourpicker", "rgl", "leaflet", "zip", "openxlsx", "shinyFiles"); \
+  install.packages(pkgs); \
+  missing <- setdiff(pkgs, rownames(installed.packages())); \
+  if (length(missing)) { message("failed to install: ", paste(missing, collapse = ", ")); quit(status = 1) }'
+
+# FVS shared libraries from the native bundle -> fvsBin directory.
+# rFVS::fvsLoad() globs FVS*.so here to auto-discover variants
+# (fvsOL/R/fvsRunUtilities.R). Copy ONLY the FVS*.so set to keep image smaller
+# and avoid copying additional unnecessary artifacts. A glob matching nothing
+# fails the build, which preserves a "no .so present" guard.
+COPY bundle/FVS*.so /opt/fvs/FVSbin/
+
+# Provenance manifest + binary SBOM, mirroring Dockerfile.runtime's layout.
+COPY bundle/provenance/manifest.json         /usr/share/fvs-build/manifest.json
+COPY bundle/sbom/fvs-native-linux.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
+
+# rFVS + fvsOL sources, staged by the workflow as siblings (the fvsOL data-gen
+# scripts and devtools calls assume the sibling layout).
+COPY fvs-gui-context/rFVS/  /opt/fvs/interface/rFVS/
+COPY fvs-gui-context/fvsOL/ /opt/fvs/interface/fvsOL/
+
+# Guard: the sources must already carry the RSQLite >= 3.53.1 fix.
+#
+# fvsOL used to write scratch tables as dbWriteTable(con, DBI::SQL("temp.X"), ...),
+# which on RSQLite >= 3.53.1 fails with "Named parameters not used in query: name"
+# and greys out the app the moment a stand is selected. Upstream fixed this
+# (ForestVegetationSimulator-Interface PR #29) by rewriting those calls as
+# dbWriteTable(con, "X", ..., temporary=TRUE, overwrite=TRUE). The default
+# interface_ref is pinned past that fix, so nothing is patched here.
+#
+# The release tag FS2026.2 predates the fix. This assertion turns "someone pointed
+# interface_ref back at an affected ref" into a loud build failure instead of an
+# image that installs fine and then breaks in the UI. It is cheap; keep it until
+# no supported interface_ref can predate the fix.
+WORKDIR /opt/fvs/interface
+RUN if grep -rq 'DBI::SQL("temp' fvsOL/R; then \
+  echo "ERROR: interface source predates the RSQLite temp-table fix (PR #29)." >&2; \
+  echo "       Use an interface_ref at or after upstream main 92dc046." >&2; \
+  exit 1; \
+  fi
+
+# Build the R glue layer in dependency order. Neither package ships
+# NAMESPACE/man, so document() (roxygen2) must run before install(). fvsOL
+# also ships only data/treeforms.RData; prms.RData and
+# fvsOnlineHelpRender.RData are generated at build time by the data-gen
+# scripts (the makefile `all` target), run with cwd = the fvsOL package dir.
+WORKDIR /opt/fvs/interface
+RUN Rscript -e 'devtools::document("rFVS"); devtools::install("rFVS", dependencies = FALSE, upgrade = FALSE)'
+WORKDIR /opt/fvs/interface/fvsOL
+RUN Rscript parms/mkpkeys.R \
+  && Rscript inst/extdata/mkhelp.R
+WORKDIR /opt/fvs/interface
+RUN Rscript -e 'devtools::document("fvsOL"); devtools::install("fvsOL", dependencies = FALSE, upgrade = FALSE)' \
+  && Rscript -e 'stopifnot(requireNamespace("fvsOL", quietly = TRUE), requireNamespace("rFVS", quietly = TRUE))'
+
+# All build-time R installs are done, so bspm is no longer needed. In a
+# headless container it can't reach the D-Bus/systemd package daemon that r2u's
+# Rprofile.site bspm::enable() looks for, which prints a startup warning on
+# every runtime R session. Tell bspm to use its sudo backend instead (never
+# actually invoked -- the app installs nothing at runtime). This must be set
+# before bspm::enable() runs, so prepend it to Rprofile.site.
+RUN R_SITE="$(R RHOME)/etc/Rprofile.site" \
+  && touch "$R_SITE" \
+  && { echo 'options(bspm.sudo = TRUE)'; cat "$R_SITE"; } > "${R_SITE}.tmp" \
+  && mv "${R_SITE}.tmp" "$R_SITE"
+
+# Launch shim + proxy config baked in (kept in this repo under docker/fvs-gui/).
+COPY docker/fvs-gui/launch.R                    /opt/fvs/launch.R
+COPY docker/fvs-gui/jupyter_server_config.py    /etc/jupyter/jupyter_server_config.py
+
+# Binder user (uid 1000) + a writable starter project. The app writes runs,
+# its SQLite DB, and ./www into prjDir, so prjDir and HOME must be writable by
+# uid 1000. Binder's HOME is ephemeral/per-session -- fine for a demo.
+#
+# Ubuntu 24.04 (and thus rocker/r2u:noble) ships a default non-root `ubuntu`
+# user at uid 1000, so remove whatever holds uid 1000 before creating jovyan.
+RUN if id -u 1000 >/dev/null 2>&1; then \
+  userdel -r "$(id -un 1000)" 2>/dev/null || userdel "$(id -un 1000)"; \
+  fi \
+  && useradd --create-home --uid 1000 --shell /bin/bash jovyan \
+  && mkdir -p /home/jovyan/project \
+  && chown -R 1000:1000 /home/jovyan /opt/fvs
+
+# OCI standard provenance labels.
+LABEL org.opencontainers.image.source="https://github.com/${FVS_BUILD_REPO}" \
+  org.opencontainers.image.revision="${FVS_BUILD_SHA}" \
+  org.opencontainers.image.version="${SOURCE_REF}" \
+  org.opencontainers.image.created="${TIMESTAMP}" \
+  org.opencontainers.image.title="usfs-fvs-gui" \
+  org.opencontainers.image.description="FVSOnLocal (fvsOL) R-Shiny GUI over FVS variant shared libraries, packaged Binder-ready on rocker/r2u:noble. FVS .so copied from a native build (never compiled in Docker); only the rFVS/fvsOL R layer is built here. Built by Vibrant-Planet-Open-Science/fvs-build." \
+  org.opencontainers.image.documentation="https://github.com/${FVS_BUILD_REPO}/blob/${FVS_BUILD_REF}/docs/workflow-interface.md"
+
+# fvs-build-specific provenance: FVS source, toolchain, variant set (all from
+# the native bundle) plus the Interface source the R layer was built from.
+LABEL org.vibrantplanet.fvs.source-repo="${SOURCE_REPO}" \
+  org.vibrantplanet.fvs.source-ref="${SOURCE_REF}" \
+  org.vibrantplanet.fvs.source-sha="${SOURCE_SHA}" \
+  org.vibrantplanet.fvs.fvs-build-repo="${FVS_BUILD_REPO}" \
+  org.vibrantplanet.fvs.fvs-build-ref="${FVS_BUILD_REF}" \
+  org.vibrantplanet.fvs.fvs-build-sha="${FVS_BUILD_SHA}" \
+  org.vibrantplanet.fvs.variants="${VARIANTS}" \
+  org.vibrantplanet.fvs.gfortran-version="${GFORTRAN_VERSION}" \
+  org.vibrantplanet.fvs.meson-version="${MESON_VERSION}" \
+  org.vibrantplanet.fvs.interface-repo="${INTERFACE_REPO}" \
+  org.vibrantplanet.fvs.interface-ref="${INTERFACE_REF}" \
+  org.vibrantplanet.fvs.interface-sha="${INTERFACE_SHA}"
+
+WORKDIR /home/jovyan
+# Numeric on purpose (hadolint DL3066): this is the jovyan account created
+# above, and Binder requires the image to run as uid 1000.
+USER 1000
