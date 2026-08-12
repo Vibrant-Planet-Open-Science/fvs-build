@@ -16,11 +16,29 @@
 #   3. calls shiny::runApp() with explicit host/port/launch.browser, which
 #      override whatever appOptions the returned app object carried.
 #
-# SHINY_PORT is set to a non-empty value in the proxy config so fvsOL runs in
-# "Online" mode (isLocal() == FALSE, server.R:113): behind the proxy subpath
-# that is the mode whose SVS tree-diagram PNGs use proxy-relative URLs and
-# render correctly. See the Binder section of the README for the Online-mode UX
-# trade-off.
+# SHINY_PORT is deliberately left UNSET (see the proxy config) so fvsOL runs in
+# "Local" mode (isLocal() == TRUE, server.R:113). Local is the mode that wires up
+# the working-directory chooser, the project-backup upload and project switching;
+# Online mode ships those controls but leaves them inert. The two upstream
+# defects that made Local mode unusable behind a proxy on Linux are fixed by
+# docker/fvs-gui/patches/, applied to the sources at build time.
+#
+# The `fs` attachment is the third piece of that, and it is a HARD requirement,
+# not tidiness: getVolumes2() (fvsOL/R/change_project_dir.R) calls fs::dir_exists
+# and fs::dir_ls unqualified while fvsOL neither Depends on nor Imports fs, and
+# server.R:421 calls it inside `if (isLocal())`. Without fs attached the session
+# dies at construction with `could not find function "dir_exists"` -- the app
+# boots fine and only fails once a browser opens a session. fs is already in the
+# image as a transitive dependency, so it only needs attaching. Kept here rather
+# than in the patch on purpose: it is a deployment-side workaround, and keeping
+# it out of the diff means one less hunk to carry across interface_ref bumps.
+#
+# The open project is the process's cwd: fvsOL() does setwd(prjDir) (server.R:20)
+# and the GUI's own "Change Working Directory" / "Open selected project" both
+# setwd() and reload the session. So a directory the user chose does NOT survive a
+# relaunch by the supervise loop below -- the loop re-enters
+# fvsOL(prjDir = FVSOL_PRJDIR, ...), whose explicit argument setwd()s back to the
+# starter project. Known, not fixed.
 #
 # The runApp() call is wrapped in a SUPERVISE LOOP. fvsOL is written for the
 # desktop case where quitting the browser should quit R: its
@@ -60,8 +78,12 @@ options(browser = function(url) invisible(NULL))
 options(shiny.port = port, shiny.host = "0.0.0.0")
 
 # Attach fvsOL (and, via its Depends, shiny/Cairo/... which the app calls
-# unqualified). Startup messages go to stderr; keep them quiet.
-suppressPackageStartupMessages(library(fvsOL))
+# unqualified), plus fs for getVolumes2() as described above. Startup messages go
+# to stderr; keep them quiet.
+suppressPackageStartupMessages({
+  library(fs)
+  library(fvsOL)
+})
 
 fast_restarts <- 0
 

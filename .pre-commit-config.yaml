@@ -17,8 +17,14 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # docker/fvs-gui/patches/ is excluded from both byte-level fixers: the
+      # diffs carry upstream's trailing whitespace in their context lines, and
+      # `git apply` rejects a patch whose context no longer matches byte for
+      # byte. "Cleaning" one silently breaks the GUI image build.
       - id: trailing-whitespace
+        exclude: ^docker/fvs-gui/patches/
       - id: end-of-file-fixer
+        exclude: ^docker/fvs-gui/patches/
       - id: check-yaml
         # GitHub Actions YAML occasionally uses tag aliases that
         # standard PyYAML rejects without --unsafe. The actionlint hook

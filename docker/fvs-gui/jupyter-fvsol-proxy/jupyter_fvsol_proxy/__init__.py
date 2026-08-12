@@ -39,10 +39,9 @@ def setup_fvs_gui() -> dict[str, object]:
     """
     launcher_entry: dict[str, object] = {"title": "FVS GUI", "enabled": True}
 
-    # Rendered by the JupyterLab launcher as a plain <img>, so a raster icon is
-    # fine here despite icon_path's "svg" help text. Guarded rather than assumed:
-    # an IndexError/OSError raised inside this function would be swallowed into a
-    # silent 404, and a missing tile is a far better failure than a missing app.
+    # Rendered by the JupyterLab launcher as a plain <img>. Guarded by a
+    # conditional so that app is not missing on startup page even if icon
+    # isn't found at build time.
     icon = files("jupyter_fvsol_proxy") / "icons" / "fvs.png"
     if icon.is_file():
         launcher_entry["icon_path"] = str(icon)
@@ -55,9 +54,5 @@ def setup_fvs_gui() -> dict[str, object]:
         # jupyter-server-proxy strips the /fvs-gui prefix before forwarding;
         # Shiny then emits correct relative asset URLs. Do NOT set True.
         "absolute_url": False,
-        # Non-empty SHINY_PORT => fvsOL isLocal() is FALSE => "Online" mode,
-        # whose SVS tree-diagram PNGs use proxy-relative URLs that render
-        # under the subpath.
-        "environment": {"SHINY_PORT": "1"},
         "launcher_entry": launcher_entry,
     }

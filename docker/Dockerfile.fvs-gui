@@ -105,6 +105,28 @@ RUN if grep -rq 'DBI::SQL("temp' fvsOL/R; then \
   exit 1; \
   fi
 
+# Patches applied BEFORE the package is built so the installed copy carries
+# them. The image runs fvsOL in LOCAL mode (see the proxy config), which is the
+# mode that wires up the working-directory chooser, the project backup upload
+# and project switching -- but upstream Local mode has two Linux/reverse-proxy
+# defects that make it unusable as shipped.
+COPY docker/fvs-gui/patches/ /opt/fvs/patches/
+RUN git apply --verbose /opt/fvs/patches/*.patch
+
+# Assert the patch actually took, in the shape of the DBI::SQL guard above: an
+# origin-absolute stand-image URL and the mis-cased lock-file removal are both
+# invisible at build time and only surface in a live session.
+RUN if grep -rq '"/www/s' fvsOL/R; then \
+  echo "ERROR: origin-absolute /www/ stand-image URL still present in fvsOL/R." >&2; \
+  echo "       View On Maps popup graphs will 404 under the /fvs-gui/ subpath." >&2; \
+  exit 1; \
+  fi \
+  && if grep -rq 'ProjectIsLocked' fvsOL/R; then \
+  echo "ERROR: mis-cased ProjectIsLocked.txt still present in fvsOL/R." >&2; \
+  echo "       Leaving a project would strand a lock and hide it from the picker." >&2; \
+  exit 1; \
+  fi
+
 # Build the R glue layer in dependency order. The mkpkeys/mkhelp step generates
 # prms.RData and fvsOnlineHelpRender.RData, which fvsOL does not ship, and must
 # run with cwd = the fvsOL package dir.
@@ -129,9 +151,9 @@ RUN R_SITE="$(R RHOME)/etc/Rprofile.site" \
 # file -- mybinder mounts a ConfigMap over /etc/jupyter at runtime and would
 # mask one. Full rationale in the package's module docstring. smoke checks 7, 8.
 #
-# The assertion is not belt-and-braces: jupyter-server-proxy warn()s and skips
-# an entry point that raises, so a mistake here is a silent 404 rather than a
-# startup error. Fail the build instead.
+# jupyter-server-proxy warn()s and skips an entry point that raises, so a
+# mistake here would allow a silent 404 rather than a startup error. Fail the
+# build instead.
 COPY docker/fvs-gui/launch.R              /opt/fvs/launch.R
 COPY docker/fvs-gui/jupyter-fvsol-proxy/  /opt/fvs/jupyter-fvsol-proxy/
 RUN pip install --no-cache-dir /opt/fvs/jupyter-fvsol-proxy \

@@ -1,0 +1,57 @@
+From: fvs-build <https://github.com/Vibrant-Planet-Open-Science/fvs-build>
+Subject: [PATCH] fvsOL: make Local mode work behind a reverse-proxy subpath on Linux
+
+Vendored by docker/Dockerfile.fvs-gui, which applies it with `git apply` before
+building the fvsOL package, then asserts the result. `git apply` refuses fuzzy
+application on purpose: an interface_ref bump that moves these lines fails the
+build loudly instead of silently shipping unpatched code.
+
+Rationale for each hunk, and the exit criteria for deleting this file, are in
+docs/workflow-interface.md; the upstream issue drafts are under docs/plans/.
+
+1. "View On Maps" popup graphs (server.R:5933). With Display=graph, each stand's
+   leaflet marker popup shows a per-stand PNG written to ./www/s<sid>.png and
+   served via addResourcePath("www", ...). The isLocal() branch addresses it as
+   an origin-absolute "/www/s<sid>.png", which 404s whenever the app is served
+   under a path prefix. The other branch derives the URL from
+   session$clientData$url_pathname, which is correct both behind a proxy and
+   with no proxy at all (url_pathname is "/"), so the special case buys nothing
+   and costs Local mode every popup graph on that tab.
+
+2/3. Lock-file name case (server.R:8783, 8920). The file is written as
+   projectIsLocked.txt (server.R:224) and read back with that spelling
+   everywhere else, but these two removals spell it ProjectIsLocked.txt. On a
+   case-sensitive filesystem the removal silently fails, so every project the
+   user leaves keeps a stale lock -- and getProjectList() drops locked
+   projects, so the project vanishes from the picker with no way back.
+---
+--- a/fvsOL/R/server.R
++++ b/fvsOL/R/server.R
+@@ -5930,8 +5930,7 @@
+             url = paste0(session$clientData$url_protocol,"//",
+                          session$clientData$url_hostname,
+                          session$clientData$url_pathname)
+-            pfile=if (isLocal()) paste0("/www/s",sid,".png") else
+-                                 paste0(url,"www/s",sid,".png")
++            pfile=paste0(url,"www/s",sid,".png")
+             HTML(paste0('<img src="',pfile,'?',as.character(as.numeric(Sys.time())),
+                         '" alt="',sid,'" style="width:229px;height:170px;">'))
+           }
+@@ -8780,7 +8779,7 @@
+       { 
+         if (isLocal()) 
+         {
+-        file.remove('./ProjectIsLocked.txt')
++        file.remove('./projectIsLocked.txt')
+         setwd(newPrj)
+         globals$reloadAppIsSet=1
+         session$reload()    
+@@ -8917,7 +8916,7 @@
+               return()
+             }
+ 
+-            file.remove('./ProjectIsLocked.txt')
++            file.remove('./projectIsLocked.txt')
+             setwd(dirPath)
+             globals$reloadAppIsSet=1
+             session$reload()
