@@ -177,12 +177,15 @@ RUN if id -u 1000 >/dev/null 2>&1; then \
   && chown -R 1000:1000 /home/jovyan /opt/fvs
 
 # OCI standard provenance labels.
+# `licenses` describes the image contents, not this repo: CC0-1.0 upstream
+# FVS and rFVS/fvsOL, MIT the fvs-build parts. Same value on both images.
 LABEL org.opencontainers.image.source="https://github.com/${FVS_BUILD_REPO}" \
   org.opencontainers.image.revision="${FVS_BUILD_SHA}" \
   org.opencontainers.image.version="${SOURCE_REF}" \
   org.opencontainers.image.created="${TIMESTAMP}" \
   org.opencontainers.image.title="usfs-fvs-gui" \
   org.opencontainers.image.description="FVSOnLocal (fvsOL) R-Shiny GUI over FVS variant shared libraries, packaged Binder-ready on rocker/r2u:noble. FVS .so copied from a native build (never compiled in Docker); only the rFVS/fvsOL R layer is built here. Built by Vibrant-Planet-Open-Science/fvs-build." \
+  org.opencontainers.image.licenses="MIT AND CC0-1.0" \
   org.opencontainers.image.documentation="https://github.com/${FVS_BUILD_REPO}/blob/${FVS_BUILD_REF}/docs/workflow-interface.md"
 
 # fvs-build-specific provenance: FVS source, toolchain, variant set (all from
