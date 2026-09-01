@@ -191,7 +191,7 @@ jobs:
 Pin to a specific `fvs-build` ref (tag or SHA) for reproducible release pipelines:
 
 ```yaml
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.1.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.2.0
 ```
 
 Consume the produced artifact in a downstream job in the same workflow:
@@ -301,6 +301,7 @@ Standard [OpenContainers annotations](https://github.com/opencontainers/image-sp
 | `org.opencontainers.image.created`       | Build timestamp (ISO 8601 UTC)                                                   |
 | `org.opencontainers.image.title`         | `usfs-fvs`                                                                       |
 | `org.opencontainers.image.description`   | Project description                                                              |
+| `org.opencontainers.image.licenses`      | `MIT AND CC0-1.0` — SPDX expression for the software contained in the image (static literal, not from the manifest): `CC0-1.0` for the public-domain upstream FVS sources the binaries are compiled from, `MIT` for the `fvs-build` code and provenance records shipped alongside them |
 | `org.opencontainers.image.documentation` | URL to this document at the build's `fvs-build` ref                              |
 
 
@@ -439,7 +440,7 @@ Builds a **Binder-ready FVSOnLocal (`fvsOL`) GUI image** and (optionally) pushes
 
 ### OCI labels applied to the image
 
-The same OCI standard labels and `org.vibrantplanet.fvs.*` labels as the runtime image (source repo/ref/sha, fvs-build repo/ref/sha, variants, gfortran/meson versions; `title` is `usfs-fvs-gui`), **plus** three labels recording the R-layer source:
+The same OCI standard labels and `org.vibrantplanet.fvs.*` labels as the runtime image (source repo/ref/sha, fvs-build repo/ref/sha, variants, gfortran/meson versions, `licenses` of `MIT AND CC0-1.0`; `title` is `usfs-fvs-gui`), **plus** three labels recording the R-layer source:
 
 
 | Label                                    | Source                                                        |
