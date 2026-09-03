@@ -50,6 +50,8 @@ runs:
         ref: ${{ steps.fb_ref.outputs.ref }}
         path: fvs-build
 
+    # fetch-depth: 0 because meson.build derives build-info macros from git in
+    # this tree, and `git describe --tags` needs tags and history.
     - name: Check out FVS source tree
       uses: actions/checkout@v5
       with:
@@ -58,6 +60,7 @@ runs:
         path: fvs-source
         clean: true
         submodules: recursive
+        fetch-depth: 0
 
     - name: Remove stray Fortran .mod files from source tree
       shell: ${{ inputs.run_shell }}

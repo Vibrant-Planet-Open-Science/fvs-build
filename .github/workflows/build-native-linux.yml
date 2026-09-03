@@ -56,12 +56,14 @@ on:
         default: "g++-13"
       meson_version:
         description: >-
-          Exact Meson version to install via pip. Pinned to the version
-          fvs-build was developed against to keep configure-time behavior
-          stable across releases.
+          Exact Meson version to install via pip, pinned to keep
+          configure-time behavior stable across releases. meson.build
+          requires >=1.8.0: base/main.f90 uses the FVSVERSION module, and
+          only 1.8.0+ adds a link_whole target's private directory to the
+          Fortran module search path.
         required: false
         type: string
-        default: "1.5.2"
+        default: "1.12.0"
       profile:
         description: >-
           Build profile. One of: reference, debug. reference is
@@ -188,7 +190,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
+          key: meson-${{ runner.os }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
 
       - name: Configure Meson
         env:
@@ -210,6 +212,7 @@ jobs:
       - name: Smoke-test the variant executable
         env:
           VARIANT: ${{ matrix.variant }}
+          FVS_SOURCE: ${{ github.workspace }}/fvs-source
         run: |
           set -euo pipefail
           BIN_REL="_build/FVS${VARIANT}"
@@ -221,6 +224,17 @@ jobs:
           SMOKE_DIR=$(mktemp -d)
           cp "$BIN_REL" "$SMOKE_DIR/"
           OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}" </dev/null 2>&1) || true )"
+          # version.f90 present means the -D macros must have landed; "unknown" = they did not.
+          if [ -f "${FVS_SOURCE}/base/version.f90" ]; then
+            VERSION_OUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}" --version) )"
+            echo "FVS${VARIANT} --version: ${VERSION_OUT}"
+            case "$VERSION_OUT" in
+              ""|unknown*|*-dirty*)
+                echo "ERROR: unusable build info for FVS${VARIANT}: ${VERSION_OUT}" >&2
+                exit 1
+                ;;
+            esac
+          fi
           rm -rf "$SMOKE_DIR"
           echo "----- smoke output (first 30 lines) -----"
           printf '%s\n' "$OUTPUT" | head -n 30
