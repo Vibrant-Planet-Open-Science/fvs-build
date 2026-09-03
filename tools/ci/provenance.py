@@ -404,7 +404,7 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
     normalized = _normalize_flat_single_variant_staging(staging_dir, dir_prefix)
     if normalized:
         print(
-            f"collect-bundle: normalized flat single-artifact staging → {normalized}/",
+            f"collect-bundle: normalized flat single-artifact staging -> {normalized}/",
         )
     variant_dirs = sorted(staging_dir.glob(f"{dir_prefix}*/"))
     if not variant_dirs:
