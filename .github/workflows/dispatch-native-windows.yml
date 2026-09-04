@@ -45,7 +45,7 @@ on:
       meson_version:
         description: "Meson version installed via pip (MINGW64 Python)"
         required: false
-        default: "1.5.2"
+        default: "1.12.0"
         type: string
       profile:
         description: "Build profile: reference (default, goldens-aligned) or debug (paranoid checks)"

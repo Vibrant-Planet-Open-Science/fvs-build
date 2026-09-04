@@ -18,7 +18,7 @@ project(
   'fvs-build',
   ['c', 'cpp', 'fortran'],
   version: '0.2.0',
-  meson_version: '>=1.1.0',
+  meson_version: '>=1.8.0',
   default_options: [
     'c_std=c11',
     'cpp_std=c++14',
@@ -97,6 +97,27 @@ common_fortran_args += profile_fortran_args + extra_fortran_flags
 
 py = find_program('python3')
 parser = files('tools/parse_sourcelist.py')
+
+# base/version.f90 (MODULE FVSVERSION) reads six -DFVS_GIT_* macros. Source
+# trees at or before FS2026.2 predate it and build without them.
+fs = import('fs')
+version_flags = []
+if fs.exists(src_dir / 'base' / 'version.f90')
+  info_run = run_command(
+    py, files('tools/fvs_build_info.py'),
+    '--source-dir', src_dir,
+    check: true,
+  )
+  foreach line : info_run.stdout().strip().split('\n')
+    version_flags += line.strip()
+  endforeach
+elif fs.exists(src_dir / 'base' / 'version.f')
+  error(
+    'This source tree has base/version.f (free-form Fortran in a .f file), which '
+    + 'fvs-build does not build. Use a ref at or before FS2026.2, or at or after '
+    + 'the upstream .f90 rename.',
+  )
+endif
 
 cc = meson.get_compiler('c')
 
@@ -245,7 +266,9 @@ foreach v : variants
   fvs_objs = static_library(
     'fvs_' + v + '_objs',
     fortran_sources + c_sources_sql + c_sources_fofem,
-    fortran_args: common_fortran_args + inc_args,
+    # version_flags must stay after inc_args: provenance.py's flag extractor
+    # stops at the first -I, which keeps git metadata out of build-info.json.
+    fortran_args: common_fortran_args + inc_args + version_flags,
     c_args: common_c_args + inc_args,
     cpp_args: common_c_args + inc_args,
     pic: objs_pic,

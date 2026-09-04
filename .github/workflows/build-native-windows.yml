@@ -49,7 +49,7 @@ on:
           Exact Meson version installed via pip (MINGW64 Python).
         required: false
         type: string
-        default: "1.5.2"
+        default: "1.12.0"
       profile:
         description: >-
           Build profile. One of: reference, debug. reference is designed
@@ -180,6 +180,7 @@ jobs:
                 'fvs-build/meson.build',
                 'fvs-build/meson_options.txt',
                 'fvs-build/tools/parse_sourcelist.py',
+                'fvs-build/tools/fvs_build_info.py',
                 'fvs-build/tools/ci/provenance.py',
                 'fvs-build/tools/ci/meson_configure_native.sh'
               )
@@ -200,6 +201,7 @@ jobs:
       - name: Smoke-test the variant executable
         env:
           VARIANT: ${{ matrix.variant }}
+          FVS_SOURCE: ${{ github.workspace }}/fvs-source
         run: |
           set -euo pipefail
           BIN_REL="_build/FVS${VARIANT}.exe"
@@ -207,6 +209,17 @@ jobs:
           SMOKE_DIR=$(mktemp -d)
           cp "$BIN_REL" "$SMOKE_DIR/"
           OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" </dev/null 2>&1) || true )"
+          # version.f90 present means the -D macros must have landed; "unknown" = they did not.
+          if [ -f "${FVS_SOURCE}/base/version.f90" ]; then
+            VERSION_OUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" --version) )"
+            echo "FVS${VARIANT} --version: ${VERSION_OUT}"
+            case "$VERSION_OUT" in
+              ""|unknown*|*-dirty*)
+                echo "ERROR: unusable build info for FVS${VARIANT}: ${VERSION_OUT}" >&2
+                exit 1
+                ;;
+            esac
+          fi
           rm -rf "$SMOKE_DIR"
           echo "----- smoke output (first 30 lines) -----"
           printf '%s\n' "$OUTPUT" | head -n 30

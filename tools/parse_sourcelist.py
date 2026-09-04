@@ -21,7 +21,7 @@ Note:
     Output sections (header ``### <name>`` then paths, in order):
     ``fortran_sources``, ``main_source``, ``c_sources_sql``,
     ``c_sources_fofem``, ``include_dirs``, ``mod_sources``. The CLI exits
-    with code ``1`` if the manifest is missing or contains no ``main.f``
+    with code ``1`` if the manifest is missing or contains no main source
     (see :func:`parse`).
 
 Warning:
@@ -41,8 +41,11 @@ SQL_C_BASENAMES: frozenset[str] = frozenset(
 )
 
 INCLUDE_EXTENSIONS: frozenset[str] = frozenset({".f77", ".inc", ".h"})
-FORTRAN_EXTENSIONS: frozenset[str] = frozenset({".f", ".for"})
+FORTRAN_EXTENSIONS: frozenset[str] = frozenset({".f", ".for", ".f90"})
 C_EXTENSIONS: frozenset[str] = frozenset({".c", ".cpp"})
+
+# Program entry point: main.f up to FS2026.2, main.f90 after the upstream rename.
+MAIN_BASENAMES: frozenset[str] = frozenset({"main.f", "main.f90"})
 
 
 def manifest_path(source_dir: Path, variant: str) -> Path:
@@ -76,7 +79,8 @@ def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
 
     Raises:
         FileNotFoundError: If the manifest file is missing.
-        ValueError: If no ``main.f`` entry is present after parsing.
+        ValueError: If no entry in :data:`MAIN_BASENAMES` is present after
+            parsing.
     """
     sl_path = manifest_path(source_dir, variant)
     if not sl_path.is_file():
@@ -110,10 +114,10 @@ def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
                 seen_include_dirs.add(parent)
                 include_dirs.append(parent)
         elif ext in FORTRAN_EXTENSIONS:
-            if name.lower() == "main.f":
+            if name.lower() in MAIN_BASENAMES:
                 if main_source is not None:
                     sys.stderr.write(
-                        "warning: multiple main.f entries; keeping "
+                        "warning: multiple main source entries; keeping "
                         f"{main_source}, ignoring {path}\n",
                     )
                 else:
@@ -131,7 +135,10 @@ def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
             sys.stderr.write(f"warning: unrecognized extension on {path}\n")
 
     if main_source is None:
-        msg = f"no main.f found in {sl_path}; refusing to emit incomplete schema"
+        msg = (
+            f"no main source ({', '.join(sorted(MAIN_BASENAMES))}) found in "
+            f"{sl_path}; refusing to emit incomplete schema"
+        )
         raise ValueError(msg)
 
     return {
