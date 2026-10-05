@@ -44,7 +44,7 @@ All three native workflows take a `gcc_major` input. A major the platform cannot
 | macOS   | `15`    | Homebrew `gcc@N`, or the unversioned `gcc` formula when N is its current major.                                                                                                                                               |
 | Windows | `15`    | The exact MSYS2 package set listed for N in [`tools/ci/msys2-toolchains.json`](../tools/ci/msys2-toolchains.json) (GCC plus the matching CRT, headers and winpthreads), installed with `pacman -U` from `repo.msys2.org`. |
 
-Windows pins exact builds because MSYS2 carries one GCC at a time and a mismatched CRT/winpthreads leaves objects from two GCC versions in the binary ([USDAForestService/ForestVegetationSimulator#71](https://github.com/USDAForestService/ForestVegetationSimulator/issues/71)). Adding a major means adding a matched set to the lockfile and proving it with one green run.
+Windows pins exact builds because MSYS2 carries one GCC at a time and a mismatched CRT/winpthreads leaves objects from two GCC versions in the binary ([USDAForestService/ForestVegetationSimulator#71](https://github.com/USDAForestService/ForestVegetationSimulator/issues/71)). The lockfile lists majors 15 and 16. Adding a major means adding a set whose CRT/winpthreads were built by the same GCC and proving it with one green run; GCC 14 is not possible because every CRT build left in MSYS2's archive was built by GCC 15 or 16.
 
 The Meson build-directory cache key includes the compiler's `--version` line, so a different compiler never reuses cached objects.
 
