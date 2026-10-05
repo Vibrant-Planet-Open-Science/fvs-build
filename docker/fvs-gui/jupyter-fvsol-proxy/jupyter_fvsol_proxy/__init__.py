@@ -1,9 +1,9 @@
 """jupyter-server-proxy registration for the FVSOnLocal (fvsOL) Shiny app.
 
 Registers a named proxy entry "fvs-gui" so the Shiny app is reachable at the
-`/fvs-gui/` subpath of the Jupyter server (the URL Binder opens via
-`?urlpath=fvs-gui/`). jupyter-server-proxy allocates a free {port}, launches the
-command, and reverse-proxies to it.
+`/fvs-gui/` subpath of the Jupyter server, opened from the JupyterLab launcher
+tile or directly via `?urlpath=fvs-gui/`. jupyter-server-proxy allocates a free {port},
+launches the command, and reverse-proxies to it.
 
 Registration happens through the `jupyter_serverproxy_servers` entry point
 declared in pyproject.toml -- NOT through a `jupyter_server_config.py`. That is
