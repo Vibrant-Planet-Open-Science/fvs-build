@@ -4,8 +4,9 @@
 Run from native matrix jobs after Meson has populated ``_build/``. Requires the
 same environment variables previously exported for
 ``provenance.py write-build-info`` (``VARIANT``, ``FVS_NATIVE_PLATFORM``,
-``SOURCE_*``, ``FVS_BUILD_*``, ``RUNNER_IMAGE``, toolchain package pins,
-``GITHUB_RUN_ID``, ``GITHUB_RUN_ATTEMPT``, and on Linux/macOS ``FC``/``CC``/``CXX``).
+``SOURCE_*``, ``FVS_BUILD_*``, ``RUNNER_IMAGE``, ``GCC_MAJOR``, ``GFORTRAN_PKG``,
+``GPP_PKG``, ``GITHUB_RUN_ID``, ``GITHUB_RUN_ATTEMPT``, and on Linux/macOS
+``FC``/``CC``/``CXX``).
 """
 
 from __future__ import annotations

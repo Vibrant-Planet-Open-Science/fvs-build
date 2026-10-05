@@ -27,7 +27,7 @@ on:
       source_ref:
         description: "Source ref (tag, branch, or SHA)"
         required: true
-        default: "FS2026.2"
+        default: "FS2026.3"
         type: string
       variants:
         description: "Comma-separated FVS variant codes (default: 22 known-good US variants)"
@@ -42,7 +42,7 @@ on:
       image_tag:
         description: "Primary image tag (typically matches source_ref)"
         required: true
-        default: "FS2026.2"
+        default: "FS2026.3"
         type: string
       image_extra_tags:
         description: "Comma-separated extra tags (e.g. latest)"
@@ -64,9 +64,13 @@ on:
         required: false
         default: "3.12"
         type: string
-        # Note: gfortran_package, gpp_package, meson_version, and runtime_base
-        # are not exposed here (workflow_dispatch input cap); they follow the
-        # reusable workflows' defaults (pinned runner, toolchain, runtime base).
+      gcc_major:
+        description: "GCC major version for the native Linux build (noble archive: 9-14)"
+        required: false
+        default: "14"
+        type: string
+        # Note: meson_version and runtime_base are not exposed here; they
+        # follow the reusable workflows' defaults (pinned Meson, runtime base).
 
 permissions:
   contents: read
@@ -107,6 +111,7 @@ jobs:
       variants: ${{ inputs.variants }}
       runner_image: ${{ inputs.runner_image }}
       python_version: ${{ inputs.python_version }}
+      gcc_major: ${{ inputs.gcc_major }}
 
   container:
     name: Container build

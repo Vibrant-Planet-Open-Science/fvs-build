@@ -63,6 +63,8 @@ jobs:
             tools/ci/stage_variant_native.py \
             tools/ci/provenance.py \
             tools/ci/meson_configure_native.sh \
+            tools/ci/check_gcc_major.sh \
+            tools/ci/msys2-toolchains.json \
             tools/parse_sourcelist.py)
 
           if [ -n "$changed" ]; then
@@ -88,11 +90,10 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: ubuntu-24.04
-      gfortran_package: gfortran-13
-      gpp_package: g++-13
+      gcc_major: "14"
       meson_version: "1.12.0"
       profile: reference
 
@@ -103,11 +104,10 @@ jobs:
     uses: ./.github/workflows/build-native-windows.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: windows-latest
-      gfortran_package: mingw-w64-x86_64-gcc-fortran
-      gpp_package: mingw-w64-x86_64-gcc
+      gcc_major: "15"
       meson_version: "1.12.0"
       profile: reference
 
@@ -118,10 +118,10 @@ jobs:
     uses: ./.github/workflows/build-native-macos.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: macos-latest
-      brew_gcc_major: "14"
+      gcc_major: "15"
       meson_version: "1.12.0"
       profile: reference
 

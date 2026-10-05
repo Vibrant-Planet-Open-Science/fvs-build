@@ -41,19 +41,15 @@ on:
         required: false
         type: string
         default: "ubuntu-24.04"
-      gfortran_package:
-        description: "apt package providing gfortran. Pinned."
-        required: false
-        type: string
-        default: "gfortran-13"
-      gpp_package:
+      gcc_major:
         description: >-
-          apt package providing g++. A handful of variants compile .cpp
-          files (fire/cfim/cfim.cpp), so a matching C++ compiler is
-          required; pinned to the same version family as gfortran.
+          GCC major version. Installs gfortran-N, gcc-N and g++-N from the
+          runner's Ubuntu archive (noble: 9-14); a major the archive does not
+          carry fails before compiling. A handful of variants compile .cpp
+          files (fire/cfim/cfim.cpp), so g++ comes from the same family.
         required: false
         type: string
-        default: "g++-13"
+        default: "14"
       meson_version:
         description: >-
           Exact Meson version to install via pip, pinned to keep
@@ -120,7 +116,7 @@ jobs:
   # ---------------------------------------------------------------------------
   # Per-variant build: one matrix leg per requested variant. Each leg checks
   # out fvs-build (this repo, at the same ref the workflow is invoked from)
-  # plus the caller's source tree, installs the pinned toolchain, runs
+  # plus the caller's source tree, installs the gcc_major toolchain, runs
   # Meson + Ninja, smoke-tests the produced executable, and uploads an
   # ephemeral per-variant artifact for the collect job.
   # ---------------------------------------------------------------------------
@@ -148,25 +144,29 @@ jobs:
           source_repo: ${{ inputs.source_repo }}
           source_ref: ${{ inputs.source_ref }}
 
-      - name: Install Fortran/C/C++ toolchain (pinned)
+      - name: Install Fortran/C/C++ toolchain (gcc_major)
+        id: toolchain
         env:
-          GFORTRAN_PKG: ${{ inputs.gfortran_package }}
-          GPP_PKG: ${{ inputs.gpp_package }}
+          V: ${{ inputs.gcc_major }}
         run: |
           set -euo pipefail
           sudo apt-get update
+          if ! apt-cache policy "gfortran-${V}" | grep -q 'Candidate: [0-9]'; then
+            echo "ERROR: gcc_major=${V}: gfortran-${V} is not available from this runner's Ubuntu archive" >&2
+            exit 1
+          fi
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
             --no-install-recommends \
-            "${GFORTRAN_PKG}" "${GPP_PKG}" ninja-build
-          # gfortran-N ships in the gcc-N package family; align CC to gcc-N
-          # so Meson picks the matching gcc/g++/gfortran trio rather than
-          # whatever Ubuntu's update-alternatives points at by default.
-          GCC_PKG="${GPP_PKG/g++/gcc}"
+            "gfortran-${V}" "g++-${V}" ninja-build
+          # Use the -N binaries so Meson picks the matching gcc/g++/gfortran
+          # trio rather than whatever update-alternatives points at.
           {
-            echo "FC=${GFORTRAN_PKG}"
-            echo "CC=${GCC_PKG}"
-            echo "CXX=${GPP_PKG}"
+            echo "FC=gfortran-${V}"
+            echo "CC=gcc-${V}"
+            echo "CXX=g++-${V}"
           } >> "$GITHUB_ENV"
+          # Cache keys cannot contain commas; keep the version line's identity.
+          echo "fc_id=$("gfortran-${V}" --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
 
       - name: Set up Python for Meson and parse_sourcelist.py
         uses: actions/setup-python@v6
@@ -185,12 +185,14 @@ jobs:
 
       # Cache is a light-touch optimization: tag-driven release builds change
       # source_ref every run and miss; branch/PR builds against the same ref
-      # can hit and skip the long Fortran compile.
+      # can hit and skip the long Fortran compile. The compiler is in the key
+      # because `meson setup --reconfigure` keeps the cached compiler and
+      # Ninja keeps objects whose command lines did not change.
       - name: Cache Meson build directory
         uses: actions/cache@v5
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
+          key: meson-${{ runner.os }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
 
       - name: Configure Meson
         env:
@@ -244,9 +246,12 @@ jobs:
             exit 1
           }
 
-      - name: Verify artifacts have no baked-in search paths (readelf)
+      - name: Verify artifacts' runtime dependencies (readelf)
         env:
           VARIANT: ${{ matrix.variant }}
+          # Ubuntu 22.04. glibc is backward compatible, so binaries needing
+          # at most this version run on 22.04 and every newer release.
+          GLIBC_FLOOR: "2.35"
         run: |
           set -euo pipefail
           # Linux intentionally dynamic-links libgfortran.so.5 by SONAME (see
@@ -254,8 +259,10 @@ jobs:
           # it from the runtime container's glibc/gfortran baseline. Unlike
           # macOS Mach-O, ELF DT_NEEDED records sonames -- never the build
           # machine's absolute path -- so that failure class cannot occur here.
-          # The remaining Linux analog is a build-tree or toolchain search path
-          # leaking into DT_RPATH/DT_RUNPATH; guard both the exe and the .so.
+          # Guard instead against a build-tree or toolchain search path leaking
+          # into DT_RPATH/DT_RUNPATH, a NEEDED library the runtime images do
+          # not install, and a glibc symbol newer than GLIBC_FLOOR.
+          allowed='^(libc\.so\.6|libm\.so\.6|libgfortran\.so\.5|libgcc_s\.so\.1)$'
           status=0
           for f in "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"; do
             test -f "$f"
@@ -266,8 +273,25 @@ jobs:
               readelf -d "$f" | grep -E '\((RPATH|RUNPATH)\)' >&2
               status=1
             fi
+            extra="$(readelf -d "$f" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | grep -Ev "$allowed" || true)"
+            if [ -n "$extra" ]; then
+              echo "ERROR: $f needs libraries outside the allowlist: ${extra//$'\n'/ }" >&2
+              status=1
+            fi
+            glibc_max="$(objdump -T "$f" | grep -oE 'GLIBC_[0-9.]+' | sed 's/GLIBC_//' | sort -V | tail -n 1)"
+            echo "highest GLIBC_ symbol version: ${glibc_max}"
+            if [ "$(printf '%s\n%s\n' "$glibc_max" "$GLIBC_FLOOR" | sort -V | tail -n 1)" != "$GLIBC_FLOOR" ]; then
+              echo "ERROR: $f needs GLIBC_${glibc_max}, newer than the GLIBC_${GLIBC_FLOOR} floor" >&2
+              status=1
+            fi
           done
           exit $status
+
+      - name: Verify single GCC major in artifacts
+        env:
+          GCC_MAJOR: ${{ inputs.gcc_major }}
+          VARIANT: ${{ matrix.variant }}
+        run: bash fvs-build/tools/ci/check_gcc_major.sh "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"
 
       - name: Stage artifacts and per-variant build-info
         env:
@@ -282,8 +306,9 @@ jobs:
           FVS_BUILD_REF: ${{ steps.prepare.outputs.overlay_ref }}
           FVS_BUILD_SHA: ${{ steps.prepare.outputs.fvs_build_sha }}
           RUNNER_IMAGE: ${{ inputs.runner_image }}
-          GFORTRAN_PKG: ${{ inputs.gfortran_package }}
-          GPP_PKG: ${{ inputs.gpp_package }}
+          GCC_MAJOR: ${{ inputs.gcc_major }}
+          GFORTRAN_PKG: gfortran-${{ inputs.gcc_major }}
+          GPP_PKG: g++-${{ inputs.gcc_major }}
           MESON_PIN: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
@@ -329,7 +354,5 @@ jobs:
           sbom_spdx_relpath: sbom/fvs-native-linux.spdx.json
           variants_input: ${{ inputs.variants }}
           runner_image: ${{ inputs.runner_image }}
-          gfortran_package: ${{ inputs.gfortran_package }}
-          gpp_package: ${{ inputs.gpp_package }}
           meson_version: ${{ inputs.meson_version }}
           python_version: ${{ inputs.python_version }}

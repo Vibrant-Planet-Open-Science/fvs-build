@@ -31,14 +31,15 @@ on:
         required: false
         type: string
         default: "macos-latest"
-      brew_gcc_major:
+      gcc_major:
         description: >-
-          Homebrew `gcc@N` version family (installs `brew install gcc@N`; sets
-          FC=gfortran-N, CC=gcc-N, CXX=g++-N). Recorded in provenance as
-          `gcc@N` for both Fortran and C++ labels.
+          GCC major version. Installs Homebrew `gcc@N`, or the unversioned
+          `gcc` formula when N is its current major, and sets
+          FC=gfortran-N, CC=gcc-N, CXX=g++-N. Recorded in provenance as the
+          formula name for both Fortran and C++ labels.
         required: false
         type: string
-        default: "14"
+        default: "15"
       meson_version:
         description: >-
           Exact Meson version installed via pip.
@@ -113,18 +114,27 @@ jobs:
           fetch-depth: 1
 
       - name: Install Homebrew GCC and Ninja
+        id: toolchain
+        env:
+          V: ${{ inputs.gcc_major }}
         run: |
           set -euo pipefail
           brew update
-          V="${{ inputs.brew_gcc_major }}"
-          brew install "gcc@${V}" ninja
-          GCC_PREFIX="$(brew --prefix "gcc@${V}")"
-          echo "${GCC_PREFIX}/bin" >> "$GITHUB_PATH"
+          # The current major is only the unversioned `gcc` formula; there is
+          # no gcc@N alias for it.
+          CURRENT="$(brew info --json=v2 gcc | python3 -c 'import json,sys; print(json.load(sys.stdin)["formulae"][0]["versions"]["stable"].split(".")[0])')"
+          if [ "$V" = "$CURRENT" ]; then FORMULA=gcc; else FORMULA="gcc@${V}"; fi
+          brew install "$FORMULA" ninja
+          echo "$(brew --prefix "$FORMULA")/bin" >> "$GITHUB_PATH"
           {
             echo "FC=gfortran-${V}"
             echo "CC=gcc-${V}"
             echo "CXX=g++-${V}"
+            echo "GFORTRAN_PKG=${FORMULA}"
+            echo "GPP_PKG=${FORMULA}"
           } >> "$GITHUB_ENV"
+          # Cache keys cannot contain commas; keep the version line's identity.
+          echo "fc_id=$("$(brew --prefix "$FORMULA")/bin/gfortran-${V}" --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
 
       - id: prepare
         uses: ./.github/actions/prepare-fvs-native-checkout
@@ -154,7 +164,7 @@ jobs:
           path: _build
           key: >-
             meson-macos-${{ matrix.variant }}-${{ inputs.source_ref }}-${{
-              inputs.profile }}-${{
+              inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{
               hashFiles(
                 'fvs-build/meson.build',
                 'fvs-build/meson_options.txt',
@@ -243,6 +253,12 @@ jobs:
           done
           exit $status
 
+      - name: Verify single GCC major in artifacts
+        env:
+          GCC_MAJOR: ${{ inputs.gcc_major }}
+          VARIANT: ${{ matrix.variant }}
+        run: bash fvs-build/tools/ci/check_gcc_major.sh "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.dylib"
+
       - name: Stage artifacts and per-variant build-info
         env:
           FVS_NATIVE_PLATFORM: darwin
@@ -256,8 +272,7 @@ jobs:
           FVS_BUILD_REF: ${{ steps.prepare.outputs.overlay_ref }}
           FVS_BUILD_SHA: ${{ steps.prepare.outputs.fvs_build_sha }}
           RUNNER_IMAGE: ${{ inputs.runner_image }}
-          GFORTRAN_PKG: gcc@${{ inputs.brew_gcc_major }}
-          GPP_PKG: gcc@${{ inputs.brew_gcc_major }}
+          GCC_MAJOR: ${{ inputs.gcc_major }}
           MESON_PIN: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
@@ -292,8 +307,6 @@ jobs:
           sbom_spdx_relpath: sbom/fvs-native-macos.spdx.json
           variants_input: ${{ inputs.variants }}
           runner_image: ${{ inputs.runner_image }}
-          gfortran_package: gcc@${{ inputs.brew_gcc_major }}
-          gpp_package: gcc@${{ inputs.brew_gcc_major }}
           meson_version: ${{ inputs.meson_version }}
           python_version: ${{ inputs.python_version }}
           use_setup_python: "true"

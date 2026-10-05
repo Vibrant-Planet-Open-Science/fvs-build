@@ -33,12 +33,6 @@ inputs:
   runner_image:
     description: Runner image label recorded in provenance.
     required: true
-  gfortran_package:
-    description: Toolchain package label for provenance (OS-specific).
-    required: true
-  gpp_package:
-    description: C++ toolchain package label for provenance (OS-specific).
-    required: true
   meson_version:
     description: Pinned Meson version string for provenance.
     required: true
@@ -111,8 +105,6 @@ runs:
         ARTIFACT_NAME: ${{ inputs.artifact_name }}
         VARIANTS_INPUT: ${{ inputs.variants_input }}
         RUNNER_IMAGE: ${{ inputs.runner_image }}
-        GFORTRAN_PKG: ${{ inputs.gfortran_package }}
-        GPP_PKG: ${{ inputs.gpp_package }}
         MESON_PIN: ${{ inputs.meson_version }}
       run: |
         set -euo pipefail

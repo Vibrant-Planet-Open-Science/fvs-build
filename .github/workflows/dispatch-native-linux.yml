@@ -24,7 +24,7 @@ on:
       source_ref:
         description: "Source ref (tag, branch, or SHA)"
         required: true
-        default: "FS2026.2"
+        default: "FS2026.3"
         type: string
       variants:
         description: "Comma-separated FVS variant codes (default: 22 known-good US variants)"
@@ -36,15 +36,10 @@ on:
         required: false
         default: "ubuntu-24.04"
         type: string
-      gfortran_package:
-        description: "apt package providing gfortran"
+      gcc_major:
+        description: "GCC major version (noble archive: 9-14)"
         required: false
-        default: "gfortran-13"
-        type: string
-      gpp_package:
-        description: "apt package providing g++ (matched to gfortran family)"
-        required: false
-        default: "g++-13"
+        default: "14"
         type: string
       meson_version:
         description: "Meson version installed via pip"
@@ -74,8 +69,7 @@ jobs:
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
       runner_image: ${{ inputs.runner_image }}
-      gfortran_package: ${{ inputs.gfortran_package }}
-      gpp_package: ${{ inputs.gpp_package }}
+      gcc_major: ${{ inputs.gcc_major }}
       meson_version: ${{ inputs.meson_version }}
       profile: ${{ inputs.profile }}
       python_version: ${{ inputs.python_version }}
