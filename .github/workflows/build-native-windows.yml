@@ -32,18 +32,15 @@ on:
         required: false
         type: string
         default: "windows-latest"
-      gfortran_package:
+      gcc_major:
         description: >-
-          MSYS2 pacman package name recorded in provenance (toolchain labels).
+          GCC major version. Installs the exact MSYS2 package set listed for
+          this major in tools/ci/msys2-toolchains.json (GCC plus the matching
+          CRT, headers and winpthreads); a major with no entry fails before
+          compiling.
         required: false
         type: string
-        default: "mingw-w64-x86_64-gcc-fortran"
-      gpp_package:
-        description: >-
-          MSYS2 package providing gcc/g++ (provenance labels).
-        required: false
-        type: string
-        default: "mingw-w64-x86_64-gcc"
+        default: "15"
       meson_version:
         description: >-
           Exact Meson version installed via pip (MINGW64 Python).
@@ -126,9 +123,8 @@ jobs:
           update: true
           # GNU coreutils are not packaged as mingw-w64-x86_64-coreutils; use MSYS repo tools on PATH.
           # MSYS `git` is on PATH in MINGW64 shells; Git-for-Windows is not (needed for rev-parse SHAs).
+          # GCC is not listed here: it comes from the pinned set installed below.
           install: >-
-            mingw-w64-x86_64-gcc-fortran
-            mingw-w64-x86_64-gcc
             mingw-w64-x86_64-ninja
             mingw-w64-x86_64-python
             mingw-w64-x86_64-python-pip
@@ -137,6 +133,7 @@ jobs:
             grep
             gawk
             git
+            curl
 
       - id: prepare
         uses: ./.github/actions/prepare-fvs-native-checkout
@@ -145,14 +142,49 @@ jobs:
           source_ref: ${{ inputs.source_ref }}
           run_shell: "msys2 {0}"
 
-      - name: Expose compilers for provenance metadata
+      # MSYS2 carries one GCC at a time, and GCC, CRT, headers and winpthreads
+      # must move together (USDAForestService/ForestVegetationSimulator#71), so
+      # install an exact package set from the repo archive rather than the
+      # current release. pacman -U resolves the remaining dependencies.
+      - name: Install pinned GCC toolchain (gcc_major)
+        id: toolchain
+        env:
+          V: ${{ inputs.gcc_major }}
         run: |
           set -euo pipefail
+          mapfile -t PKGS < <(python -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get(sys.argv[2], [])))' \
+            fvs-build/tools/ci/msys2-toolchains.json "$V" | tr -d '\r')
+          if [ "${#PKGS[@]}" -eq 0 ] || [ -z "${PKGS[0]}" ]; then
+            echo "ERROR: gcc_major=${V} has no entry in tools/ci/msys2-toolchains.json" >&2
+            exit 1
+          fi
+          DL=$(mktemp -d)
+          for p in "${PKGS[@]}"; do
+            curl -fsSL --retry 3 -o "${DL}/${p}-any.pkg.tar.zst" \
+              "https://repo.msys2.org/mingw/mingw64/${p}-any.pkg.tar.zst"
+          done
+          # MINGW64 Python and Ninja pull in the current GCC runtime. From
+          # 16.2.0-4 that is split into cc-libs/libgcc/libstdc++/..., which
+          # conflict with an older gcc-libs, so pacman -U refuses the pinned
+          # set. Drop the runtime without dependency checks; the pinned set
+          # reinstalls it (gcc-libs provides cc-libs).
+          mapfile -t RUNTIME < <(pacman -Qq | grep -E '^mingw-w64-x86_64-(cc-libs|libgcc|libstdc\+\+|libatomic|libquadmath|libgomp|libgfortran|gcc-libs|gcc-libgfortran)$' || true)
+          if [ "${#RUNTIME[@]}" -gt 0 ]; then
+            pacman -Rdd --noconfirm "${RUNTIME[@]}"
+          fi
+          pacman -U --noconfirm "${DL}"/*.pkg.tar.zst
+          ninja --version
+          python -c 'import ssl, sqlite3'
+          rm -rf "$DL"
           {
             echo "FC=gfortran"
             echo "CC=gcc"
             echo "CXX=g++"
+            echo "GFORTRAN_PKG=$(printf '%s\n' "${PKGS[@]}" | grep '^mingw-w64-x86_64-gcc-fortran-')"
+            echo "GPP_PKG=$(printf '%s\n' "${PKGS[@]}" | grep '^mingw-w64-x86_64-gcc-[0-9]')"
           } >> "$GITHUB_ENV"
+          # Cache keys cannot contain commas; keep the version line's identity.
+          echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned Meson
         env:
@@ -175,14 +207,15 @@ jobs:
           path: _build
           key: >-
             meson-win-${{ matrix.variant }}-${{ inputs.source_ref }}-${{
-              inputs.profile }}-${{
+              inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{
               hashFiles(
                 'fvs-build/meson.build',
                 'fvs-build/meson_options.txt',
                 'fvs-build/tools/parse_sourcelist.py',
                 'fvs-build/tools/fvs_build_info.py',
                 'fvs-build/tools/ci/provenance.py',
-                'fvs-build/tools/ci/meson_configure_native.sh'
+                'fvs-build/tools/ci/meson_configure_native.sh',
+                'fvs-build/tools/ci/msys2-toolchains.json'
               )
             }}
 
@@ -254,6 +287,12 @@ jobs:
           check "_build/FVS${VARIANT}.dll" "${runtime}"
           exit $status
 
+      - name: Verify single GCC major in artifacts
+        env:
+          GCC_MAJOR: ${{ inputs.gcc_major }}
+          VARIANT: ${{ matrix.variant }}
+        run: bash fvs-build/tools/ci/check_gcc_major.sh "_build/FVS${VARIANT}.exe" "_build/FVS${VARIANT}.dll"
+
       - name: Stage artifacts and per-variant build-info
         env:
           FVS_NATIVE_PLATFORM: windows
@@ -267,8 +306,7 @@ jobs:
           FVS_BUILD_REF: ${{ steps.prepare.outputs.overlay_ref }}
           FVS_BUILD_SHA: ${{ steps.prepare.outputs.fvs_build_sha }}
           RUNNER_IMAGE: ${{ inputs.runner_image }}
-          GFORTRAN_PKG: ${{ inputs.gfortran_package }}
-          GPP_PKG: ${{ inputs.gpp_package }}
+          GCC_MAJOR: ${{ inputs.gcc_major }}
           MESON_PIN: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
@@ -303,8 +341,6 @@ jobs:
           sbom_spdx_relpath: sbom/fvs-native-windows.spdx.json
           variants_input: ${{ inputs.variants }}
           runner_image: ${{ inputs.runner_image }}
-          gfortran_package: ${{ inputs.gfortran_package }}
-          gpp_package: ${{ inputs.gpp_package }}
           meson_version: ${{ inputs.meson_version }}
           python_version: ${{ inputs.python_version }}
           use_setup_python: "true"

@@ -32,7 +32,25 @@ Three reusable workflows share the same job shape (preflight → per-variant mat
 | Windows | `build-native-windows.yml` | `windows`           | `fvs-native-windows-<run_id>`   | `FVS<v>.exe`              | `FVS<v>.dll`                  | `sbom/fvs-native-windows.spdx.json`         |
 | macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`                  | `FVS<v>.dylib`                | `sbom/fvs-native-macos.spdx.json`           |
 
-`provenance/manifest.json` and each `provenance/per-variant/FVS<v>.json` use the **`binary`** and **`shared_library`** basenames from this table (including extensions on Windows). The manifest’s `toolchain.gfortran_package` and `toolchain.gpp_package` fields are **human-readable labels** (apt names on Linux, MSYS2 pacman package names on Windows, `gcc@N` on macOS), not a portable schema across OSes.
+`provenance/manifest.json` and each `provenance/per-variant/FVS<v>.json` use the **`binary`** and **`shared_library`** basenames from this table (including extensions on Windows). `toolchain.gcc_major` is the GCC major the bundle was built with, the same field on every OS. The `toolchain.gfortran_package` and `toolchain.gpp_package` fields are **human-readable labels** (apt names on Linux, exact MSYS2 package builds on Windows, the Homebrew formula on macOS), not a portable schema across OSes.
+
+### GCC toolchain selection
+
+All three native workflows take a `gcc_major` input. A major the platform cannot provide fails before compiling, and after compiling each executable and shared library must contain GCC ident strings from exactly one GCC version of that major ([`tools/ci/check_gcc_major.sh`](../tools/ci/check_gcc_major.sh)). Each platform has its own default:
+
+| OS      | Default | Source                                                                                                                                                                                                                       |
+| ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Linux   | `14`    | `gfortran-N` / `gcc-N` / `g++-N` from the runner's Ubuntu archive (noble: 9–14).                                                                                                                                              |
+| macOS   | `15`    | Homebrew `gcc@N`, or the unversioned `gcc` formula when N is its current major.                                                                                                                                               |
+| Windows | `15`    | The exact MSYS2 package set listed for N in [`tools/ci/msys2-toolchains.json`](../tools/ci/msys2-toolchains.json) (GCC plus the matching CRT, headers and winpthreads), installed with `pacman -U` from `repo.msys2.org`. |
+
+Windows pins exact builds because MSYS2 carries one GCC at a time and a mismatched CRT/winpthreads leaves objects from two GCC versions in the binary ([USDAForestService/ForestVegetationSimulator#71](https://github.com/USDAForestService/ForestVegetationSimulator/issues/71)). Adding a major means adding a matched set to the lockfile and proving it with one green run.
+
+The Meson build-directory cache key includes the compiler's `--version` line, so a different compiler never reuses cached objects.
+
+### Linux runtime compatibility
+
+Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1`; the build fails on any other `NEEDED` entry. What they run on is set by the build system's glibc, not by the GCC major: the build fails if any artifact needs a `GLIBC_` symbol version newer than 2.35, so the native Linux bundle runs on Ubuntu 22.04 and newer (and on any distribution with glibc ≥ 2.35 and a `libgfortran5` from GCC 10 or newer). Older systems should use the container images.
 
 During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs the Linux, macOS, and Windows reusable workflows in the **same** workflow run — for example [`ci-test-reusable-native.yml`](../.github/workflows/ci-test-reusable-native.yml). Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (e.g. `FVSak.dylib` instead of `.so`). The final bundle artifact names (`fvs-native-*-<run_id>`) are unchanged.
 
@@ -68,8 +86,7 @@ Jobs that need the overlay resolve `owner/name` and git ref from [`github.workfl
 | `source_ref`         | string | yes      | —                                                                   | Tag, branch, or SHA in `source_repo` to build from.                                                                                                                                                                                       |
 | `variants`           | string | no       | `ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws` | Comma-separated FVS variant codes. Default is the 22 cleanly-buildable US variants. The Canadian variants (`bc`, `on`) are excluded by default; their upstream source lists are incomplete (see [`README.md`](../README.md) for details). |
 | `runner_image`       | string | no       | `ubuntu-24.04`                                                      | GitHub-hosted runner image label. Pinned to keep the glibc baseline stable and matched to the Ubuntu 24.04 runtime container base.                                                                                                        |
-| `gfortran_package`   | string | no       | `gfortran-13`                                                       | apt package providing gfortran. Pinned so Ubuntu point releases cannot shift the default compiler.                                                                                                                                          |
-| `gpp_package`        | string | no       | `g++-13`                                                            | apt package providing g++. A handful of variants compile `.cpp` files (`fire/cfim/cfim.cpp`); the C++ compiler is pinned to the same gcc family as gfortran.                                                                                |
+| `gcc_major`          | string | no       | `14`                                                                | GCC major version; installs `gfortran-N`, `gcc-N` and `g++-N` (see [GCC toolchain selection](#gcc-toolchain-selection)). The macOS and Windows workflows take the same input with default `15`.                                    |
 | `meson_version`      | string | no       | `1.5.2`                                                             | Exact Meson version installed via pip. Pinned to the version `fvs-build` was developed against.                                                                                                                                           |
 | `profile`            | string | no       | `reference`                                                         | Build profile: `reference` (default, goldens-aligned flags matching upstream `bin/makefile`) or `debug` (paranoid runtime checks for regression testing; not goldens-compatible). Both use `--buildtype=plain`.                          |
 | `python_version`     | string | no       | `3.12`                                                              | Version string for `actions/setup-python` (matrix Meson / scripts and the collect job's interpreter when setup-python runs).                                                                                                         |
@@ -128,12 +145,13 @@ fvs-native-linux-<run_id>/
   "fvs_build": { "repo": "...", "ref": "...", "sha": "..." },
   "toolchain": {
     "runner_image": "ubuntu-24.04",
-    "gfortran_package": "gfortran-13",
-    "gpp_package": "g++-13",
+    "gcc_major": "14",
+    "gfortran_package": "gfortran-14",
+    "gpp_package": "g++-14",
     "meson_pin": "1.5.2",
-    "gfortran_version": "GNU Fortran (Ubuntu ...) 13.x.x",
-    "gcc_version": "gcc (Ubuntu ...) 13.x.x",
-    "gpp_version": "g++ (Ubuntu ...) 13.x.x",
+    "gfortran_version": "GNU Fortran (Ubuntu ...) 14.x.x",
+    "gcc_version": "gcc (Ubuntu ...) 14.x.x",
+    "gpp_version": "g++ (Ubuntu ...) 14.x.x",
     "ninja_version": "1.x.x",
     "meson_version": "1.5.2"
   },
@@ -185,13 +203,13 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
 ```
 
 Pin to a specific `fvs-build` ref (tag or SHA) for reproducible release pipelines:
 
 ```yaml
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.2.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.3.0
 ```
 
 Consume the produced artifact in a downstream job in the same workflow:
@@ -202,7 +220,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
 
   use-binaries:
     needs: fvs-binaries
@@ -222,7 +240,7 @@ Build a custom subset of variants:
 ```yaml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
       variants: pn,wc,nc
 ```
 
@@ -245,7 +263,7 @@ Validate end-to-end via [`dispatch-native-linux.yml`](../.github/workflows/dispa
 ```bash
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.2
+  -f source_ref=FS2026.3
 ```
 
 The same pattern applies on **Windows** and **macOS** via [`dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) and [`dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml) (substitute the workflow file name in `gh workflow run`).
@@ -263,7 +281,7 @@ Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 2
 | ------------------ | ------- | -------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `artifact_name`    | string  | yes      | —              | Name of the bundle artifact produced by a prior `build-native-linux.yml` job in the same workflow run. Pass through the upstream job's `artifact_name` output.                   |
 | `image_name`       | string  | yes      | —              | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs`). Caller picks the namespace.                                             |
-| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2026.2`).                                                                                                                    |
+| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2026.3`).                                                                                                                    |
 | `image_extra_tags` | string  | no       | `""`           | Comma-separated extra tags applied at push time (e.g. `latest`, `<short-sha>`). Each is `docker tag`ged from the primary and pushed alongside it.                                |
 | `runtime_base`     | string  | no       | `ubuntu:24.04` | Base image for the runtime container. Pinned to `ubuntu:24.04` (same version as the Linux native build runner so glibc baselines match). |
 | `runner_image`     | string  | no       | `ubuntu-24.04` | GitHub-hosted runner image label this workflow runs on.                                                                                                                          |
@@ -356,7 +374,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
 
   container:
     needs: native
@@ -364,7 +382,7 @@ jobs:
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2026.2
+      image_tag: FS2026.3
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -393,12 +411,12 @@ Use the orchestrator dispatch driver:
 ```bash
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.2 \
-  -f image_tag=FS2026.2 \
+  -f source_ref=FS2026.3 \
+  -f image_tag=FS2026.3 \
   -f push=false
 ```
 
-`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2026.2` once you're confident the image is ready for the registry.
+`push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2026.3` once you're confident the image is ready for the registry.
 
 ## `build-container-fvs-gui-linux.yml`
 
@@ -411,9 +429,9 @@ Builds a **Binder-ready FVSOnLocal (`fvsOL`) GUI image** and (optionally) pushes
 | ------------------ | ------- | -------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | `artifact_name`    | string  | yes      | —                                                                | Name of the `build-native-linux.yml` bundle produced in the same run. Only its `FVS<v>.so` set is consumed.                       |
 | `interface_repo`   | string  | no       | `USDAForestService/ForestVegetationSimulator-Interface`          | Source repo (`owner/name`) providing the `rFVS` + `fvsOL` R packages.                                                             |
-| `interface_ref`    | string  | no       | `92dc046adc1d16ddd320b79e9239abd832cbb069`                       | Tag, branch, or SHA in `interface_repo` for the `rFVS`/`fvsOL` sources. Defaults to upstream `main` at the RSQLite fix — see below. |
+| `interface_ref`    | string  | no       | `FS2026.3`                                                       | Tag, branch, or SHA in `interface_repo` for the `rFVS`/`fvsOL` sources. Must carry the RSQLite fix — see below.                     |
 | `image_name`       | string  | yes      | —                                                                | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`).                      |
-| `image_tag`        | string  | yes      | —                                                                | Primary tag, typically matching `interface_ref` (e.g. `FS2026.2`).                                                               |
+| `image_tag`        | string  | yes      | —                                                                | Primary tag, typically matching `interface_ref` (e.g. `FS2026.3`).                                                               |
 | `image_extra_tags` | string  | no       | `""`                                                             | Comma-separated extra tags applied at push time (e.g. `latest`).                                                                  |
 | `runner_image`     | string  | no       | `ubuntu-24.04`                                                   | GitHub-hosted runner image label this workflow runs on.                                                                           |
 | `push`             | boolean | no       | `false`                                                          | Push to the registry after the build succeeds. **For mybinder.org to pull the image it must be pushed AND made public.**          |
@@ -485,15 +503,13 @@ Two Local-mode behaviours are known and not fixed:
 
 Both source fixes are worth landing upstream. When they merge, delete `docker/fvs-gui/patches/`, the Dockerfile apply and assert steps, and smoke check 10, then bump `interface_ref` to the merged SHA.
 
-### Why `interface_ref` defaults to a commit SHA
+### Why `interface_ref` must be FS2026.3 or later
 
 `fvsOL` used to write scratch tables with `dbWriteTable(con, DBI::SQL("temp.X"), …)`. On **RSQLite ≥ 3.53.1** that call fails with `Named parameters not used in query: name`, which greys out the app the moment a stand is selected. Upstream fixed it in **[ForestVegetationSimulator-Interface PR #29](https://github.com/USDAForestService/ForestVegetationSimulator-Interface/pull/29)**, rewriting those calls as `dbWriteTable(con, "X", …, temporary = TRUE, overwrite = TRUE)`.
 
-That fix is on upstream `main` but has **not yet appeared in a release tag** — the newest tag, `FS2026.2`, predates it. So `interface_ref` defaults to the `main` commit carrying the fix (`92dc046`) rather than to a tag. A SHA rather than the `main` branch name keeps the image reproducible and the `org.vibrantplanet.fvs.interface-sha` label meaningful.
+The fix landed on upstream `main` at `92dc046` and was first released in **`FS2026.3`**, the `interface_ref` default. `FS2026.2` and earlier tags predate it.
 
-`Dockerfile.fvs-gui` asserts the staged sources contain no `DBI::SQL("temp…")` in `fvsOL/R` and fails the build otherwise, so pointing `interface_ref` back at an affected ref is caught at build time instead of surfacing as a broken UI.
-
-**Follow-up:** once a release tag ships that includes the fix, move `interface_ref` back to that tag and drop the guard.
+`Dockerfile.fvs-gui` asserts the staged sources contain no `DBI::SQL("temp…")` in `fvsOL/R` and fails the build otherwise, so pointing `interface_ref` at an affected ref is caught at build time instead of surfacing as a broken UI.
 
 ### Smoke test
 
@@ -531,10 +547,10 @@ Use the orchestrator dispatch driver:
 
 ```bash
 gh workflow run dispatch-container-fvs-gui-linux.yml \
-  -f source_ref=FS2026.2 \
-  -f interface_ref=92dc046adc1d16ddd320b79e9239abd832cbb069 \
-  -f image_tag=FS2026.2 \
+  -f source_ref=FS2026.3 \
+  -f interface_ref=FS2026.3 \
+  -f image_tag=FS2026.3 \
   -f push=false
 ```
 
-`push=false` (the default) builds the GUI image without publishing, confirming the native→image handoff and the R-layer build. Set `-f push=true` to publish to `ghcr.io/<your-account>/usfs-fvs-gui:FS2026.2`; then make the GHCR package **public** before pointing mybinder.org at it (see the README Binder section).
+`push=false` (the default) builds the GUI image without publishing, confirming the native→image handoff and the R-layer build. Set `-f push=true` to publish to `ghcr.io/<your-account>/usfs-fvs-gui:FS2026.3`; then make the GHCR package **public** before pointing mybinder.org at it (see the README Binder section).

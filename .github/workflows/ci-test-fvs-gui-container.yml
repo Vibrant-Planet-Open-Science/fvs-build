@@ -45,7 +45,7 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
       runner_image: ubuntu-24.04
       profile: reference
 
@@ -58,8 +58,7 @@ jobs:
     uses: ./.github/workflows/build-container-fvs-gui-linux.yml
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
-      # Upstream main at the RSQLite temp-table fix; the FS2026.2 tag predates it.
-      interface_ref: 92dc046adc1d16ddd320b79e9239abd832cbb069
+      interface_ref: FS2026.3
       image_name: usfs-fvs-gui
       image_tag: ci-${{ github.run_id }}
       push: false

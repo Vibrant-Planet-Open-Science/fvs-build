@@ -20,9 +20,9 @@
 #       uses: <owner>/fvs-build/.github/workflows/build-container-fvs-gui-linux.yml@<ref>
 #       with:
 #         artifact_name: ${{ needs.native.outputs.artifact_name }}
-#         interface_ref: 92dc046adc1d16ddd320b79e9239abd832cbb069
+#         interface_ref: FS2026.3
 #         image_name: ghcr.io/<owner>/usfs-fvs-gui
-#         image_tag: FS2026.2
+#         image_tag: FS2026.3
 #         push: true
 #       secrets: inherit
 #       permissions: { contents: read, packages: write }
@@ -49,13 +49,13 @@ on:
       interface_ref:
         description: >-
           Tag, branch, or SHA in interface_repo for the rFVS/fvsOL sources.
-          The default pins upstream main at the commit carrying the RSQLite
-          >= 3.53.1 temp-table fix. Refs predating that fix (including the
-          FS2026.2 release tag) fail Dockerfile.fvs-gui's guard, because the
-          GUI greys out on stand selection without it.
+          Must carry the RSQLite >= 3.53.1 temp-table fix (upstream main
+          92dc046, first released in FS2026.3). Refs predating that fix
+          (including the FS2026.2 release tag) fail Dockerfile.fvs-gui's
+          guard, because the GUI greys out on stand selection without it.
         required: false
         type: string
-        default: "92dc046adc1d16ddd320b79e9239abd832cbb069"
+        default: "FS2026.3"
       image_name:
         description: >-
           Fully-qualified image name without the tag suffix, e.g.
@@ -64,7 +64,7 @@ on:
         type: string
       image_tag:
         description: >-
-          Primary tag for the built image, e.g. `FS2026.2`.
+          Primary tag for the built image, e.g. `FS2026.3`.
         required: true
         type: string
       image_extra_tags:

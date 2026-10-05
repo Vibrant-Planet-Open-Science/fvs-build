@@ -29,7 +29,7 @@ on:
       source_ref:
         description: "FVS source ref (tag, branch, or SHA)"
         required: true
-        default: "FS2026.2"
+        default: "FS2026.3"
         type: string
       variants:
         description: "Comma-separated FVS variant codes (default: 22 known-good US variants)"
@@ -43,11 +43,11 @@ on:
         type: string
       interface_ref:
         description: >-
-          Interface source ref (tag, branch, or SHA). Default pins upstream main
-          at the RSQLite temp-table fix; the FS2026.2 tag predates it and will
-          fail the Dockerfile's guard.
+          Interface source ref (tag, branch, or SHA). Refs predating the
+          RSQLite temp-table fix (including the FS2026.2 tag) fail the
+          Dockerfile's guard.
         required: true
-        default: "92dc046adc1d16ddd320b79e9239abd832cbb069"
+        default: "FS2026.3"
         type: string
       image_name:
         description: "Fully-qualified image name without tag (defaults to usfs-fvs-gui namespace)"
@@ -57,7 +57,7 @@ on:
       image_tag:
         description: "Primary image tag (typically matches interface_ref)"
         required: true
-        default: "FS2026.2"
+        default: "FS2026.3"
         type: string
       image_extra_tags:
         description: "Comma-separated extra tags (e.g. latest)"
@@ -74,9 +74,13 @@ on:
         required: false
         default: "ubuntu-24.04"
         type: string
-        # Note: python_version is not exposed here (workflow_dispatch caps
-        # inputs at 10); the native Linux build job follows its own default
-        # (actions/setup-python 3.12).
+      gcc_major:
+        description: "GCC major version for the native Linux build (noble archive: 9-14)"
+        required: false
+        default: "14"
+        type: string
+        # Note: python_version is not exposed here; the native Linux build
+        # job follows its own default (actions/setup-python 3.12).
 
 permissions:
   contents: read
@@ -116,6 +120,7 @@ jobs:
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
       runner_image: ${{ inputs.runner_image }}
+      gcc_major: ${{ inputs.gcc_major }}
 
   fvs-gui-container:
     name: FVS GUI container build

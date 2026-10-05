@@ -71,7 +71,7 @@ Build provenance metadata captured by Meson at configure time (compiler versions
 ### Prerequisites
 
 - Linux x86_64
-- `gfortran` and `gcc` (currently pins to `gfortran-13` at the workflow level;
+- `gfortran` and `gcc` (the workflows select a GCC major with `gcc_major`;
 any reasonably recent gfortran works for local-dev experimentation)
 - `meson >= 1.1`, `ninja`
 - `python3` (stdlib only — no third-party packages)
@@ -172,7 +172,7 @@ Local-only Meson options not exposed through workflows:
 
 ## Calling the workflows as GitHub Automations
 
-Five reusable `workflow_call` workflows wrap the Meson overlay (one per OS), the runtime image build, and the FVS GUI image build, with pinned `ubuntu-24.04` runner, `gfortran-13` toolchain, and `ubuntu:24.04` runtime base.
+Five reusable `workflow_call` workflows wrap the Meson overlay (one per OS), the runtime image build, and the FVS GUI image build, with pinned `ubuntu-24.04` runner and `ubuntu:24.04` runtime base. Each native workflow takes a `gcc_major` input (defaults: Linux 14, macOS 15, Windows 15; see [GCC toolchain selection](docs/workflow-interface.md#gcc-toolchain-selection)). The native Linux bundle runs on Ubuntu 22.04 and newer.
 
 ### Native binaries only
 
@@ -182,7 +182,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
       profile: reference
 ```
 
@@ -200,7 +200,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.2
+      source_ref: FS2026.3
 
   container:
     needs: native
@@ -208,7 +208,7 @@ jobs:
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2026.2
+      image_tag: FS2026.3
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -226,20 +226,20 @@ Five `workflow_dispatch` drivers exercise the reusable workflows for testing pur
 # Native binaries only
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.2 \
+  -f source_ref=FS2026.3 \
   -f profile=reference
 
 # Full native + container, dry run (no push)
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.2 \
-  -f image_tag=FS2026.2
+  -f source_ref=FS2026.3 \
+  -f image_tag=FS2026.3
 
-# Same, but actually push to ghcr.io/<owner>/fvs-upstream:FS2026.2
+# Same, but actually push to ghcr.io/<owner>/fvs-upstream:FS2026.3
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.2 \
-  -f image_tag=FS2026.2 \
+  -f source_ref=FS2026.3 \
+  -f image_tag=FS2026.3 \
   -f push=true
 ```
 
@@ -300,9 +300,9 @@ To build the GUI image yourself (dry run, no push):
 
 ```bash
 gh workflow run dispatch-container-fvs-gui-linux.yml \
-  -f source_ref=FS2026.2 \
-  -f interface_ref=92dc046adc1d16ddd320b79e9239abd832cbb069 \
-  -f image_tag=FS2026.2
+  -f source_ref=FS2026.3 \
+  -f interface_ref=FS2026.3 \
+  -f image_tag=FS2026.3
 ```
 
 ## Known upstream issues in `USDAForestService/ForestVegetationSimulator`

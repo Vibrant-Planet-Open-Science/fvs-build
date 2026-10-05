@@ -1,0 +1,12 @@
+{
+  "15": [
+    "mingw-w64-x86_64-gcc-15.2.0-11",
+    "mingw-w64-x86_64-gcc-libs-15.2.0-11",
+    "mingw-w64-x86_64-gcc-fortran-15.2.0-11",
+    "mingw-w64-x86_64-gcc-libgfortran-15.2.0-11",
+    "mingw-w64-x86_64-crt-13.0.0.r488.g3fedac280-1",
+    "mingw-w64-x86_64-headers-13.0.0.r488.g3fedac280-1",
+    "mingw-w64-x86_64-winpthreads-13.0.0.r488.g3fedac280-1",
+    "mingw-w64-x86_64-libwinpthread-13.0.0.r488.g3fedac280-1"
+  ]
+}
