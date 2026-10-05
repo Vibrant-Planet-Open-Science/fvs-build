@@ -7,8 +7,8 @@
 #
 # The entry point NAME is the URL segment. jupyter-server-proxy builds the route
 # as `<base_url>/<name>/` and defaults the launcher's path_info to `<name>/`, so
-# `fvs-gui` here is what makes the README badge's `?urlpath=fvs-gui/` resolve.
-# Renaming it silently breaks the badge; nothing else in the image encodes it.
+# `fvs-gui` here is the `/fvs-gui/` route the JupyterLab launcher tile opens and
+# that `?urlpath=fvs-gui/` links resolve. Nothing else in the image encodes it.
 
 [build-system]
 requires = ["hatchling"]

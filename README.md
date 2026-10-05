@@ -1,6 +1,6 @@
 # fvs-build
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=fvs-gui/)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=lab)
 
 Reusable build machinery for the Forest Vegetation Simulator (FVS).
 
@@ -250,24 +250,24 @@ The image has no entrypoint shim — invoke FVS with its native command line. Ea
 ```bash
 docker run --rm \
   -v "$PWD:/data" \
-  ghcr.io/<owner>/usfs-fvs:FS2026.2 \
+  ghcr.io/<owner>/usfs-fvs:FS2026.3 \
   FVSak --keywordfile=mykeyfile.key
 ```
 
 Pass-through FVS options work without any wrapper:
 
 ```bash
-docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.2 \
+docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.3 \
   FVSak --keywordfile=mykey.key --stoppoint=1,2040,mykey.stop
 
-docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.2 \
+docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.3 \
   FVSak --restart=mykey.stop
 ```
 
 The image can also be used as a build stage in downstream Dockerfiles to extract just the binaries you need:
 
 ```dockerfile
-FROM ghcr.io/<owner>/usfs-fvs:FS2026.2 AS fvs
+FROM ghcr.io/<owner>/usfs-fvs:FS2026.3 AS fvs
 FROM ubuntu:24.04
 COPY --from=fvs /usr/local/bin/FVSak /usr/local/bin/
 COPY --from=fvs /usr/local/lib/FVSak.so /usr/local/lib/
@@ -277,14 +277,14 @@ RUN apt-get update && apt-get install -y libgfortran5 libquadmath0 && rm -rf /va
 OCI provenance labels (`org.opencontainers.image.*` plus custom `org.vibrantplanet.fvs.*`) record the source repo, ref, SHA, toolchain versions, and variant set baked in. Inspect with:
 
 ```bash
-docker inspect ghcr.io/<owner>/usfs-fvs:FS2026.2 | jq '.[0].Config.Labels'
+docker inspect ghcr.io/<owner>/usfs-fvs:FS2026.3 | jq '.[0].Config.Labels'
 ```
 
 ## Run the FVS GUI on Binder
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=fvs-gui/)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=lab)
 
-Click the badge to launch **FVSOnLocal** — the `fvsOL` R-Shiny GUI over FVS — on [mybinder.org](https://mybinder.org). Binder builds the thin [`binder/Dockerfile`](binder/Dockerfile) (a single `FROM ghcr.io/.../usfs-fvs-gui:<tag>`) in seconds and opens the app at the `/fvs-gui/` subpath (the trailing slash in `?urlpath=fvs-gui/` matters).
+Click the badge to open JupyterLab on [mybinder.org](https://mybinder.org), then click the **FVS GUI** tile in the Launcher to start **FVSOnLocal**, the `fvsOL` R-Shiny GUI over FVS, at the `/fvs-gui/` subpath. Binder builds the thin [`binder/Dockerfile`](binder/Dockerfile) (a single `FROM ghcr.io/.../usfs-fvs-gui:<tag>`) in seconds. To skip JupyterLab and open the GUI directly, use `?urlpath=fvs-gui/` instead of `?urlpath=lab` (the trailing slash matters).
 
 The heavy image behind that shim is built by [`build-container-fvs-gui-linux.yml`](.github/workflows/build-container-fvs-gui-linux.yml): it reuses the native `FVS<v>.so` set (FVS is never compiled in Docker) and builds the `rFVS`/`fvsOL` R layer on `rocker/r2u:noble`, with Jupyter, `jupyter-server-proxy`, and `jupyterhub` — the last because JupyterHub spawns `jupyterhub-singleuser`, not `jupyter lab`.
 
