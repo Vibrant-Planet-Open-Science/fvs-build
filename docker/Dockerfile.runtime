@@ -3,8 +3,8 @@
 # This is a runtime-only image. The compile happens on a native GitHub-hosted
 # ubuntu-24.04 runner (build-native-linux.yml). This Dockerfile only consumes
 # the resulting binaries from the unpacked artifact bundle and copies them into
-# a slim ubuntu:24.04 runtime alongside the matching libgfortran5 / libquadmath0
-# packages.
+# a slim ubuntu:24.04 runtime alongside the matching libgfortran5 (and, on
+# amd64, libquadmath0) packages.
 #
 # Pinning ubuntu:24.04 here matches the ubuntu-24.04 build runner: identical
 # glibc baseline on both sides means the copied binary loads cleanly without
@@ -12,7 +12,7 @@
 #
 # Build context expectations (set up by build-container-linux.yml):
 #   ./bundle/                     unpacked from the build-native-linux.yml
-#                                 artifact `fvs-native-linux-<run_id>`
+#                                 artifact `fvs-native-linux-<arch>-<run_id>`
 #   ./bundle/FVS<v>               per-variant executable (+x) at bundle root
 #   ./bundle/FVS<v>.so          embedder shared library (not required for CLI)
 #   ./bundle/provenance/manifest.json
@@ -53,12 +53,15 @@ ENV FVS_VERSION=${SOURCE_REF}
 
 # Runtime libraries only -- no compiler toolchain. libgfortran5 satisfies
 # the Fortran runtime; libquadmath0 covers IEEE quad-precision math
-# referenced by the FVS shared library.
+# referenced by the FVS shared library. amd64 only: Ubuntu does not build it
+# for arm64, where long double is already IEEE quad. The unquoted $(...) is
+# meant to vanish on arm64.
+# hadolint ignore=SC2046
 RUN apt-get update \
   && apt-get upgrade -y --no-install-recommends \
   && apt-get install -y --no-install-recommends \
   libgfortran5 \
-  libquadmath0 \
+  $([ "$(dpkg --print-architecture)" = amd64 ] && echo libquadmath0) \
   ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 

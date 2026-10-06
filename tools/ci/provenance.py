@@ -13,8 +13,9 @@ variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
   root (``FVS<v>`` / ``FVS<v>.{so,dll}`` plus ``provenance/``, ``sbom/``).
   Per-variant staging keeps binaries and shared libs at the variant directory
   root (not under a ``lib/`` subdirectory). Artifact names use an ``<os>``
-  prefix (``linux-``, ``macos-``, ``windows-``) so parallel reusable native
-  workflows in the **same** GitHub Actions run do not collide on ``variant-<v>``.
+  prefix (``linux-<arch>-``, ``macos-``, ``windows-``) so parallel reusable
+  native workflows in the **same** GitHub Actions run do not collide on
+  ``variant-<v>``. Linux adds ``uname -m`` because it builds on two arches.
   When only one artifact is downloaded, ``actions/download-artifact`` may leave
   files at the staging root; those are moved into ``<os>-variant-<v>/`` first.
 * ``manifest-to-github-env`` — append Docker-related variables to
@@ -26,6 +27,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import shlex
 import shutil
 import subprocess
@@ -93,7 +95,7 @@ def _variant_artifact_staging_prefix() -> str:
     """Directory/artifact prefix for per-variant uploads (must match workflows)."""
     plat = _native_platform()
     if plat == "linux":
-        return "linux-variant-"
+        return f"linux-{platform.machine()}-variant-"
     if plat == "darwin":
         return "macos-variant-"
     return "windows-variant-"
@@ -107,7 +109,7 @@ def _normalize_flat_single_variant_staging(
 
     ``actions/download-artifact`` with ``pattern`` places each match under
     ``path/<artifact-name>/`` only when **two or more** artifacts match. A
-    single match (e.g. ``variants=pn`` → only ``linux-variant-pn``) is
+    single match (e.g. ``variants=pn`` → only ``linux-x86_64-variant-pn``) is
     extracted directly into ``path/``, which matches per-variant upload layout
     (``FVSpn``, ``FVSpn.so``, ``provenance/`` at the staging root).
     """
@@ -167,6 +169,7 @@ def _per_variant_document() -> dict[str, Any]:
     return {
         "schema_version": 1,
         "variant": variant,
+        "arch": platform.machine(),
         "binary": _binary_filename(variant),
         "shared_library": _shared_library_filename(variant),
         "binary_sha256": _require_env("BIN_SHA"),
@@ -253,6 +256,7 @@ def _bundle_manifest_document(
     return {
         "schema_version": 1,
         "artifact_name": artifact_name,
+        "arch": first["arch"],
         "build": {
             "workflow_run_id": run_id,
             "workflow_run_attempt": run_attempt,
@@ -353,7 +357,7 @@ def _emit_collect_bundle_missing_file(
     lines.append(
         "  hints: (1) open the matrix job log and confirm "
         "'----- staged staging/<code> -----' lists the same filenames; "
-        "(2) download the linux-variant-* (or macos-/windows-) zip and check "
+        "(2) download the linux-<arch>-variant-* (or macos-/windows-) zip and check "
         "the shared library is inside; "
         "(3) merge-multiple=false (default) extracts each artifact under "
         "staging/<artifact-name>/; "
@@ -420,22 +424,29 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
                     sys.stderr.write(f"    {_describe_path_entry(child)}\n")
             except OSError as exc:
                 sys.stderr.write(f"    (could not list: {exc})\n")
-            if dir_prefix == "linux-variant-" and list(
+            if dir_prefix.startswith("linux-") and list(
                 staging_dir.glob("macos-variant-*/"),
             ):
                 sys.stderr.write(
-                    "  hint: found macos-variant-* but expected linux-variant-* — "
-                    "download-artifact pattern should be linux-variant-* for "
+                    f"  hint: found macos-variant-* but expected {dir_prefix}* — "
+                    f"download-artifact pattern should be {dir_prefix}* for "
                     "build-native-linux.yml.\n",
                 )
-            if dir_prefix == "linux-variant-" and list(
+            if dir_prefix.startswith("linux-") and list(
+                staging_dir.glob("linux-*-variant-*/"),
+            ):
+                sys.stderr.write(
+                    f"  hint: found linux-*-variant-* for another arch; expected "
+                    f"{dir_prefix}* (collect must run on the build legs' arch).\n",
+                )
+            if dir_prefix.startswith("linux-") and list(
                 staging_dir.glob("variant-*/"),
             ):
                 sys.stderr.write(
                     "  hint: found legacy variant-* directories (no OS prefix). "
                     "Older workflows collided when Linux and macOS reusable jobs "
                     "ran in the same run; upgrade fvs-build workflows to "
-                    "linux-variant-* / macos-variant-* artifact names.\n",
+                    "linux-<arch>-variant-* / macos-variant-* artifact names.\n",
                 )
         else:
             sys.stderr.write(
@@ -566,6 +577,7 @@ def cmd_manifest_to_github_env(args: argparse.Namespace) -> int:
         f"FVS_BUILD_SHA={data['fvs_build']['sha']}",
         f"GFORTRAN_VERSION={data['toolchain']['gfortran_version']}",
         f"MESON_VERSION={data['toolchain']['meson_version']}",
+        f"BUNDLE_ARCH={data['arch']}",
         f"VARIANTS_BUILT={_variants_built_csv(binaries)}",
         f"VARIANTS_BINARIES={' '.join(binaries)}",
     ]

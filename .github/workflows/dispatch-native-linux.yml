@@ -32,7 +32,7 @@ on:
         default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
         type: string
       runner_image:
-        description: "GitHub-hosted runner image label"
+        description: "GitHub-hosted runner image label (ubuntu-24.04 for x86_64, ubuntu-24.04-arm for aarch64)"
         required: false
         default: "ubuntu-24.04"
         type: string
