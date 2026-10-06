@@ -157,7 +157,7 @@ CI workflows pass a `profile` input instead of ad-hoc Fortran flag strings.
 
 | Profile | Purpose |
 | ------- | ------- |
-| `reference` (default) | Goldens-aligned build matching upstream `bin/makefile`: `plain` buildtype, `-g`, five-condition FPE traps, no optimization. |
+| `reference` (default) | Goldens-aligned build matching upstream `bin/makefile`: `plain` buildtype, `-g`, five-condition FPE traps (four on arm64, which has no denormal trap), no optimization. |
 | `debug` | Paranoid checks for runtime debugging: adds `-O0`, `-fcheck=all`, and sentinel initialization. Not goldens-compatible. |
 
 ```bash

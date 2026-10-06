@@ -49,7 +49,16 @@ traps_opt = get_option('traps')
 extra_fortran_flags = get_option('extra_fortran_args')
 
 # Profile-default FPE trap set (upstream bin/makefile: all five conditions).
-profile_trap_flag = '-ffpe-trap=invalid,zero,underflow,overflow,denormal'
+# aarch64 (Linux and Apple Silicon) has no denormal-operand exception, and
+# libgfortran prints a runtime warning on every executable start when asked
+# for one, so it is left out there. The other four are still requested, but
+# the arm64 cores we build and run on do not trap in hardware, so they have
+# no effect either.
+if host_machine.cpu_family() == 'aarch64'
+  profile_trap_flag = '-ffpe-trap=invalid,zero,underflow,overflow'
+else
+  profile_trap_flag = '-ffpe-trap=invalid,zero,underflow,overflow,denormal'
+endif
 
 if traps_opt == 'default'
   trap_flag = profile_trap_flag

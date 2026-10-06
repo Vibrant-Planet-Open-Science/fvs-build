@@ -67,6 +67,10 @@ The **executable** and **shared library** are independent link products (upstrea
 
 The Linux container workflow consumes **only** the Linux bundle; Windows and macOS bundles are for native delivery on those platforms.
 
+### Floating-point traps on arm64
+
+Both profiles compile with `-ffpe-trap=invalid,zero,underflow,overflow,denormal`, as upstream's `bin/makefile` does. On aarch64 (Linux arm64 and Apple Silicon macOS), `denormal` is left out, because aarch64 has no such exception. The remaining traps are requested but have no effect there: the arm64 cores behind GitHub's runners and Apple Silicon do not trap floating-point exceptions in hardware, so a division by zero yields `Infinity` instead of `SIGFPE`. That defeats the `debug` profile's `-finit-real=snan` check, so run the `debug` profile on x86_64.
+
 ### Shared native CI helpers
 
 The three `build-native-*.yml` workflows share the same overall shape; repeated steps are centralized so the YAML stays short and changes stay in one place:
