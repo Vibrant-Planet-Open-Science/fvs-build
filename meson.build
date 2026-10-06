@@ -7,9 +7,10 @@
 #
 # Supported hosts: Linux, macOS (darwin), Windows (e.g. MinGW-w64 / MSYS2 with
 # gfortran). Flags follow USDAForestService `bin/makefile` where applicable;
-# macOS shared libraries use `.dylib` (Meson default on darwin).
+# shared libraries use `.so` on macOS as well as Linux, matching upstream
+# `bin/makefile` and R's `.Platform$dynlib.ext` (what rFVS loads).
 #
-# Per variant: FVS<v> executable (standalone CLI) + FVS<v>.{so,dll,dylib}
+# Per variant: FVS<v> executable (standalone CLI) + FVS<v>.{so,dll}
 # embedder shared library (name_prefix '' — no lib prefix; matches upstream).
 # The exe and shlib are independent links from fvs_objs + main (exe only),
 # not exe-at-runtime-via-DLL.
@@ -17,7 +18,7 @@
 project(
   'fvs-build',
   ['c', 'cpp', 'fortran'],
-  version: '0.3.0',
+  version: '0.4.0',
   meson_version: '>=1.8.0',
   default_options: [
     'c_std=c11',
@@ -149,8 +150,8 @@ if host_sys == 'windows'
   objs_pic = false
 else
   os_c_args = ['-Dunix']
-  # Linux (l64): USFS uses -fPIC. macOS: PIC for dylib objects (departure from
-  # USFS empty PIC on osx).
+  # Linux (l64): USFS uses -fPIC. macOS: PIC for shared-library objects
+  # (departure from USFS empty PIC on osx).
   objs_pic = true
   if host_sys == 'darwin'
     # Embed the gfortran runtime in the artifact so it does not hard-depend on
@@ -160,7 +161,7 @@ else
     # absent on end-user Macs -> dlopen/OSError. Mirrors the Windows `-static`
     # intent; macOS cannot fully static-link libSystem, so we static-link only
     # the GCC runtime libs (libgfortran/libgcc/libquadmath). Verify with
-    # `otool -L FVS<v>.dylib`: no /opt/homebrew/.../libgfortran line should
+    # `otool -L FVS<v>.so`: no /opt/homebrew/.../libgfortran line should
     # remain.
     fortran_runtime_static = [
       '-static-libgfortran',
@@ -276,11 +277,13 @@ foreach v : variants
     install: false,
   )
 
-  # Shared library: FVS<v>.so / .dylib / .dll (embedders; no lib prefix).
+  # Shared library: FVS<v>.so / .dll (embedders; no lib prefix; .so on macOS
+  # too, see the header).
   fvs_lib = shared_library(
     'FVS' + v,
     [],
     name_prefix: '',
+    name_suffix: host_sys == 'windows' ? 'dll' : 'so',
     link_whole: fvs_objs,
     # Force the gfortran driver to link this library. Its source list is empty
     # (objects come via link_whole), so Meson would otherwise pick the C linker

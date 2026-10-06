@@ -61,7 +61,7 @@ the upstream tree.
 
 For variant `<v>`, `meson compile` produces in `builddir/`:
 - `FVS<v>` (or `FVS<v>.exe` on Windows) — **standalone CLI executable**; does not load the embedder shared library at runtime (matches upstream `bin/makefile` `%.prg` linking)
-- `FVS<v>.so` / `.dll` / `.dylib` — **embedder shared library** for PyFVS, rFVS, fvs2py (no `lib` prefix; same basename as upstream)
+- `FVS<v>.so` (Linux and macOS) / `.dll` (Windows) — **embedder shared library** for PyFVS, rFVS, fvs2py (no `lib` prefix; same basename as upstream)
 - `libfvs_<v>_objs.a` — internal static object carrier; not a deliverable
 
 Build provenance metadata captured by Meson at configure time (compiler versions, linker, host machine) is in `builddir/meson-logs/`.

@@ -2,7 +2,7 @@
 # via the fvs-build Meson overlay.
 #
 # Same structure as build-native-linux.yml / build-native-windows.yml; bundle
-# uses extensionless executables and `FVS<v>.dylib` embedder libraries.
+# uses extensionless executables and `FVS<v>.so` embedder libraries.
 
 name: Build native macOS FVS artifacts (reusable)
 
@@ -195,8 +195,8 @@ jobs:
           set -euo pipefail
           BIN_REL="_build/FVS${VARIANT}"
           test -x "$BIN_REL"
-          if otool -L "$BIN_REL" | grep -q "FVS${VARIANT}\.dylib"; then
-            echo "ERROR: ${BIN_REL} must not depend on FVS${VARIANT}.dylib at runtime" >&2
+          if otool -L "$BIN_REL" | grep -q "FVS${VARIANT}\.so"; then
+            echo "ERROR: ${BIN_REL} must not depend on FVS${VARIANT}.so at runtime" >&2
             exit 1
           fi
           SMOKE_DIR=$(mktemp -d)
@@ -227,14 +227,14 @@ jobs:
           VARIANT: ${{ matrix.variant }}
         run: |
           set -euo pipefail
-          # Both the standalone exe and the fvs2py-loaded embedder dylib must
+          # Both the standalone exe and the fvs2py-loaded embedder library must
           # depend only on base-system libraries. A leaked Homebrew gcc runtime
           # (e.g. /opt/homebrew/opt/gcc@14/lib/gcc/14/libgfortran.5.dylib) or an
           # unresolved @rpath entry is absent on end-user Macs and fails at
           # dlopen/ctypes with OSError. With -static-libgfortran/-libgcc/
           # -libquadmath only /usr/lib and /System deps should remain.
           status=0
-          for f in "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.dylib"; do
+          for f in "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"; do
             test -f "$f"
             echo "----- otool -L $f -----"
             otool -L "$f"
@@ -257,7 +257,7 @@ jobs:
         env:
           GCC_MAJOR: ${{ inputs.gcc_major }}
           VARIANT: ${{ matrix.variant }}
-        run: bash fvs-build/tools/ci/check_gcc_major.sh "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.dylib"
+        run: bash fvs-build/tools/ci/check_gcc_major.sh "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"
 
       - name: Stage artifacts and per-variant build-info
         env:

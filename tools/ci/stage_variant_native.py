@@ -77,12 +77,11 @@ def _artifact_paths(
             f"FVS{variant}.exe",
             f"FVS{variant}.dll",
         )
-    ext = ".dylib" if platform == "darwin" else ".so"
     return (
         build_dir / f"FVS{variant}",
-        build_dir / f"FVS{variant}{ext}",
+        build_dir / f"FVS{variant}.so",
         f"FVS{variant}",
-        f"FVS{variant}{ext}",
+        f"FVS{variant}.so",
     )
 
 

@@ -30,7 +30,7 @@ Three reusable workflows share the same job shape (preflight → per-variant mat
 | ------- | ------------------------ | --------------------- | --------------------------------- | ------------------------- | ----------------------------- | ------------------------------------------- |
 | Linux   | `build-native-linux.yml` | `linux`               | `fvs-native-linux-<run_id>`     | `FVS<v>`                  | `FVS<v>.so`                   | `sbom/fvs-native-linux.spdx.json`           |
 | Windows | `build-native-windows.yml` | `windows`           | `fvs-native-windows-<run_id>`   | `FVS<v>.exe`              | `FVS<v>.dll`                  | `sbom/fvs-native-windows.spdx.json`         |
-| macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`                  | `FVS<v>.dylib`                | `sbom/fvs-native-macos.spdx.json`           |
+| macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`                  | `FVS<v>.so`                   | `sbom/fvs-native-macos.spdx.json`           |
 
 `provenance/manifest.json` and each `provenance/per-variant/FVS<v>.json` use the **`binary`** and **`shared_library`** basenames from this table (including extensions on Windows). `toolchain.gcc_major` is the GCC major the bundle was built with, the same field on every OS. The `toolchain.gfortran_package` and `toolchain.gpp_package` fields are **human-readable labels** (apt names on Linux, exact MSYS2 package builds on Windows, the Homebrew formula on macOS), not a portable schema across OSes.
 
@@ -52,9 +52,9 @@ The Meson build-directory cache key includes the compiler's `--version` line, so
 
 Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1`; the build fails on any other `NEEDED` entry. What they run on is set by the build system's glibc, not by the GCC major: the build fails if any artifact needs a `GLIBC_` symbol version newer than 2.35, so the native Linux bundle runs on Ubuntu 22.04 and newer (and on any distribution with glibc ≥ 2.35 and a `libgfortran5` from GCC 10 or newer). Older systems should use the container images.
 
-During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs the Linux, macOS, and Windows reusable workflows in the **same** workflow run — for example [`ci-test-reusable-native.yml`](../.github/workflows/ci-test-reusable-native.yml). Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (e.g. `FVSak.dylib` instead of `.so`). The final bundle artifact names (`fvs-native-*-<run_id>`) are unchanged.
+During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs the Linux, macOS, and Windows reusable workflows in the **same** workflow run — for example [`ci-test-reusable-native.yml`](../.github/workflows/ci-test-reusable-native.yml). Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (a Mach-O `FVSak.so` in place of the Linux ELF one, under the same file name). The final bundle artifact names (`fvs-native-*-<run_id>`) are unchanged.
 
-The **executable** and **shared library** are independent link products (upstream `bin/makefile` `%.prg` rules): CLI runs do not require the `.so` / `.dll` / `.dylib` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). The shared library keeps the **`FVS<v>`** basename without a `lib` prefix (embedders formerly used `libFVS<v>.*` — **breaking rename**).
+The **executable** and **shared library** are independent link products (upstream `bin/makefile` `%.prg` rules): CLI runs do not require the `.so` / `.dll` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). The shared library keeps the **`FVS<v>`** basename without a `lib` prefix (embedders formerly used `libFVS<v>.*` — **breaking rename**).
 
 The Linux container workflow consumes **only** the Linux bundle; Windows and macOS bundles are for native delivery on those platforms.
 
@@ -163,7 +163,7 @@ fvs-native-linux-<run_id>/
 }
 ```
 
-On **Windows**, `artifacts.binaries` use the `.exe` suffix, `artifacts.shared_libraries` use `.dll`, and `artifacts.sbom` is `sbom/fvs-native-windows.spdx.json`. On **macOS**, binaries are extensionless like Linux; `shared_libraries` use `.dylib`; `artifacts.sbom` is `sbom/fvs-native-macos.spdx.json`.
+On **Windows**, `artifacts.binaries` use the `.exe` suffix, `artifacts.shared_libraries` use `.dll`, and `artifacts.sbom` is `sbom/fvs-native-windows.spdx.json`. On **macOS**, binaries are extensionless like Linux; `shared_libraries` use `.so`, as on Linux (matching upstream `bin/makefile` and R's `.Platform$dynlib.ext`); `artifacts.sbom` is `sbom/fvs-native-macos.spdx.json`.
 
 #### `provenance/per-variant/FVS<v>.json` schema
 
@@ -209,7 +209,7 @@ jobs:
 Pin to a specific `fvs-build` ref (tag or SHA) for reproducible release pipelines:
 
 ```yaml
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.3.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.4.0
 ```
 
 Consume the produced artifact in a downstream job in the same workflow:
