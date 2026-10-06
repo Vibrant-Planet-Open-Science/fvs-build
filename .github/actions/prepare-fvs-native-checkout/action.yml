@@ -18,7 +18,7 @@ inputs:
     required: true
   run_shell:
     description: >
-      Shell for run steps (bash on Linux/macOS; use msys2 {0} for Windows MINGW64).
+      Shell for run steps (bash on Linux/macOS; use msys2 {0} for Windows UCRT64).
     required: false
     default: bash
 

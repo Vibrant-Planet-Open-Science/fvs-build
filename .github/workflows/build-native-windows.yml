@@ -1,4 +1,4 @@
-# Reusable workflow: build native Windows x86_64 FVS artifacts (MinGW-w64 / MSYS2)
+# Reusable workflow: build native Windows x86_64 FVS artifacts (MSYS2 UCRT64)
 # via the fvs-build Meson overlay.
 #
 # Same contract as build-native-linux.yml (per-variant matrix, bundle layout,
@@ -28,7 +28,7 @@ on:
         default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
       runner_image:
         description: >-
-          GitHub-hosted Windows runner label (MSYS2 MINGW64 toolchain).
+          GitHub-hosted Windows runner label (MSYS2 UCRT64 toolchain).
         required: false
         type: string
         default: "windows-latest"
@@ -43,7 +43,7 @@ on:
         default: "15"
       meson_version:
         description: >-
-          Exact Meson version installed via pip (MINGW64 Python).
+          Exact Meson version installed via pip (UCRT64 Python).
         required: false
         type: string
         default: "1.12.0"
@@ -58,7 +58,7 @@ on:
       python_version:
         description: >-
           Version string for actions/setup-python (preflight, collect-bundle,
-          and MINGW64 Meson via pip).
+          and UCRT64 Meson via pip).
         required: false
         type: string
         default: "3.12"
@@ -105,7 +105,7 @@ jobs:
       run:
         shell: msys2 {0}
     env:
-      MSYSTEM: MINGW64
+      MSYSTEM: UCRT64
     strategy:
       fail-fast: false
       matrix:
@@ -116,18 +116,18 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Set up MSYS2 (MINGW64)
+      - name: Set up MSYS2 (UCRT64)
         uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: UCRT64
           update: true
-          # GNU coreutils are not packaged as mingw-w64-x86_64-coreutils; use MSYS repo tools on PATH.
-          # MSYS `git` is on PATH in MINGW64 shells; Git-for-Windows is not (needed for rev-parse SHAs).
+          # GNU coreutils are not packaged as mingw-w64-ucrt-x86_64-coreutils; use MSYS repo tools on PATH.
+          # MSYS `git` is on PATH in UCRT64 shells; Git-for-Windows is not (needed for rev-parse SHAs).
           # GCC is not listed here: it comes from the pinned set installed below.
           install: >-
-            mingw-w64-x86_64-ninja
-            mingw-w64-x86_64-python
-            mingw-w64-x86_64-python-pip
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-python
+            mingw-w64-ucrt-x86_64-python-pip
             coreutils
             findutils
             grep
@@ -161,14 +161,14 @@ jobs:
           DL=$(mktemp -d)
           for p in "${PKGS[@]}"; do
             curl -fsSL --retry 3 -o "${DL}/${p}-any.pkg.tar.zst" \
-              "https://repo.msys2.org/mingw/mingw64/${p}-any.pkg.tar.zst"
+              "https://repo.msys2.org/mingw/ucrt64/${p}-any.pkg.tar.zst"
           done
-          # MINGW64 Python and Ninja pull in the current GCC runtime. From
+          # UCRT64 Python and Ninja pull in the current GCC runtime. From
           # 16.2.0-4 that is split into cc-libs/libgcc/libstdc++/..., which
           # conflict with an older gcc-libs, so pacman -U refuses the pinned
           # set. Drop the runtime without dependency checks; the pinned set
           # reinstalls it (gcc-libs provides cc-libs).
-          mapfile -t RUNTIME < <(pacman -Qq | grep -E '^mingw-w64-x86_64-(cc-libs|libgcc|libstdc\+\+|libatomic|libquadmath|libgomp|libgfortran|gcc-libs|gcc-libgfortran)$' || true)
+          mapfile -t RUNTIME < <(pacman -Qq | grep -E '^mingw-w64-ucrt-x86_64-(cc-libs|libgcc|libstdc\+\+|libatomic|libquadmath|libgomp|libgfortran|gcc-libs|gcc-libgfortran)$' || true)
           if [ "${#RUNTIME[@]}" -gt 0 ]; then
             pacman -Rdd --noconfirm "${RUNTIME[@]}"
           fi
@@ -180,8 +180,8 @@ jobs:
             echo "FC=gfortran"
             echo "CC=gcc"
             echo "CXX=g++"
-            echo "GFORTRAN_PKG=$(printf '%s\n' "${PKGS[@]}" | grep '^mingw-w64-x86_64-gcc-fortran-')"
-            echo "GPP_PKG=$(printf '%s\n' "${PKGS[@]}" | grep '^mingw-w64-x86_64-gcc-[0-9]')"
+            echo "GFORTRAN_PKG=$(printf '%s\n' "${PKGS[@]}" | grep '^mingw-w64-ucrt-x86_64-gcc-fortran-')"
+            echo "GPP_PKG=$(printf '%s\n' "${PKGS[@]}" | grep '^mingw-w64-ucrt-x86_64-gcc-[0-9]')"
           } >> "$GITHUB_ENV"
           # Cache keys cannot contain commas; keep the version line's identity.
           echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
@@ -271,7 +271,8 @@ jobs:
           # import a MinGW/MSYS2 runtime DLL (absent on end-user Windows) and
           # the exe must not import the embedder DLL. Denylist the runtime DLLs
           # rather than allowlist the (large, unstable) Windows system set.
-          runtime='libgfortran|libgcc_s|libquadmath|libwinpthread|libstdc\+\+|libssp'
+          # msvcrt.dll means a MINGW64 object slipped into this UCRT64 build.
+          runtime='libgfortran|libgcc_s|libquadmath|libwinpthread|libstdc\+\+|libssp|msvcrt\.dll'
           status=0
           check() {
             f="$1"; pat="$2"

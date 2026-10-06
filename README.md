@@ -6,7 +6,7 @@ Reusable build machinery for the Forest Vegetation Simulator (FVS).
 
 `fvs-build` provides a thin Meson overlay that compiles FVS native binaries (executables and shared libraries) from any source repository following the upstream USDA Forest Service layout. It is **source-agnostic**: callers point `fvs-build` at a checked-out source tree (e.g., a tag of `USDAForestService/ForestVegetationSimulator`) and a set of variant codes, and Meson produces the corresponding native artifacts.
 
-This repo covers **Linux** x86_64 and aarch64 (`ubuntu-24.04`, `ubuntu-24.04-arm`), **Windows** (MSYS2 MINGW64), and **macOS** (Homebrew `gcc@N`) native bundles, plus multi-arch (linux/amd64, linux/arm64) container images, via reusable workflows; see [`docs/workflow-interface.md`](docs/workflow-interface.md). The Meson overlay configures on all three hosts locally as well.
+This repo covers **Linux** x86_64 and aarch64 (`ubuntu-24.04`, `ubuntu-24.04-arm`), **Windows** x86_64 (MSYS2 UCRT64; Windows 10 or newer), and **macOS** (Homebrew `gcc@N`) native bundles, plus multi-arch (linux/amd64, linux/arm64) container images, via reusable workflows; see [`docs/workflow-interface.md`](docs/workflow-interface.md). The Meson overlay configures on all three hosts locally as well.
 
 ## Key contents
 
