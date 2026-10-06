@@ -18,9 +18,9 @@ on:
       - main
 
 # Cancel an in-progress run for a PR when a new commit is pushed to it. These
-# native builds fan out across three OSes and many variants, so superseding
-# stale runs saves substantial runner time. Keyed by PR number (falling back to
-# ref) so distinct PRs never cancel each other.
+# native builds fan out across three OSes (Linux on two arches) and many
+# variants, so superseding stale runs saves substantial runner time. Keyed by PR
+# number (falling back to ref) so distinct PRs never cancel each other.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -97,6 +97,20 @@ jobs:
       meson_version: "1.12.0"
       profile: reference
 
+  linux-arm64:
+    name: Linux arm64 (reusable)
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
+    uses: ./.github/workflows/build-native-linux.yml
+    with:
+      source_repo: USDAForestService/ForestVegetationSimulator
+      source_ref: FS2026.3
+      variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
+      runner_image: ubuntu-24.04-arm
+      gcc_major: "14"
+      meson_version: "1.12.0"
+      profile: reference
+
   windows:
     name: Windows (reusable)
     needs: changes
@@ -133,6 +147,7 @@ jobs:
     needs:
       - changes
       - linux
+      - linux-arm64
       - windows
       - macos
     runs-on: ubuntu-24.04
@@ -142,6 +157,7 @@ jobs:
           CHANGES: ${{ needs.changes.result }}
           NATIVE: ${{ needs.changes.outputs.native }}
           LINUX: ${{ needs.linux.result }}
+          LINUX_ARM64: ${{ needs.linux-arm64.result }}
           WINDOWS: ${{ needs.windows.result }}
           MACOS: ${{ needs.macos.result }}
         run: |
@@ -158,7 +174,7 @@ jobs:
           fi
 
           status=0
-          for pair in "Linux:$LINUX" "Windows:$WINDOWS" "macOS:$MACOS"; do
+          for pair in "Linux:$LINUX" "Linux arm64:$LINUX_ARM64" "Windows:$WINDOWS" "macOS:$MACOS"; do
             name=${pair%%:*}
             result=${pair#*:}
             echo "$name: $result"

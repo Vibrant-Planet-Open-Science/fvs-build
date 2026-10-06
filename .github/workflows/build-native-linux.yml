@@ -1,5 +1,6 @@
-# Reusable workflow: build native Linux x86_64 FVS artifacts via the
-# fvs-build Meson overlay.
+# Reusable workflow: build native Linux FVS artifacts via the fvs-build
+# Meson overlay. Runs on x86_64 or aarch64: the runner_image picks the arch
+# (ubuntu-24.04 or ubuntu-24.04-arm). A caller wanting both calls it twice.
 #
 # This workflow is source-agnostic. Callers supply a source repo URL and
 # ref; this workflow produces a single artifact bundle (per-variant
@@ -11,7 +12,7 @@
 # this workflow's artifacts may be consumed by a separate container workflow
 # via its `artifact_name` output.
 
-name: Build native Linux x86_64 FVS artifacts (reusable)
+name: Build native Linux FVS artifacts (reusable)
 
 on:
   workflow_call:
@@ -37,7 +38,8 @@ on:
       runner_image:
         description: >-
           GitHub-hosted runner image label. Pinned to keep the glibc baseline
-          stable and matched to the runtime container base.
+          stable and matched to the runtime container base. ubuntu-24.04
+          builds x86_64; ubuntu-24.04-arm builds aarch64.
         required: false
         type: string
         default: "ubuntu-24.04"
@@ -79,7 +81,8 @@ on:
       artifact_name:
         description: >-
           Name of the bundled artifact uploaded by this workflow. Exactly
-          `fvs-native-linux-<run_id>`. The container workflow consumes
+          `fvs-native-linux-<arch>-<run_id>`, where <arch> is the runner's
+          `uname -m` (x86_64 or aarch64). The container workflow consumes
           this name to download and unpack the bundle.
         value: ${{ jobs.collect-and-finalize.outputs.artifact_name }}
 
@@ -192,7 +195,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
+          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
 
       - name: Configure Meson
         env:
@@ -249,9 +252,13 @@ jobs:
       - name: Verify artifacts' runtime dependencies (readelf)
         env:
           VARIANT: ${{ matrix.variant }}
-          # Ubuntu 22.04. glibc is backward compatible, so binaries needing
-          # at most this version run on 22.04 and every newer release.
-          GLIBC_FLOOR: "2.35"
+          # glibc is backward compatible, so binaries needing at most this
+          # version run on that release and every newer one. x86_64: 2.35
+          # (Ubuntu 22.04). aarch64: 2.38 (Ubuntu 24.04), because gfortran
+          # calls libm's fmod/fmodf for MOD() there, which noble versions
+          # GLIBC_2.38; on x86_64 it inlines MOD() instead. Lowering either
+          # floor means building against an older glibc, not pinning symbols.
+          GLIBC_FLOOR: ${{ runner.arch == 'ARM64' && '2.38' || '2.35' }}
         run: |
           set -euo pipefail
           # Linux intentionally dynamic-links libgfortran.so.5 by SONAME (see
@@ -262,7 +269,8 @@ jobs:
           # Guard instead against a build-tree or toolchain search path leaking
           # into DT_RPATH/DT_RUNPATH, a NEEDED library the runtime images do
           # not install, and a glibc symbol newer than GLIBC_FLOOR.
-          allowed='^(libc\.so\.6|libm\.so\.6|libgfortran\.so\.5|libgcc_s\.so\.1)$'
+          # aarch64 shared libraries record the glibc loader as NEEDED.
+          allowed='^(libc\.so\.6|libm\.so\.6|libgfortran\.so\.5|libgcc_s\.so\.1|ld-linux-aarch64\.so\.1)$'
           status=0
           for f in "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"; do
             test -f "$f"
@@ -314,12 +322,17 @@ jobs:
           set -euo pipefail
           python3 fvs-build/tools/ci/stage_variant_native.py
 
+      - name: Resolve machine arch
+        id: arch
+        run: echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
+
       - name: Upload variant artifact
         uses: actions/upload-artifact@v7
         with:
-          # OS-prefixed name avoids collision when linux + macOS + Windows reusable
-          # workflows run in the same workflow run (e.g. ci-test-reusable-native).
-          name: linux-variant-${{ matrix.variant }}
+          # OS- and arch-prefixed name avoids collision when several reusable
+          # native workflows run in the same workflow run (e.g.
+          # ci-test-reusable-native, or x86_64 + aarch64 for a multi-arch image).
+          name: linux-${{ steps.arch.outputs.arch }}-variant-${{ matrix.variant }}
           path: staging/${{ matrix.variant }}/
           retention-days: 1
           if-no-files-found: error
@@ -345,12 +358,16 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Resolve machine arch
+        id: arch
+        run: echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
+
       - id: collect
         uses: ./.github/actions/collect-native-bundle
         with:
           fvs_native_platform: linux
-          download_pattern: linux-variant-*
-          artifact_name: fvs-native-linux-${{ github.run_id }}
+          download_pattern: linux-${{ steps.arch.outputs.arch }}-variant-*
+          artifact_name: fvs-native-linux-${{ steps.arch.outputs.arch }}-${{ github.run_id }}
           sbom_spdx_relpath: sbom/fvs-native-linux.spdx.json
           variants_input: ${{ inputs.variants }}
           runner_image: ${{ inputs.runner_image }}

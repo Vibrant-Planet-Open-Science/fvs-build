@@ -7,7 +7,8 @@
 # not rebuilt -- ADR-001 preserved). What IS built in Docker is the pure-R glue
 # layer (rFVS + fvsOL); see docs/adr-002. The result is a Binder-ready image
 # (rocker/r2u:noble + Jupyter + jupyter-server-proxy) that serves the Shiny app
-# at the /fvs-gui/ subpath.
+# at the /fvs-gui/ subpath. Like build-container-linux.yml, each arch builds
+# on its own runner and push: true publishes one multi-arch manifest list.
 #
 # Caller pattern (orchestrator, see dispatch-container-fvs-gui-linux.yml):
 #
@@ -20,6 +21,7 @@
 #       uses: <owner>/fvs-build/.github/workflows/build-container-fvs-gui-linux.yml@<ref>
 #       with:
 #         artifact_name: ${{ needs.native.outputs.artifact_name }}
+#         artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
 #         interface_ref: FS2026.3
 #         image_name: ghcr.io/<owner>/usfs-fvs-gui
 #         image_tag: FS2026.3
@@ -34,11 +36,20 @@ on:
     inputs:
       artifact_name:
         description: >-
-          Name of the fvs-native-linux artifact bundle produced by a prior
-          build-native-linux.yml job in the same workflow run (typically
-          `fvs-native-linux-<run_id>`). Only its FVS<v>.so set is used.
+          Name of the x86_64 fvs-native-linux artifact bundle produced by a
+          prior build-native-linux.yml job in the same workflow run (typically
+          `fvs-native-linux-x86_64-<run_id>`). Only its FVS<v>.so set is used.
         required: true
         type: string
+      artifact_name_arm64:
+        description: >-
+          Name of the aarch64 bundle from a second build-native-linux.yml job
+          (runner_image: ubuntu-24.04-arm). When set, the image is also built
+          for linux/arm64 and the tags point at a two-arch manifest list.
+          Empty (default) builds linux/amd64 only.
+        required: false
+        type: string
+        default: ""
       interface_repo:
         description: >-
           Source repo (owner/name) providing the rFVS + fvsOL R packages.
@@ -70,13 +81,14 @@ on:
       image_extra_tags:
         description: >-
           Comma-separated additional tags applied at push time (e.g. `latest`).
-          Each is `docker tag`ged from the primary and pushed alongside it.
+          Each points at the same manifest list as the primary tag.
         required: false
         type: string
         default: ""
       runner_image:
         description: >-
-          GitHub-hosted runner image label this workflow runs on.
+          GitHub-hosted runner image label for the amd64 leg and the
+          manifest job. The arm64 leg always runs on ubuntu-24.04-arm.
         required: false
         type: string
         default: "ubuntu-24.04"
@@ -95,8 +107,9 @@ on:
         value: ${{ jobs.build.outputs.image_ref }}
       image_digest:
         description: >-
-          Image digest in `sha256:...` form. Empty unless `push: true`.
-        value: ${{ jobs.build.outputs.image_digest }}
+          Digest of the manifest list behind the tags, in `sha256:...` form.
+          Empty unless `push: true`.
+        value: ${{ jobs.manifest.outputs.image_digest }}
 
 permissions:
   contents: read
@@ -104,11 +117,18 @@ permissions:
 
 jobs:
   build:
-    name: Build and (optionally) push
-    runs-on: ${{ inputs.runner_image }}
+    name: Build ${{ matrix.arch }} and (optionally) push by digest
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || inputs.runner_image }}
+    strategy:
+      fail-fast: true
+      matrix:
+        arch: [amd64, arm64]
+        exclude:
+          - arch: ${{ inputs.artifact_name_arm64 == '' && 'arm64' || 'none' }}
     outputs:
       image_ref: ${{ steps.refs.outputs.image_ref }}
-      image_digest: ${{ steps.push.outputs.image_digest }}
+    env:
+      ARCH: ${{ matrix.arch }}
     steps:
       # Reusable-workflow jobs need the workflow repo on disk before uses: ./...
       - name: Check out fvs-build (workflow repository)
@@ -129,7 +149,7 @@ jobs:
       - name: Download fvs-native-linux artifact bundle
         uses: actions/download-artifact@v7
         with:
-          name: ${{ inputs.artifact_name }}
+          name: ${{ matrix.arch == 'arm64' && inputs.artifact_name_arm64 || inputs.artifact_name }}
           path: bundle
 
       - name: Verify bundle provides the FVS<v>.so set
@@ -205,6 +225,15 @@ jobs:
           set -euo pipefail
           python3 tools/ci/provenance.py manifest-to-github-env
 
+      # Catches an aarch64 bundle passed as artifact_name (or the reverse),
+      # which would otherwise be published under the wrong platform.
+      - name: Verify bundle arch matches this leg
+        run: |
+          case "${BUNDLE_ARCH}:${ARCH}" in
+            x86_64:amd64|aarch64:arm64) echo "bundle arch ${BUNDLE_ARCH} matches linux/${ARCH}" ;;
+            *) echo "ERROR: bundle is ${BUNDLE_ARCH}, but this is the linux/${ARCH} leg" >&2; exit 1 ;;
+          esac
+
       - name: Compose image references
         id: refs
         env:
@@ -219,35 +248,40 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # --load leaves the image in the local daemon for push / inspection.
-      # Push runs in a later, guarded step so a failed build never publishes.
+      # --load leaves the image in the local daemon for the smoke test and
+      # SBOM scan. The push step re-runs the same build from the builder
+      # cache, so a failed build never publishes. The arguments are saved so
+      # both builds use the same ones. The gha cache scope carries the arch
+      # so the two legs do not overwrite each other's cache.
       - name: Build FVS GUI image (load locally)
         env:
           INTERFACE_REPO: ${{ inputs.interface_repo }}
           INTERFACE_REF: ${{ inputs.interface_ref }}
         run: |
           set -euo pipefail
-          docker buildx build \
-            --platform linux/amd64 \
-            --load \
-            --cache-from type=gha,scope=fvs-gui \
-            --cache-to type=gha,mode=max,scope=fvs-gui,ignore-error=true \
-            --tag "${IMAGE_REF}" \
-            --build-arg SOURCE_REPO="${SOURCE_REPO}" \
-            --build-arg SOURCE_REF="${SOURCE_REF}" \
-            --build-arg SOURCE_SHA="${SOURCE_SHA}" \
-            --build-arg FVS_BUILD_REPO="${FVS_BUILD_REPO}" \
-            --build-arg FVS_BUILD_REF="${FVS_BUILD_REF}" \
-            --build-arg FVS_BUILD_SHA="${FVS_BUILD_SHA}" \
-            --build-arg VARIANTS="${VARIANTS_BUILT}" \
-            --build-arg GFORTRAN_VERSION="${GFORTRAN_VERSION}" \
-            --build-arg MESON_VERSION="${MESON_VERSION}" \
-            --build-arg TIMESTAMP="${TIMESTAMP}" \
-            --build-arg INTERFACE_REPO="${INTERFACE_REPO}" \
-            --build-arg INTERFACE_REF="${INTERFACE_REF}" \
-            --build-arg INTERFACE_SHA="${INTERFACE_SHA}" \
-            -f docker/Dockerfile.fvs-gui \
+          args=(
+            --platform "linux/${ARCH}"
+            --cache-from "type=gha,scope=fvs-gui-${ARCH}"
+            --build-arg SOURCE_REPO="${SOURCE_REPO}"
+            --build-arg SOURCE_REF="${SOURCE_REF}"
+            --build-arg SOURCE_SHA="${SOURCE_SHA}"
+            --build-arg FVS_BUILD_REPO="${FVS_BUILD_REPO}"
+            --build-arg FVS_BUILD_REF="${FVS_BUILD_REF}"
+            --build-arg FVS_BUILD_SHA="${FVS_BUILD_SHA}"
+            --build-arg VARIANTS="${VARIANTS_BUILT}"
+            --build-arg GFORTRAN_VERSION="${GFORTRAN_VERSION}"
+            --build-arg MESON_VERSION="${MESON_VERSION}"
+            --build-arg TIMESTAMP="${TIMESTAMP}"
+            --build-arg INTERFACE_REPO="${INTERFACE_REPO}"
+            --build-arg INTERFACE_REF="${INTERFACE_REF}"
+            --build-arg INTERFACE_SHA="${INTERFACE_SHA}"
+            -f docker/Dockerfile.fvs-gui
             .
+          )
+          printf '%s\n' "${args[@]}" > "${RUNNER_TEMP}/buildx-args"
+          docker buildx build --load --tag "${IMAGE_REF}" \
+            --cache-to "type=gha,mode=max,scope=fvs-gui-${ARCH},ignore-error=true" \
+            "${args[@]}"
 
       - name: Smoke-test the built image
         run: bash tools/ci/smoke_fvs_gui.sh "${IMAGE_REF}"
@@ -260,32 +294,31 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Tag and push image
-        id: push
+      # Push untagged, by digest; the manifest job applies the tags. Matrix
+      # legs cannot hand per-leg outputs to a later job, so the digest
+      # travels as a small artifact.
+      - name: Push image by digest
         if: inputs.push
         env:
-          IMAGE_EXTRA_TAGS: ${{ inputs.image_extra_tags }}
           IMAGE_NAME: ${{ inputs.image_name }}
         run: |
           set -euo pipefail
-          docker push "${IMAGE_REF}"
-          if [ -n "${IMAGE_EXTRA_TAGS}" ]; then
-            IFS=',' read -ra TAGS <<< "${IMAGE_EXTRA_TAGS}"
-            for T in "${TAGS[@]}"; do
-              T_TRIM=$(echo "$T" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
-              [ -z "$T_TRIM" ] && continue
-              EXTRA_REF="${IMAGE_NAME}:${T_TRIM}"
-              docker tag  "${IMAGE_REF}" "${EXTRA_REF}"
-              docker push "${EXTRA_REF}"
-              echo "pushed extra tag: ${EXTRA_REF}"
-            done
-          fi
-          DIGEST=$(docker inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "${IMAGE_REF}" \
-            | grep -F "${IMAGE_NAME}@" \
-            | head -n 1 \
-            | awk -F '@' '{print $2}' || true)
-          echo "image_digest=${DIGEST}" >> "$GITHUB_OUTPUT"
-          echo "Pushed ${IMAGE_REF} (digest: ${DIGEST:-unknown})"
+          mapfile -t args < "${RUNNER_TEMP}/buildx-args"
+          docker buildx build "${args[@]}" \
+            --output "type=image,name=${IMAGE_NAME},push-by-digest=true,name-canonical=true,push=true" \
+            --metadata-file "${RUNNER_TEMP}/metadata.json"
+          mkdir -p "${RUNNER_TEMP}/digests"
+          jq -r '."containerimage.digest"' "${RUNNER_TEMP}/metadata.json" > "${RUNNER_TEMP}/digests/${ARCH}"
+          echo "Pushed ${IMAGE_NAME}@$(cat "${RUNNER_TEMP}/digests/${ARCH}") (${ARCH})"
+
+      - name: Upload digest
+        if: inputs.push
+        uses: actions/upload-artifact@v7
+        with:
+          name: container-fvs-gui-digest-${{ matrix.arch }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/digests/${{ matrix.arch }}
+          retention-days: 1
+          if-no-files-found: error
 
       - name: Install syft (for image SBOM)
         uses: anchore/sbom-action/download-syft@v0
@@ -300,7 +333,59 @@ jobs:
       - name: Upload image SBOM artifact
         uses: actions/upload-artifact@v7
         with:
-          name: container-fvs-gui-sbom-${{ github.run_id }}
+          name: container-fvs-gui-sbom-${{ matrix.arch }}-${{ github.run_id }}
           path: container-fvs-gui-sbom.spdx.json
           retention-days: 30
           if-no-files-found: error
+
+  # Join the per-arch digests into one manifest list and give it every
+  # user-facing tag. An amd64-only call produces a one-entry list.
+  manifest:
+    name: Create multi-arch manifest list
+    needs: build
+    if: inputs.push
+    runs-on: ${{ inputs.runner_image }}
+    outputs:
+      image_digest: ${{ steps.create.outputs.image_digest }}
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@v7
+        with:
+          pattern: container-fvs-gui-digest-*-${{ github.run_id }}
+          path: digests
+          merge-multiple: true
+
+      - name: Log in to GHCR
+        if: startsWith(inputs.image_name, 'ghcr.io/')
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Create and push manifest list
+        id: create
+        env:
+          IMAGE_NAME: ${{ inputs.image_name }}
+          IMAGE_REF: ${{ needs.build.outputs.image_ref }}
+          IMAGE_EXTRA_TAGS: ${{ inputs.image_extra_tags }}
+        run: |
+          set -euo pipefail
+          tags=(--tag "${IMAGE_REF}")
+          IFS=',' read -ra EXTRA <<< "${IMAGE_EXTRA_TAGS}"
+          for T in "${EXTRA[@]}"; do
+            T_TRIM=$(echo "$T" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g')
+            if [ -n "$T_TRIM" ]; then tags+=(--tag "${IMAGE_NAME}:${T_TRIM}"); fi
+          done
+          sources=()
+          for f in digests/*; do
+            sources+=("${IMAGE_NAME}@$(cat "$f")")
+          done
+          docker buildx imagetools create "${tags[@]}" "${sources[@]}"
+          docker buildx imagetools inspect "${IMAGE_REF}"
+          DIGEST=$(docker buildx imagetools inspect "${IMAGE_REF}" --format '{{.Manifest.Digest}}')
+          echo "image_digest=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Pushed ${IMAGE_REF} (manifest list digest: ${DIGEST})"

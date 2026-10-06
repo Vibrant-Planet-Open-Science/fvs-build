@@ -47,11 +47,14 @@ ENV RGL_USE_NULL=TRUE
 # FVS runtime libraries r2u will NOT pull (they satisfy the copied FVS<v>.so's
 # Fortran/quad-precision runtime), plus build glue: make/git for the R package
 # data-gen makefiles, python3-venv for the Jupyter venv, ca-certificates.
+# libquadmath0 is amd64 only (Ubuntu does not build it for arm64); the
+# unquoted $(...) is meant to vanish on arm64.
+# hadolint ignore=SC2046
 RUN apt-get update \
   && apt-get upgrade -y --no-install-recommends \
   && apt-get install -y --no-install-recommends \
   libgfortran5 \
-  libquadmath0 \
+  $([ "$(dpkg --print-architecture)" = amd64 ] && echo libquadmath0) \
   make \
   git \
   python3-venv \

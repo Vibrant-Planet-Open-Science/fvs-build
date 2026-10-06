@@ -6,7 +6,7 @@ Reusable build machinery for the Forest Vegetation Simulator (FVS).
 
 `fvs-build` provides a thin Meson overlay that compiles FVS native binaries (executables and shared libraries) from any source repository following the upstream USDA Forest Service layout. It is **source-agnostic**: callers point `fvs-build` at a checked-out source tree (e.g., a tag of `USDAForestService/ForestVegetationSimulator`) and a set of variant codes, and Meson produces the corresponding native artifacts.
 
-This repo covers **Linux** (`ubuntu-24.04`), **Windows** (MSYS2 MINGW64), and **macOS** (Homebrew `gcc@N`) native bundles via reusable workflows; see [`docs/workflow-interface.md`](docs/workflow-interface.md). The Meson overlay configures on all three hosts locally as well.
+This repo covers **Linux** x86_64 and aarch64 (`ubuntu-24.04`, `ubuntu-24.04-arm`), **Windows** (MSYS2 MINGW64), and **macOS** (Homebrew `gcc@N`) native bundles, plus multi-arch (linux/amd64, linux/arm64) container images, via reusable workflows; see [`docs/workflow-interface.md`](docs/workflow-interface.md). The Meson overlay configures on all three hosts locally as well.
 
 ## Key contents
 
@@ -70,7 +70,7 @@ Build provenance metadata captured by Meson at configure time (compiler versions
 
 ### Prerequisites
 
-- Linux x86_64
+- Linux x86_64 or aarch64
 - `gfortran` and `gcc` (the workflows select a GCC major with `gcc_major`;
 any reasonably recent gfortran works for local-dev experimentation)
 - `meson >= 1.1`, `ninja`
@@ -157,7 +157,7 @@ CI workflows pass a `profile` input instead of ad-hoc Fortran flag strings.
 
 | Profile | Purpose |
 | ------- | ------- |
-| `reference` (default) | Goldens-aligned build matching upstream `bin/makefile`: `plain` buildtype, `-g`, five-condition FPE traps, no optimization. |
+| `reference` (default) | Goldens-aligned build matching upstream `bin/makefile`: `plain` buildtype, `-g`, five-condition FPE traps (four on arm64, which has no denormal trap), no optimization. |
 | `debug` | Paranoid checks for runtime debugging: adds `-O0`, `-fcheck=all`, and sentinel initialization. Not goldens-compatible. |
 
 ```bash
@@ -172,7 +172,7 @@ Local-only Meson options not exposed through workflows:
 
 ## Calling the workflows as GitHub Automations
 
-Five reusable `workflow_call` workflows wrap the Meson overlay (one per OS), the runtime image build, and the FVS GUI image build, with pinned `ubuntu-24.04` runner and `ubuntu:24.04` runtime base. Each native workflow takes a `gcc_major` input (defaults: Linux 14, macOS 15, Windows 15; see [GCC toolchain selection](docs/workflow-interface.md#gcc-toolchain-selection)). The native Linux bundle runs on Ubuntu 22.04 and newer.
+Five reusable `workflow_call` workflows wrap the Meson overlay (one per OS), the runtime image build, and the FVS GUI image build, with pinned `ubuntu-24.04` runner and `ubuntu:24.04` runtime base. Each native workflow takes a `gcc_major` input (defaults: Linux 14, macOS 15, Windows 15; see [GCC toolchain selection](docs/workflow-interface.md#gcc-toolchain-selection)). The native Linux bundle runs on Ubuntu 22.04 and newer (x86_64) or Ubuntu 24.04 and newer (aarch64).
 
 ### Native binaries only
 
@@ -214,7 +214,7 @@ jobs:
     secrets: inherit
 ```
 
-The container copies the already-validated native binaries (each variant is smoke-tested on the Linux native build runner before bundling) into a runtime-only Ubuntu 24.04 image with the matching `libgfortran5` runtime, pushes to GHCR with full OCI provenance labels when the pipeline opts in to `push`.
+The container copies the already-validated native binaries (each variant is smoke-tested on the Linux native build runner before bundling) into a runtime-only Ubuntu 24.04 image with the matching `libgfortran5` runtime, pushes to GHCR with full OCI provenance labels when the pipeline opts in to `push`. Pass an aarch64 bundle (a second `build-native-linux.yml` call with `runner_image: ubuntu-24.04-arm`) as `artifact_name_arm64` and the tags point at a linux/amd64 + linux/arm64 manifest list; see [Multi-arch images](docs/workflow-interface.md#multi-arch-images).
 
 See [**`docs/workflow-interface.md`**](docs/workflow-interface.md) for the full input/output surface of both workflows, the artifact-bundle layout, the OCI label set baked into the image, and additional caller snippets.
 
@@ -244,6 +244,8 @@ gh workflow run dispatch-container-linux.yml \
 ```
 
 ## Using the container image
+
+The images are multi-arch (linux/amd64, linux/arm64), so these commands run natively on an Apple Silicon Mac or an arm64 host with no `--platform` flag.
 
 The image has no entrypoint shim — invoke FVS with its native command line. Each variant binary is on `PATH` and the image's `WORKDIR` is `/data`, so mounting the directory containing your keyfile makes relative paths resolve and FVS output land back in your working directory:
 

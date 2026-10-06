@@ -54,8 +54,13 @@ on:
         required: false
         default: false
         type: boolean
+      arm64:
+        description: "Also build linux/arm64 (native aarch64 bundle + multi-arch image)"
+        required: false
+        default: true
+        type: boolean
       runner_image:
-        description: "Runner image label"
+        description: "Runner image label for the amd64 jobs"
         required: false
         default: "ubuntu-24.04"
         type: string
@@ -113,12 +118,27 @@ jobs:
       python_version: ${{ inputs.python_version }}
       gcc_major: ${{ inputs.gcc_major }}
 
+  native-arm64:
+    name: Native binary build (arm64)
+    if: inputs.arm64
+    uses: ./.github/workflows/build-native-linux.yml
+    with:
+      source_repo: ${{ inputs.source_repo }}
+      source_ref: ${{ inputs.source_ref }}
+      variants: ${{ inputs.variants }}
+      runner_image: ubuntu-24.04-arm
+      python_version: ${{ inputs.python_version }}
+      gcc_major: ${{ inputs.gcc_major }}
+
   container:
     name: Container build
-    needs: [resolve-image-name, native]
+    needs: [resolve-image-name, native, native-arm64]
+    # Run when native-arm64 was skipped (arm64: false), not only on success.
+    if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/build-container-linux.yml
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
+      artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
       image_name: ${{ needs.resolve-image-name.outputs.image_name }}
       image_tag: ${{ inputs.image_tag }}
       image_extra_tags: ${{ inputs.image_extra_tags }}

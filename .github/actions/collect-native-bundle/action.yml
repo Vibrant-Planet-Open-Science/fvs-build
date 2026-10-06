@@ -15,12 +15,12 @@ inputs:
     required: true
   download_pattern:
     description: >
-      Glob for actions/download-artifact (e.g. linux-variant-*, windows-variant-*).
+      Glob for actions/download-artifact (e.g. linux-x86_64-variant-*, windows-variant-*).
     required: true
   artifact_name:
     description: >
       Bundle directory name and upload-artifact name (callers typically pass
-      fvs-native-linux-<run_id> using github.run_id in the workflow YAML).
+      fvs-native-linux-<arch>-<run_id> using github.run_id in the workflow YAML).
     required: true
   sbom_spdx_relpath:
     description: >
