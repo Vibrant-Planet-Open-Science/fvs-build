@@ -235,7 +235,7 @@ gh workflow run dispatch-container-linux.yml \
   -f source_ref=FS2026.3 \
   -f image_tag=FS2026.3
 
-# Same, but actually push to ghcr.io/<owner>/fvs-upstream:FS2026.3
+# Same, but actually push to ghcr.io/<owner>/usfs-fvs:FS2026.3
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
   -f source_ref=FS2026.3 \
