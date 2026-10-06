@@ -179,7 +179,7 @@ fvs-native-linux-<arch>-<run_id>/
 }
 ```
 
-`arch` is Python's `platform.machine()` on the build runner (`x86_64` or `aarch64` on Linux), so a bundle says what it holds without anyone parsing the runner label.
+`arch` is Python's `platform.machine()` on the build runner, so a bundle says what it holds without anyone parsing the runner label: `x86_64` or `aarch64` on Linux, `arm64` on macOS, `AMD64` on Windows. Each matches its wheel platform tag once lowercased (`manylinux_*_x86_64`, `macosx_*_arm64`, `win_amd64`).
 
 On **Windows**, `artifacts.binaries` use the `.exe` suffix, `artifacts.shared_libraries` use `.dll`, and `artifacts.sbom` is `sbom/fvs-native-windows.spdx.json`. On **macOS**, binaries are extensionless like Linux; `shared_libraries` use `.so`, as on Linux (matching upstream `bin/makefile` and R's `.Platform$dynlib.ext`); `artifacts.sbom` is `sbom/fvs-native-macos.spdx.json`.
 
