@@ -52,7 +52,14 @@ The Meson build-directory cache key includes the compiler's `--version` line, so
 
 ### Linux runtime compatibility
 
-Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1` (plus the glibc loader `ld-linux-aarch64.so.1` on aarch64, which records it as `NEEDED`); the build fails on any other `NEEDED` entry. What they run on is set by the build system's glibc, not by the GCC major: the build fails if any artifact needs a `GLIBC_` symbol version newer than 2.35, so the native Linux bundle runs on Ubuntu 22.04 and newer (and on any distribution with glibc ≥ 2.35 and a `libgfortran5` from GCC 10 or newer). Older systems should use the container images.
+Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1` (plus the glibc loader `ld-linux-aarch64.so.1` on aarch64, which records it as `NEEDED`); the build fails on any other `NEEDED` entry. What they run on is set by the build system's glibc, not by the GCC major: the build fails if any artifact needs a `GLIBC_` symbol version newer than the arch's floor:
+
+| Arch | glibc floor | Runs on |
+| --- | --- | --- |
+| x86_64 | 2.35 | Ubuntu 22.04+, Debian 12+, any distribution with glibc ≥ 2.35 |
+| aarch64 | 2.38 | Ubuntu 24.04+, Debian 13+, any distribution with glibc ≥ 2.38 |
+
+Both also need a `libgfortran5` from GCC 10 or newer. The floors differ because gfortran inlines `MOD()` on x86_64 but calls libm's `fmod`/`fmodf` on aarch64, and noble's glibc versions those `GLIBC_2.38`. Older systems should use the container images.
 
 During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-<arch>-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs several reusable native workflows in the **same** workflow run — for example [`ci-test-reusable-native.yml`](../.github/workflows/ci-test-reusable-native.yml), or Linux on both arches for a multi-arch image. Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (a Mach-O `FVSak.so` in place of the Linux ELF one, under the same file name). The Linux collect job only downloads its own arch's artifacts, so it must run on the same arch as the matrix legs (it does: both use `runner_image`).
 

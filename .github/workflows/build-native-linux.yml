@@ -252,9 +252,13 @@ jobs:
       - name: Verify artifacts' runtime dependencies (readelf)
         env:
           VARIANT: ${{ matrix.variant }}
-          # Ubuntu 22.04. glibc is backward compatible, so binaries needing
-          # at most this version run on 22.04 and every newer release.
-          GLIBC_FLOOR: "2.35"
+          # glibc is backward compatible, so binaries needing at most this
+          # version run on that release and every newer one. x86_64: 2.35
+          # (Ubuntu 22.04). aarch64: 2.38 (Ubuntu 24.04), because gfortran
+          # calls libm's fmod/fmodf for MOD() there, which noble versions
+          # GLIBC_2.38; on x86_64 it inlines MOD() instead. Lowering either
+          # floor means building against an older glibc, not pinning symbols.
+          GLIBC_FLOOR: ${{ runner.arch == 'ARM64' && '2.38' || '2.35' }}
         run: |
           set -euo pipefail
           # Linux intentionally dynamic-links libgfortran.so.5 by SONAME (see

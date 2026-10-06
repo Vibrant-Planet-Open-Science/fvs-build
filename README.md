@@ -172,7 +172,7 @@ Local-only Meson options not exposed through workflows:
 
 ## Calling the workflows as GitHub Automations
 
-Five reusable `workflow_call` workflows wrap the Meson overlay (one per OS), the runtime image build, and the FVS GUI image build, with pinned `ubuntu-24.04` runner and `ubuntu:24.04` runtime base. Each native workflow takes a `gcc_major` input (defaults: Linux 14, macOS 15, Windows 15; see [GCC toolchain selection](docs/workflow-interface.md#gcc-toolchain-selection)). The native Linux bundle runs on Ubuntu 22.04 and newer.
+Five reusable `workflow_call` workflows wrap the Meson overlay (one per OS), the runtime image build, and the FVS GUI image build, with pinned `ubuntu-24.04` runner and `ubuntu:24.04` runtime base. Each native workflow takes a `gcc_major` input (defaults: Linux 14, macOS 15, Windows 15; see [GCC toolchain selection](docs/workflow-interface.md#gcc-toolchain-selection)). The native Linux bundle runs on Ubuntu 22.04 and newer (x86_64) or Ubuntu 24.04 and newer (aarch64).
 
 ### Native binaries only
 
