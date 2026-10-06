@@ -228,7 +228,7 @@ jobs:
 Pin to a specific `fvs-build` ref (tag or SHA) for reproducible release pipelines:
 
 ```yaml
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.5.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.6.0
 ```
 
 Consume the produced artifact in a downstream job in the same workflow:
