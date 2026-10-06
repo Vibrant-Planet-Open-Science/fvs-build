@@ -1,26 +1,26 @@
 {
   "15": [
-    "mingw-w64-x86_64-gcc-15.2.0-11",
-    "mingw-w64-x86_64-gcc-libs-15.2.0-11",
-    "mingw-w64-x86_64-gcc-fortran-15.2.0-11",
-    "mingw-w64-x86_64-gcc-libgfortran-15.2.0-11",
-    "mingw-w64-x86_64-crt-13.0.0.r488.g3fedac280-1",
-    "mingw-w64-x86_64-headers-13.0.0.r488.g3fedac280-1",
-    "mingw-w64-x86_64-winpthreads-13.0.0.r488.g3fedac280-1",
-    "mingw-w64-x86_64-libwinpthread-13.0.0.r488.g3fedac280-1"
+    "mingw-w64-ucrt-x86_64-gcc-15.2.0-11",
+    "mingw-w64-ucrt-x86_64-gcc-libs-15.2.0-11",
+    "mingw-w64-ucrt-x86_64-gcc-fortran-15.2.0-11",
+    "mingw-w64-ucrt-x86_64-gcc-libgfortran-15.2.0-11",
+    "mingw-w64-ucrt-x86_64-crt-13.0.0.r488.g3fedac280-1",
+    "mingw-w64-ucrt-x86_64-headers-13.0.0.r488.g3fedac280-1",
+    "mingw-w64-ucrt-x86_64-winpthreads-13.0.0.r488.g3fedac280-1",
+    "mingw-w64-ucrt-x86_64-libwinpthread-13.0.0.r488.g3fedac280-1"
   ],
   "16": [
-    "mingw-w64-x86_64-gcc-16.2.0-4",
-    "mingw-w64-x86_64-gcc-fortran-16.2.0-4",
-    "mingw-w64-x86_64-cc-libs-16.2.0-4",
-    "mingw-w64-x86_64-libgcc-16.2.0-4",
-    "mingw-w64-x86_64-libstdc++-16.2.0-4",
-    "mingw-w64-x86_64-libatomic-16.2.0-4",
-    "mingw-w64-x86_64-libquadmath-16.2.0-4",
-    "mingw-w64-x86_64-libgfortran-16.2.0-4",
-    "mingw-w64-x86_64-crt-14.0.0.r426.g4564ee4b5-1",
-    "mingw-w64-x86_64-headers-14.0.0.r426.g4564ee4b5-1",
-    "mingw-w64-x86_64-winpthreads-14.0.0.r426.g4564ee4b5-1",
-    "mingw-w64-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1"
+    "mingw-w64-ucrt-x86_64-gcc-16.2.0-4",
+    "mingw-w64-ucrt-x86_64-gcc-fortran-16.2.0-4",
+    "mingw-w64-ucrt-x86_64-cc-libs-16.2.0-4",
+    "mingw-w64-ucrt-x86_64-libgcc-16.2.0-4",
+    "mingw-w64-ucrt-x86_64-libstdc++-16.2.0-4",
+    "mingw-w64-ucrt-x86_64-libatomic-16.2.0-4",
+    "mingw-w64-ucrt-x86_64-libquadmath-16.2.0-4",
+    "mingw-w64-ucrt-x86_64-libgfortran-16.2.0-4",
+    "mingw-w64-ucrt-x86_64-crt-14.0.0.r426.g4564ee4b5-1",
+    "mingw-w64-ucrt-x86_64-headers-14.0.0.r426.g4564ee4b5-1",
+    "mingw-w64-ucrt-x86_64-winpthreads-14.0.0.r426.g4564ee4b5-1",
+    "mingw-w64-ucrt-x86_64-libwinpthread-14.0.0.r426.g4564ee4b5-1"
   ]
 }
