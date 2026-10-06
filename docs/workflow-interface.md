@@ -472,7 +472,7 @@ gh workflow run dispatch-container-linux.yml \
   -f push=false
 ```
 
-`arm64` defaults to `true`, adding the aarch64 native build and the linux/arm64 image leg; pass `-f arm64=false` for amd64 only. `push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/fvs-upstream:FS2026.3` once you're confident the image is ready for the registry.
+`arm64` defaults to `true`, adding the aarch64 native build and the linux/arm64 image leg; pass `-f arm64=false` for amd64 only. `push=false` (the default) builds the image without publishing. Set `-f push=true` to also push to `ghcr.io/<your-account>/usfs-fvs:FS2026.3` once you're confident the image is ready for the registry.
 
 ## `build-container-fvs-gui-linux.yml`
 
