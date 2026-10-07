@@ -12,7 +12,7 @@
 #
 # This is NOT a caller interface for other repos -- they should compose
 # the two reusable workflows themselves, matching their own release ref
-# discipline. See docs/workflow-interface.md for the canonical pattern.
+# discipline.
 
 name: Dispatch native + container build (manual)
 

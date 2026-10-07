@@ -4,11 +4,11 @@
 #
 # Like build-container-linux.yml, FVS is NOT compiled here: the FVS<v>.so
 # embedder libraries come from a prior build-native-linux.yml bundle (reused,
-# not rebuilt -- ADR-001 preserved). What IS built in Docker is the pure-R glue
-# layer (rFVS + fvsOL); see docs/adr-002. The result is a Binder-ready image
-# (rocker/r2u:noble + Jupyter + jupyter-server-proxy) that serves the Shiny app
-# at the /fvs-gui/ subpath. Like build-container-linux.yml, each arch builds
-# on its own runner and push: true publishes one multi-arch manifest list.
+# not rebuilt). What IS built in Docker is the pure-R glue layer (rFVS +
+# fvsOL). The result is a Binder-ready image (rocker/r2u:noble + Jupyter +
+# jupyter-server-proxy) that serves the Shiny app at the /fvs-gui/ subpath.
+# Like build-container-linux.yml, each arch builds on its own runner and
+# push: true publishes one multi-arch manifest list.
 #
 # Caller pattern (orchestrator, see dispatch-container-fvs-gui-linux.yml):
 #
@@ -161,7 +161,6 @@ jobs:
           do
             if [ ! -f "$required" ]; then
               echo "ERROR: bundle missing required file: ${required}" >&2
-              echo "       (see docs/workflow-interface.md for the contract)" >&2
               exit 1
             fi
           done

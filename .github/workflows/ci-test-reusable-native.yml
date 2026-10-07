@@ -1,6 +1,6 @@
 # Runs the three reusable native build workflows from the PR head commit when
-# native-related files change (see README / docs/workflow-interface.md). Same
-# idea as a branch-only push trigger, but scoped to pull requests into main.
+# native-related files change. Same idea as a branch-only push trigger, but
+# scoped to pull requests into main.
 #
 # This workflow triggers on *every* PR into main so it can serve as a required
 # status check: `paths:` filters suppress the run entirely, which leaves a
