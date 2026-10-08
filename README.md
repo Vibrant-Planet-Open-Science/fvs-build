@@ -1,178 +1,90 @@
 # fvs-build
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=lab)
+![Binder](https://mybinder.org/badge_logo.svg)Builds and publishes the Forest Vegetation Simulator (FVS) from USDA Forest Service (and other compatible) sources. FVS products available include a free version of the FVS GUI running on the cloud, multi-arch Docker container images available on GHCR, and reusable GitHub workflows that can be called from other repositories to produce Linux, Windows, and macOS binaries of FVS (executables and shared libraries) with provenance and SBOMs.
 
-Reusable build machinery for the Forest Vegetation Simulator (FVS).
+## Run the FVS GUI on Binder
 
-`fvs-build` provides a thin Meson overlay that compiles FVS native binaries (executables and shared libraries) from any source repository following the upstream USDA Forest Service layout. It is **source-agnostic**: callers point `fvs-build` at a checked-out source tree (e.g., a tag of `USDAForestService/ForestVegetationSimulator`) and a set of variant codes, and Meson produces the corresponding native artifacts.
+Click the "Launch Binder" badge above, and you'll be taken to a cloud-hosted instance of JupyterLab running on [mybinder.org](https://mybinder.org). From there you can just click the **FVS GUI** tile from the Launcher page to fire up the FVS GUI, which is running on a virtual machine in the cloud. Be aware that Binder sessions are temporary, so download anything you want to keep before the session ends.
 
-This repo covers **Linux** x86_64 and aarch64 (`ubuntu-24.04`, `ubuntu-24.04-arm`), **Windows** x86_64 (MSYS2 UCRT64; Windows 10 or newer), and **macOS** (Homebrew `gcc@N`) native bundles, plus multi-arch (linux/amd64, linux/arm64) container images, via reusable workflows; see [`docs/workflow-interface.md`](docs/workflow-interface.md). The Meson overlay configures on all three hosts locally as well.
+The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`; see `docs/workflow-interface.md` for more details about how it is built and published.
 
-## Key contents
+## Run FVS on your machine using Docker
 
-- [`meson.build`](meson.build) — the overlay project. Reads options, parses the upstream `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
-- [`meson_options.txt`](meson_options.txt) — build-time options (`fvs_source_dir`, `variants`, `profile`, `traps`, and local-only `extra_fortran_args`).
-- [`tools/parse_sourcelist.py`](tools/parse_sourcelist.py) — turns one source list into the categorized file lists Meson consumes. Invoked once per variant via `run_command()`.
-- [`.github/workflows/build-native-linux.yml`](.github/workflows/build-native-linux.yml), [`.github/workflows/build-native-windows.yml`](.github/workflows/build-native-windows.yml), [`.github/workflows/build-native-macos.yml`](.github/workflows/build-native-macos.yml) — reusable `workflow_call` workflows that wrap the Meson overlay per OS. Each produces a per-run artifact bundle (binaries + provenance + SBOM); see [`docs/workflow-interface.md`](docs/workflow-interface.md).
-- [`.github/workflows/build-container-linux.yml`](.github/workflows/build-container-linux.yml) — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image (no recompile inside Docker), with optional GHCR push.
-- [`.github/workflows/build-container-fvs-gui-linux.yml`](.github/workflows/build-container-fvs-gui-linux.yml) — reusable `workflow_call` workflow that builds the Binder-ready FVSOnLocal (`fvsOL`) GUI image: it reuses the native `FVS<v>.so` set and builds the `rFVS`/`fvsOL` R layer on `rocker/r2u:noble`.
-- [`.github/workflows/dispatch-native-linux.yml`](.github/workflows/dispatch-native-linux.yml), [`.github/workflows/dispatch-native-windows.yml`](.github/workflows/dispatch-native-windows.yml), [`.github/workflows/dispatch-native-macos.yml`](.github/workflows/dispatch-native-macos.yml) — manual drivers for each native OS workflow (`workflow_dispatch`).
-- [`.github/workflows/dispatch-container-linux.yml`](.github/workflows/dispatch-container-linux.yml) — manual orchestrator running native + container in sequence.
-- [`.github/workflows/dispatch-container-fvs-gui-linux.yml`](.github/workflows/dispatch-container-fvs-gui-linux.yml) — manual orchestrator running native + FVS GUI container in sequence.
-- [`docker/Dockerfile.runtime`](docker/Dockerfile.runtime) — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; no entrypoint shim, native FVS CLI invocation).
-- [`docker/Dockerfile.fvs-gui`](docker/Dockerfile.fvs-gui) — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the FVS `.so`, builds `rFVS`/`fvsOL`). Its baked-in launch shim and proxy config live under [`docker/fvs-gui/`](docker/fvs-gui/).
-- [`binder/Dockerfile`](binder/Dockerfile) — thin `FROM ghcr.io/.../usfs-fvs-gui:<tag>` shim so mybinder.org launches the GUI image in seconds.
+Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs`(for binaries alone) and`ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`(for the FVS graphical interface). The images are tagged by FVS release (e.g. `FS2026.3`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
 
-## Variants supported
-
-All 24 upstream variants are addressable by their two-letter codes. Source
-lists for every variant — including the Canadian ones — live in `bin/` in
-the upstream tree.
-
-
-| Code | Region                                      | Status                                         |
-| ---- | ------------------------------------------- | ---------------------------------------------- |
-| `ak` | Alaska                                      | builds + smoke-tests cleanly                   |
-| `bc` | British Columbia (Canada)                   | upstream source list incomplete (see below)    |
-| `bm` | Blue Mountains                              | builds + smoke-tests cleanly                   |
-| `ca` | Inland California / Southern Cascades       | builds + smoke-tests cleanly                   |
-| `ci` | Central Idaho                               | builds + smoke-tests cleanly                   |
-| `cr` | Central Rockies                             | builds + smoke-tests cleanly                   |
-| `cs` | Central States                              | builds + smoke-tests cleanly                   |
-| `ec` | East Cascades                               | builds + smoke-tests cleanly                   |
-| `em` | Eastern Montana                             | builds + smoke-tests cleanly                   |
-| `ie` | Inland Empire                               | builds + smoke-tests cleanly                   |
-| `kt` | Klamath / Tetons                            | builds + smoke-tests cleanly                   |
-| `ls` | Lake States                                 | builds + smoke-tests cleanly                   |
-| `nc` | Inland California (North-Central)           | builds + smoke-tests cleanly                   |
-| `ne` | Northeast                                   | builds + smoke-tests cleanly                   |
-| `oc` | ORGANON Southwest (Oregon)                  | builds + smoke-tests cleanly                   |
-| `on` | Ontario (Canada)                            | upstream source list incomplete (see below)    |
-| `op` | ORGANON Pacific Northwest (coastal)         | builds + smoke-tests cleanly                   |
-| `pn` | Pacific Northwest                           | builds + smoke-tests cleanly (default variant) |
-| `sn` | Southern                                    | builds + smoke-tests cleanly                   |
-| `so` | South-Central Oregon / Northeast California | builds + smoke-tests cleanly                   |
-| `tt` | Tetons                                      | builds + smoke-tests cleanly                   |
-| `ut` | Utah                                        | builds + smoke-tests cleanly                   |
-| `wc` | West Cascades                               | builds + smoke-tests cleanly                   |
-| `ws` | West Sierras                                | builds + smoke-tests cleanly                   |
-
-## Outputs
-
-For variant `<v>`, `meson compile` produces in `builddir/`:
-- `FVS<v>` (or `FVS<v>.exe` on Windows) — **standalone CLI executable**; does not load the embedder shared library at runtime (matches upstream `bin/makefile` `%.prg` linking)
-- `FVS<v>.so` (Linux and macOS) / `.dll` (Windows) — **embedder shared library** for PyFVS, rFVS, fvs2py (no `lib` prefix; same basename as upstream)
-- `libfvs_<v>_objs.a` — internal static object carrier; not a deliverable
-
-Build provenance metadata captured by Meson at configure time (compiler versions, linker, host machine) is in `builddir/meson-logs/`.
-
-## Quickstart for local builds
-
-### Prerequisites
-
-- Linux x86_64 or aarch64
-- `gfortran` and `gcc` (the workflows select a GCC major with `gcc_major`;
-any reasonably recent gfortran works for local-dev experimentation)
-- `meson >= 1.1`, `ninja`
-- `python3` (stdlib only — no third-party packages)
-
-### Configure and build a single variant
+To run a keyfile in your current working directory with the `usfs-fvs` image, you do a volume mount of your working directory into the Docker container (`-v "$PWD:/data"`) and then call the FVS variant of your choice as a command line tool (`FVSak --keywordfile=mykeyfile.key`):
 
 ```bash
-# Get a source tree to build against. Any tag works.
-git clone https://github.com/USDAForestService/ForestVegetationSimulator /tmp/fvs-source
-
-# Configure the build. fvs_source_dir is required; variants defaults to ['pn'];
-# profile defaults to reference (goldens-aligned, matches upstream bin/makefile).
-cd /path/to/fvs-build
-meson setup builddir --buildtype=plain \
-  -Dfvs_source_dir=/tmp/fvs-source \
-  -Dvariants=pn \
-  -Dprofile=reference
-
-# Compile. The first build is ~10 minutes for one variant on a workstation;
-# subsequent incremental rebuilds are seconds.
-meson compile -C builddir
-
-# Verify outputs.
-test -x builddir/FVSpn          # standalone executable
-test -f builddir/FVSpn.so       # embedder shared library
-
-# Smoke run — prints the variant banner, prompts for keyword file,
-# stops with exit 20 when stdin is empty (this is upstream behavior).
-# Run from a scratch directory; see "fort.<N> artifacts" below for why.
-mkdir -p /tmp/fvs-smoke && cd /tmp/fvs-smoke
-/path/to/fvs-build/builddir/FVSpn < /dev/null
+docker run --rm \
+  -v "$PWD:/data" \
+  ghcr.io/vibrant-planet-open-science/usfs-fvs:latest \
+  FVSak --keywordfile=mykeyfile.key
 ```
 
-### `fort.<N>` artifacts after a run
-
-When a Fortran program does I/O on a unit number that hasn't been explicitly `OPEN`ed, gfortran creates a file named `fort.<unit>` in the current working directory. FVS reads keyword input from unit 15 and writes a run summary to unit 16, so a smoke test run via `./builddir/FVSpn </dev/null` from the repo root leaves `fort.15` and `fort.16` next to `meson.build`. They are harmless, empty-or-near-empty, and matched by the `fort.*` line in `.gitignore`, but the cleanest pattern is to run FVS from a throwaway directory (as in the quickstart above) so the build tree stays tidy.
-
-### Cleaning up
+To run the FVS GUI locally (instead of on the cloud using the Binder option), start the `usfs-fvs-gui` image with the following command, then open a web browser to <http://localhost:3838>. By mounting a local directory onto the container (e.g., `-v "$PWD/fvs-projects:/home/jovyan/project"`), you will be able to keep any project files you generate on your machine (in the `fvs-projects` folder in the example below) after you're done using the container:
 
 ```bash
-# Drop built objects and binaries; keep the configure state (options,
-# detected toolchain) so the next `meson compile` skips setup.
-meson compile --clean -C builddir
-
-# Or nuke everything and re-run `meson setup` from scratch. Use this when
-# you want to change build options materially or clear the configure cache.
-rm -rf builddir
+mkdir -p fvs-projects
+docker run --rm -p 3838:3838 \
+  -v "$PWD/fvs-projects:/home/jovyan/project" \
+  ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:latest \
+  Rscript /opt/fvs/launch.R 3838
 ```
 
-### Building multiple variants
+The `usfs-fvs` image can also be used as a builder stage in your own Dockerfiles to extract any FVS binaries you need for your own containerized project:
 
-A few representative variants:
+```dockerfile
+FROM ghcr.io/vibrant-planet-open-science/usfs-fvs:latest AS fvs
+FROM ubuntu:24.04
+COPY --from=fvs /usr/local/bin/FVSak /usr/local/bin/
+COPY --from=fvs /usr/local/lib/FVSak.so /usr/local/lib/
+RUN apt-get update && apt-get install -y libgfortran5 && rm -rf /var/lib/apt/lists/*
+```
+
+OCI provenance labels (`org.opencontainers.image.*` plus custom `org.vibrantplanet.fvs.*`) record the source repo, ref, SHA, toolchain versions, and variant set baked in. You can inspect these labels with:
 
 ```bash
-meson setup builddir \
-  -Dfvs_source_dir=/tmp/fvs-source \
-  -Dvariants=pn,nc,wc
-meson compile -C builddir
+docker inspect ghcr.io/vibrant-planet-open-science/usfs-fvs:FS2026.3 | jq '.[0].Config.Labels'
 ```
 
-The full set of US variants that build cleanly today (22 of them):
+## Variants
 
-```bash
-meson setup builddir \
-  -Dfvs_source_dir=/tmp/fvs-source \
-  -Dvariants=ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
-meson compile -C builddir
-```
+All 24 FVS variants are addressable by their two-letter codes. The Docker images and default workflow builds include the 22 US variants only. In the table below, Canadian variants are marked with † because they don't currently build successfully from the official FVS repository (see [Known upstream issues](#known-upstream-issues-in-usdaforestserviceforestvegetationsimulator)).
 
-Wall-clock for the full 22-variant build is ~5–10 min on a modern workstation
-(15k+ compile units across the matrix; Ninja parallelizes them aggressively).
+| Code | Region |
+| --- | --- |
+| `ak` | Alaska |
+| `bc` | British Columbia (Canada) † |
+| `bm` | Blue Mountains |
+| `ca` | Inland California / Southern Cascades |
+| `ci` | Central Idaho |
+| `cr` | Central Rockies |
+| `cs` | Central States |
+| `ec` | East Cascades |
+| `em` | Eastern Montana |
+| `ie` | Inland Empire |
+| `kt` | Klamath / Tetons |
+| `ls` | Lake States |
+| `nc` | Inland California (North-Central) |
+| `ne` | Northeast |
+| `oc` | ORGANON Southwest (Oregon) |
+| `on` | Ontario (Canada) † |
+| `op` | ORGANON Pacific Northwest (coastal) |
+| `pn` | Pacific Northwest |
+| `sn` | Southern |
+| `so` | South-Central Oregon / Northeast California |
+| `tt` | Tetons |
+| `ut` | Utah |
+| `wc` | West Cascades |
+| `ws` | West Sierras |
 
-### Reconfiguring options
+## Build FVS in your repository with reusable GitHub workflows
 
-```bash
-meson configure builddir -Dvariants=pn,nc
-meson compile -C builddir
-```
+Five reusable `workflow_call` workflows can be used to build the native binaries (one workflow for each OS including Linux, MacOS, and Windows), the runtime image (binaries only in the container), and the FVS GUI image.
 
-### Build profiles
+### Supported FVS versions
 
-CI workflows pass a `profile` input instead of ad-hoc Fortran flag strings.
-
-| Profile | Purpose |
-| ------- | ------- |
-| `reference` (default) | Goldens-aligned build matching upstream `bin/makefile`: `plain` buildtype, `-g`, five-condition FPE traps (four on arm64, which has no denormal trap), no optimization. |
-| `debug` | Paranoid checks for runtime debugging: adds `-O0`, `-fcheck=all`, and sentinel initialization. Not goldens-compatible. |
-
-```bash
-meson setup builddir --buildtype=plain -Dfvs_source_dir=/path/to/fvs -Dprofile=reference
-meson setup builddir --buildtype=plain -Dfvs_source_dir=/path/to/fvs -Dprofile=debug
-```
-
-Local-only Meson options not exposed through workflows:
-
-- `-Dtraps=` — override FPE traps (`default`, `none`, or a verbatim `-ffpe-trap=` value; not goldens-compatible).
-- `-Dextra_fortran_args=` — additive flags for ad-hoc experiments.
-
-## Calling the workflows as GitHub Automations
-
-Five reusable `workflow_call` workflows wrap the Meson overlay (one per OS), the runtime image build, and the FVS GUI image build, with pinned `ubuntu-24.04` runner and `ubuntu:24.04` runtime base. Each native workflow takes a `gcc_major` input (defaults: Linux 14, macOS 15, Windows 15; see [GCC toolchain selection](docs/workflow-interface.md#gcc-toolchain-selection)). The native Linux bundle runs on Ubuntu 22.04 and newer (x86_64) or Ubuntu 24.04 and newer (aarch64).
+The workflows build from`USDAForestService/ForestVegetationSimulator` and support release tags from "**FS2026.3" or more recent**. FVS versions prior to FS2026.3 include copies of the`volume/NVEL` submodule that included stale gfortran `.mod` files, which cause errors during the build. Those were fixed in release FS2026.3.
 
 ### Native binaries only
 
@@ -186,9 +98,11 @@ jobs:
       profile: reference
 ```
 
-Produces a single artifact bundle (per-variant binaries + provenance manifest + SPDX SBOM).
+Produces a single bundle of artifacts (including binaries for each FVS variant + provenance manifest + a Software Bill of Materials following the System Package Data Exchange standard, SPDX SBOM). To produce binaries for another operating system, such as Windows, just change the `uses` line to point to that workflow: `Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-windows.yml@main`
 
 ### Native binaries + container image
+
+You can integrate these workflows as steps in your own, gathering the binaries from the `build_native` workflow, and using them in your own `container` step, for example.
 
 ```yaml
 permissions:
@@ -214,13 +128,13 @@ jobs:
     secrets: inherit
 ```
 
-The container copies the already-validated native binaries (each variant is smoke-tested on the Linux native build runner before bundling) into a runtime-only Ubuntu 24.04 image with the matching `libgfortran5` runtime, pushes to GHCR with full OCI provenance labels when the pipeline opts in to `push`. Pass an aarch64 bundle (a second `build-native-linux.yml` call with `runner_image: ubuntu-24.04-arm`) as `artifact_name_arm64` and the tags point at a linux/amd64 + linux/arm64 manifest list; see [Multi-arch images](docs/workflow-interface.md#multi-arch-images).
+In this example, the `build-container` workflow copies the already-validated native binaries into a runtime-only Ubuntu 24.04 Docker image and pushes it the GitHub Container Registry with full OCI provenance labels (only pushing to GHCR when `push: true`).
 
-See [**`docs/workflow-interface.md`**](docs/workflow-interface.md) for the full input/output surface of both workflows, the artifact-bundle layout, the OCI label set baked into the image, and additional caller snippets.
+See `docs/workflow-interface.md` for the full input/output patterns for these and other workflows, more details on the layout of artifacts within the bundle, the OCI labels baked into the image, and additional caller snippets.
 
-### Manual / local-dev drivers
+### Manual drivers
 
-Five `workflow_dispatch` drivers exercise the reusable workflows for testing purposes and release mirroring use cases from this repo:
+Five `workflow_dispatch` drivers allow the workflows to be triggered manually. These are primarily used for testing purposes and creating releases of the Docker containers from this repo:
 
 ```bash
 # Native binaries only
@@ -235,7 +149,7 @@ gh workflow run dispatch-container-linux.yml \
   -f source_ref=FS2026.3 \
   -f image_tag=FS2026.3
 
-# Same, but actually push to ghcr.io/<owner>/usfs-fvs:FS2026.3
+# Same, but actually push to ghcr.io/vibrant-planet-open-science/usfs-fvs:FS2026.3
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
   -f source_ref=FS2026.3 \
@@ -243,62 +157,7 @@ gh workflow run dispatch-container-linux.yml \
   -f push=true
 ```
 
-## Using the container image
-
-The images are multi-arch (linux/amd64, linux/arm64), so these commands run natively on an Apple Silicon Mac or an arm64 host with no `--platform` flag.
-
-The image has no entrypoint shim — invoke FVS with its native command line. Each variant binary is on `PATH` and the image's `WORKDIR` is `/data`, so mounting the directory containing your keyfile makes relative paths resolve and FVS output land back in your working directory:
-
-```bash
-docker run --rm \
-  -v "$PWD:/data" \
-  ghcr.io/<owner>/usfs-fvs:FS2026.3 \
-  FVSak --keywordfile=mykeyfile.key
-```
-
-Pass-through FVS options work without any wrapper:
-
-```bash
-docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.3 \
-  FVSak --keywordfile=mykey.key --stoppoint=1,2040,mykey.stop
-
-docker run --rm -v "$PWD:/data" ghcr.io/<owner>/usfs-fvs:FS2026.3 \
-  FVSak --restart=mykey.stop
-```
-
-The image can also be used as a build stage in downstream Dockerfiles to extract just the binaries you need:
-
-```dockerfile
-FROM ghcr.io/<owner>/usfs-fvs:FS2026.3 AS fvs
-FROM ubuntu:24.04
-COPY --from=fvs /usr/local/bin/FVSak /usr/local/bin/
-COPY --from=fvs /usr/local/lib/FVSak.so /usr/local/lib/
-RUN apt-get update && apt-get install -y libgfortran5 libquadmath0 && rm -rf /var/lib/apt/lists/*
-```
-
-OCI provenance labels (`org.opencontainers.image.*` plus custom `org.vibrantplanet.fvs.*`) record the source repo, ref, SHA, toolchain versions, and variant set baked in. Inspect with:
-
-```bash
-docker inspect ghcr.io/<owner>/usfs-fvs:FS2026.3 | jq '.[0].Config.Labels'
-```
-
-## Run the FVS GUI on Binder
-
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=lab)
-
-Click the badge to open JupyterLab on [mybinder.org](https://mybinder.org), then click the **FVS GUI** tile in the Launcher to start **FVSOnLocal**, the `fvsOL` R-Shiny GUI over FVS, at the `/fvs-gui/` subpath. Binder builds the thin [`binder/Dockerfile`](binder/Dockerfile) (a single `FROM ghcr.io/.../usfs-fvs-gui:<tag>`) in seconds. To skip JupyterLab and open the GUI directly, use `?urlpath=fvs-gui/` instead of `?urlpath=lab` (the trailing slash matters).
-
-The heavy image behind that shim is built by [`build-container-fvs-gui-linux.yml`](.github/workflows/build-container-fvs-gui-linux.yml): it reuses the native `FVS<v>.so` set (FVS is never compiled in Docker) and builds the `rFVS`/`fvsOL` R layer on `rocker/r2u:noble`, with Jupyter, `jupyter-server-proxy`, and `jupyterhub` — the last because JupyterHub spawns `jupyterhub-singleuser`, not `jupyter lab`.
-
-The `/fvs-gui/` route is registered by [`docker/fvs-gui/jupyter-fvsol-proxy/`](docker/fvs-gui/jupyter-fvsol-proxy/), a small package that declares a `jupyter_serverproxy_servers` entry point — the same mechanism [`jupyter-rsession-proxy`](https://github.com/jupyterhub/jupyter-rsession-proxy) and [`rocker-org/binder`](https://github.com/rocker-org/binder) use. It is not a Jupyter config file on purpose: mybinder mounts a Kubernetes ConfigMap over `/etc/jupyter` at runtime, replacing that directory from the image, so anything registered there is invisible on Binder even though `docker run` works perfectly.
-
-Three things to know:
-
-- **The GHCR image must be public.** mybinder.org pulls the image referenced by `binder/Dockerfile` anonymously, so publish it (`push: true`) and mark the GHCR package public before the badge works.
-- **Re-publishing a tag does not reach an existing Binder.** mybinder caches builds by *repo ref*, not by the digest behind the tag in `binder/Dockerfile`. Once it has built this repo at a given commit it will not re-pull GHCR. A new commit on the branch the badge points at is what forces a rebuild — deleting or overwriting the GHCR tag does not.
-- **The app runs in `fvsOL`'s Local mode, with a vendored patch.** Local is the mode that gives you the whole Manage Projects tab: **project backups** (make, download, delete, restore), **switching between projects**, the **Change Working Directory** chooser, and the whole **Import input data** sub-tab (upload an FVS-ready `.db`/`.accdb`/`.xlsx`/`.zip` inventory database, install the training data, edit tables). Two upstream bugs currently make Local mode unusable behind the proxy — the per-stand graphs in "View On Maps" popups 404, and leaving a project strands a lock file that hides it from the picker — so the image applies [`docker/fvs-gui/patches/`](docker/fvs-gui/patches/) to the `fvsOL` sources at build time. Detail and exit criteria in [`docs/workflow-interface.md`](docs/workflow-interface.md#local-mode-and-the-fvsol-patch). Binder sessions are ephemeral — nothing you do persists after the session ends, and the directory chooser is rooted at `/`, so treat the container as scratch space.
-
-To build the GUI image yourself (dry run, no push):
+To build the FVS GUI image (dry run, no push):
 
 ```bash
 gh workflow run dispatch-container-fvs-gui-linux.yml \
@@ -308,6 +167,7 @@ gh workflow run dispatch-container-fvs-gui-linux.yml \
 ```
 
 ## Known upstream issues in `USDAForestService/ForestVegetationSimulator`
+
 ### `bc` and `on` source lists are incomplete
 
 `bin/FVSbc_sourceList.txt` and `bin/FVSon_sourceList.txt` reference Fortran routines (`dbs_fiavbc_cutlst`, `dbs_fiavbc_atrtls`, `dbs_fiavbc_trls`, `dbsreference`) from `vbase/cuts.f` and `base/fvs.f` but do not include the files that **define** those routines — `dbsqlite/dbs_fiavbc_*.f` and `vdbsqlite/dbsreference.f`, all of which are present in the `pn`/`nc`/etc. source lists. The result is undefined-symbol errors at the final shared-library link step:
@@ -319,23 +179,18 @@ undefined reference to `dbsreference_'
 
 This is a source-list completeness bug in upstream `USDAForestService/ForestVegetationSimulator`. Until a fix lands there, omit `bc` and `on` from the `variants` option.
 
-There is also a separate `canada/bin/FVSon_sourceList.txt` in the upstream tree (a shorter list, ~520 lines vs. the canonical ~700-line `bin/FVSon`), used by an internal Canada-specific build flow. The overlay does not consume it — see `tools/parse_sourcelist.py` for the canonical-source-list rationale.
+## Repository layout
 
-## Source tree should be free of stale build artifacts (`.mod` files)
-
-The Meson overlay adds parent directories of `.F77`, `.inc`, and `.h` entries from the source list to gfortran's `-I` path so Fortran `INCLUDE` statements and C `#include` directives resolve. **gfortran's `-I` flag also searches for `.mod` files**, so any stale `.mod` files left in those directories from a prior in-place build will be picked up before the freshly-built ones — and since they may be from a different gfortran version or partial build, you get cryptic errors like:
-
-```
-f951: Fatal Error: Reading module 'charmod.mod' at line 1 column 2: Unexpected EOF
-```
-
-If your source tree was previously built in-place (the upstream `bin/makefile` does this in `bin/FVS<variant>_buildDir/`, but stray runs of `gfortran` at the source root can leave `.mod` files in subdirectories like `volume/NVEL/`), clean it before building with this overlay:
-
-```bash
-cd /path/to/fvs-source
-git clean -fdx           # removes all untracked files including .mod / .o
-# or, more conservatively:
-find . -name '*.mod' -not -path './bin/FVS*_buildDir/*' -delete
-```
-
-The native Linux GitHub Actions workflow also deletes `*.mod` under the checked-out source tree before running Meson, since upstream repos can ship empty or stale module files under paths such as `volume/NVEL/`.
+- `meson.build` — Meson build definition that compiles FVS from a source repository. Reads options, parses the repository's`bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
+- `meson_options.txt` — build-time options (`fvs_source_dir`, `variants`, `profile`, `traps`, and local-only `extra_fortran_args`).
+- `tools/parse_sourcelist.py` — turns one source list into the categorized file lists Meson consumes to build the binaries, invoked during the Meson build for each variant.
+- `.github/workflows/build-native-linux.yml`, `.github/workflows/build-native-windows.yml`, `.github/workflows/build-native-macos.yml` — reusable `workflow_call` workflows that run the Meson build for a single OS. Each produces an artifact bundle (binaries + provenance + SBOM); see `docs/workflow-interface.md`.
+- `.github/workflows/build-container-linux.yml` — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image, with option to push the image to GHCR.
+- `.github/workflows/build-container-fvs-gui-linux.yml` — reusable `workflow_call` workflow that builds the FVSOnLocal (`fvsOL`) GUI image. It copies the native Linux binaries (`FVS<v>.so`) and builds the `rFVS`/`fvsOL` R layer on a `rocker/r2u:noble`base image with additional configuration settings that allow the image to be hosted via Binder.
+- `.github/workflows/dispatch-native-linux.yml`, `.github/workflows/dispatch-native-windows.yml`, `.github/workflows/dispatch-native-macos.yml` — manually-triggered option for each native OS workflow (`workflow_dispatch`).
+- `.github/workflows/dispatch-container-linux.yml` — manually-triggered option for the native Linux + container steps in sequence.
+- `.github/workflows/dispatch-container-fvs-gui-linux.yml` — manually-triggered option for running native Linux + FVS GUI container steps in sequence.
+- `docker/Dockerfile.runtime` — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; supports standard FVS command-line invocation).
+- `docker/Dockerfile.fvs-gui` — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the`FVS<v>.so`shared libraries, builds `rFVS`/`fvsOL`) from source code. Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-gui/`.
+- `binder/Dockerfile` — thin `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>` shim so mybinder.org can launch the GUI image in seconds rather than building from scratch.
+- `docs/local-builds.md` — details for running the Meson build by hand, primarily intended for developers who would like to work on the `fvs-build` project or run Meson-based builds themselves.

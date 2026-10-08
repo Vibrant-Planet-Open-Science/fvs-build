@@ -1,6 +1,5 @@
 # Composite: download per-variant native artifacts, fan into the canonical bundle
 # (tools/ci/provenance.py collect-bundle), SPDX scan with syft, upload bundle.
-# See docs/workflow-interface.md for the bundle layout contract.
 name: Collect native FVS bundle
 description: >
   Download OS-prefixed variant artifacts, run collect-bundle, SPDX scan with syft,

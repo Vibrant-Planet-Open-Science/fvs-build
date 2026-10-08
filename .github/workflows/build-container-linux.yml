@@ -159,7 +159,6 @@ jobs:
           do
             if [ ! -f "$required" ]; then
               echo "ERROR: bundle missing required file: ${required}" >&2
-              echo "       (see docs/workflow-interface.md for the full contract)" >&2
               exit 1
             fi
           done

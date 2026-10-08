@@ -1,58 +1,53 @@
-# Workflow interface
+# GitHub Workflow Interface
 
-`fvs-build` exposes its build machinery as reusable GitHub Actions workflows callable via `workflow_call`. This document describes the public interface — inputs, outputs, and the artifact contract — that callers depend on.
+`fvs-build` exposes its build machinery as reusable GitHub Actions workflows callable via `workflow_call`. This document describes the public interface — inputs, outputs, and the artifact contract — that callers can rely upon to execute these workflows from their own repositories.
 
-The interface is **source-agnostic**: callers supply a source repo URL plus a commit ref, and the workflows produce the corresponding native artifacts.
+The interface is **source-agnostic** in terms of the FVS source repository. : callers supply a source repository URL plus a commit reference, and the workflows will produce the corresponding native artifacts so long as the source repository is formatted consistently with the `USDAForestService/ForestVegetationSimulator` project (with a `sourceList.txt` for each variant intended to be built).
 
 ## Workflows
 
-
-| File                                                                                                  | Purpose                                                                                    | Caller surface      | Status    |
-| ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ | ------------------- | --------- |
-| [`.github/workflows/build-native-linux.yml`](../.github/workflows/build-native-linux.yml)             | Native Linux binaries (x86_64 or aarch64) + provenance + SBOM                              | `workflow_call`     | available |
-| [`.github/workflows/build-container-linux.yml`](../.github/workflows/build-container-linux.yml)       | Multi-arch (amd64, arm64) Linux container image (Ubuntu 24.04 runtime) packaging the native binaries, pushed to GHCR | `workflow_call`     | available |
-| [`.github/workflows/build-container-fvs-gui-linux.yml`](../.github/workflows/build-container-fvs-gui-linux.yml) | Binder-ready FVSOnLocal (fvsOL) GUI image: reuses the native `.so` set, builds the rFVS/fvsOL R layer | `workflow_call`     | available |
-| [`.github/workflows/dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml)       | Manual driver around `build-native-linux.yml` for local validation                         | `workflow_dispatch` | available |
-| [`.github/workflows/dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) | Manual driver around `build-native-windows.yml` for local validation                       | `workflow_dispatch` | available |
-| [`.github/workflows/dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml)     | Manual driver around `build-native-macos.yml` for local validation                         | `workflow_dispatch` | available |
-| [`.github/workflows/dispatch-container-linux.yml`](../.github/workflows/dispatch-container-linux.yml) | Manual orchestrator running native + container in sequence                                 | `workflow_dispatch` | available |
-| [`.github/workflows/dispatch-container-fvs-gui-linux.yml`](../.github/workflows/dispatch-container-fvs-gui-linux.yml) | Manual orchestrator running native + FVS GUI container in sequence                         | `workflow_dispatch` | available |
-| [`.github/workflows/build-native-windows.yml`](../.github/workflows/build-native-windows.yml)       | Native Windows x86_64 (MSYS2 UCRT64) binaries + provenance + SBOM                        | `workflow_call`     | available |
-| [`.github/workflows/build-native-macos.yml`](../.github/workflows/build-native-macos.yml)           | Native macOS (Homebrew `gcc@N`) binaries + provenance + SBOM                               | `workflow_call`     | available |
-| Upstream-tracking automation                                                                          | Cron-driven detection of new USFS releases plus pruning of evicted images                  | scheduled           | planned   |
-
+| File | Purpose | Caller surface |
+| --- | --- | --- |
+| `.github/workflows/build-native-linux.yml` | Native Linux binaries (x86_64 or aarch64) + provenance + SBOM | `workflow_call` |
+| `.github/workflows/build-container-linux.yml` | Multi-arch (amd64, arm64) Linux container image (Ubuntu 24.04 runtime) packaging the native binaries, pushed to GHCR | `workflow_call` |
+| `.github/workflows/build-container-fvs-gui-linux.yml` | Binder-ready FVSOnLocal (fvsOL) GUI image: reuses the native `FVS<v>.so` shared libraries, adds the rFVS/fvsOL R layer | `workflow_call` |
+| `.github/workflows/dispatch-native-linux.yml` | Manual driver for`build-native-linux.yml` | `workflow_dispatch` |
+| `.github/workflows/dispatch-native-windows.yml` | Manual driver for`build-native-windows.yml` | `workflow_dispatch` |
+| `.github/workflows/dispatch-native-macos.yml` | Manual driver for`build-native-macos.yml` | `workflow_dispatch` |
+| `.github/workflows/dispatch-container-linux.yml` | Manual driver for running native + container steps in sequence | `workflow_dispatch` |
+| `.github/workflows/dispatch-container-fvs-gui-linux.yml` | Manual driver for running native + FVS GUI container steps in sequence | `workflow_dispatch` |
+| `.github/workflows/build-native-windows.yml` | Native Windows x86_64 (MSYS2 UCRT64) binaries + provenance + SBOM | `workflow_call` |
+| `.github/workflows/build-native-macos.yml` | Native macOS (Homebrew `gcc@N`) binaries + provenance + SBOM | `workflow_call` |
 
 ## Native bundles (Linux, Windows, macOS)
-These workflow produces shared libraries and executables for each FVS variant, and can do so for each of the supported operating systems.
-Three reusable workflows share the same job shape (preflight → per-variant matrix → collect) and the same provenance tool, [`tools/ci/provenance.py`](../tools/ci/provenance.py). Workflows set **`FVS_NATIVE_PLATFORM`** for `write-build-info` and `collect-bundle` so bundle filenames and SBOM paths match the OS:
 
-| OS      | Workflow                 | `FVS_NATIVE_PLATFORM` | Uploaded bundle name              | Executable at bundle root | Shared library at bundle root | SBOM relative path                          |
-| ------- | ------------------------ | --------------------- | --------------------------------- | ------------------------- | ----------------------------- | ------------------------------------------- |
-| Linux   | `build-native-linux.yml` | `linux`               | `fvs-native-linux-<arch>-<run_id>` | `FVS<v>`                  | `FVS<v>.so`                   | `sbom/fvs-native-linux.spdx.json`           |
-| Windows | `build-native-windows.yml` | `windows`           | `fvs-native-windows-<run_id>`   | `FVS<v>.exe`              | `FVS<v>.dll`                  | `sbom/fvs-native-windows.spdx.json`         |
-| macOS   | `build-native-macos.yml` | `darwin`              | `fvs-native-macos-<run_id>`     | `FVS<v>`                  | `FVS<v>.so`                   | `sbom/fvs-native-macos.spdx.json`           |
+These workflows produce shared libraries and executables for each FVS variant, and can do so for each of the supported operating systems. Three reusable workflows share the same sequence of jobs and the same provenance tool, `tools/ci/provenance.py`.
+
+| OS | Workflow | Uploaded bundle name | Executable at bundle root | Shared library at bundle root | SBOM relative path |
+| --- | --- | --- | --- | --- | --- |
+| Linux | `build-native-linux.yml` | `fvs-native-linux-<arch>-<run_id>` | `FVS<v>` | `FVS<v>.so` | `sbom/fvs-native-linux.spdx.json` |
+| Windows | `build-native-windows.yml` | `fvs-native-windows-<run_id>` | `FVS<v>.exe` | `FVS<v>.dll` | `sbom/fvs-native-windows.spdx.json` |
+| macOS | `build-native-macos.yml` | `fvs-native-macos-<run_id>` | `FVS<v>` | `FVS<v>.so` | `sbom/fvs-native-macos.spdx.json` |
 
 On Linux, `<arch>` is the build runner's `uname -m`: `x86_64` on `ubuntu-24.04`, `aarch64` on `ubuntu-24.04-arm`. These are the names wheel platform tags use (`manylinux_2_35_x86_64`, `manylinux_2_35_aarch64`). The container images use Docker's `amd64` / `arm64` instead, because that is what `--platform` expects.
 
-`provenance/manifest.json` and each `provenance/per-variant/FVS<v>.json` use the **`binary`** and **`shared_library`** basenames from this table (including extensions on Windows). `toolchain.gcc_major` is the GCC major the bundle was built with, the same field on every OS. The `toolchain.gfortran_package` and `toolchain.gpp_package` fields are **human-readable labels** (apt names on Linux, exact MSYS2 package builds on Windows, the Homebrew formula on macOS), not a portable schema across OSes.
+### Gnu Compiler Collection (GCC) toolchain selection
 
-### GCC toolchain selection
+All three native workflows accept a `gcc_major` input. A majorversion the platform cannot provide will fail before compiling with an appropriate error message. After compiling each executable and shared library are checked for their GCC ident strings to confirm they came from exactly one GCC version that matches the requested major version (`tools/ci/check_gcc_major.sh`). Each platform has its own default, which will be employed when the user doesn't specify a different `gcc_major`:
 
-All three native workflows take a `gcc_major` input. A major the platform cannot provide fails before compiling, and after compiling each executable and shared library must contain GCC ident strings from exactly one GCC version of that major ([`tools/ci/check_gcc_major.sh`](../tools/ci/check_gcc_major.sh)). Each platform has its own default:
+| OS | Default | Source |
+| --- | --- | --- |
+| Linux | `14` | `gfortran-N` / `gcc-N` / `g++-N` from the runner's Ubuntu archive (noble supports GCC major versions 9–14). |
+| macOS | `15` | Homebrew `gcc@N`, or the unversioned `gcc` formula when N is its current major. |
+| Windows | `15` | The exact MSYS2 package set listed for N in `tools/ci/msys2-toolchains.json` (GCC plus the matching CRT, headers and winpthreads), installed with `pacman -U` from `repo.msys2.org`. |
 
-| OS      | Default | Source                                                                                                                                                                                                                       |
-| ------- | ------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Linux   | `14`    | `gfortran-N` / `gcc-N` / `g++-N` from the runner's Ubuntu archive (noble: 9–14).                                                                                                                                              |
-| macOS   | `15`    | Homebrew `gcc@N`, or the unversioned `gcc` formula when N is its current major.                                                                                                                                               |
-| Windows | `15`    | The exact MSYS2 package set listed for N in [`tools/ci/msys2-toolchains.json`](../tools/ci/msys2-toolchains.json) (GCC plus the matching CRT, headers and winpthreads), installed with `pacman -U` from `repo.msys2.org`. |
-
-Windows pins exact builds because MSYS2 carries one GCC at a time and a mismatched CRT/winpthreads leaves objects from two GCC versions in the binary ([USDAForestService/ForestVegetationSimulator#71](https://github.com/USDAForestService/ForestVegetationSimulator/issues/71)). The lockfile lists majors 15 and 16. Adding a major means adding a set whose CRT/winpthreads were built by the same GCC and proving it with one green run; GCC 14 is not possible because every CRT build left in MSYS2's archive was built by GCC 15 or 16.
+Windows pins exact builds for the GCC toolchain because MSYS2 carries one GCC at a time and a mismatched set of GCC versions with CRT/winpthreads files can lead to objects created from two GCC versions in the FVS binary, behavior that was documented in [issue #71](https://github.com/USDAForestService/ForestVegetationSimulator/issues/71) in the `USDAForestService/ForestVegetationSimulator` repo. The lockfile lists the files associated with different GCC major versions supported for Windows builds. Adding a major means adding a set whose CRT/winpthreads were built by the same GCC and proving it with one green run; GCC 14 is not possible because every CRT build left in MSYS2's archive was built by GCC 15 or 16.
 
 The Meson build-directory cache key includes the compiler's `--version` line, so a different compiler never reuses cached objects.
 
 ### Linux runtime compatibility
 
-Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1` (plus the glibc loader `ld-linux-aarch64.so.1` on aarch64, which records it as `NEEDED`); the build fails on any other `NEEDED` entry. What they run on is set by the build system's glibc, not by the GCC major: the build fails if any artifact needs a `GLIBC_` symbol version newer than the arch's floor:
+Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1` (plus the glibc loader `ld-linux-aarch64.so.1` on aarch64). Builds will fail when any unexpected files are detected as being needed to run the binaries. What they run on is set by the build system's glibc, not by the GCC major: the build fails if any artifact needs a `GLIBC_` symbol version newer than the arch's floor:
 
 | Arch | glibc floor | Runs on |
 | --- | --- | --- |
@@ -61,28 +56,20 @@ Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.s
 
 Both also need a `libgfortran5` from GCC 10 or newer. The floors differ because gfortran inlines `MOD()` on x86_64 but calls libm's `fmod`/`fmodf` on aarch64, and noble's glibc versions those `GLIBC_2.38`. Older systems should use the container images.
 
-During the matrix → collect handoff, each workflow uploads **ephemeral** per-variant artifacts named **`linux-<arch>-variant-<v>`**, **`macos-variant-<v>`**, or **`windows-variant-<v>`** (not plain `variant-<v>`). That avoids GitHub Actions artifact **name collisions** when a caller runs several reusable native workflows in the **same** workflow run — for example [`ci-test-reusable-native.yml`](../.github/workflows/ci-test-reusable-native.yml), or Linux on both arches for a multi-arch image. Without the prefix, the last OS to upload `variant-ak` would win and the Linux collect job could unzip macOS outputs (a Mach-O `FVSak.so` in place of the Linux ELF one, under the same file name). The Linux collect job only downloads its own arch's artifacts, so it must run on the same arch as the matrix legs (it does: both use `runner_image`).
-
-The **executable** and **shared library** are independent link products (upstream `bin/makefile` `%.prg` rules): CLI runs do not require the `.so` / `.dll` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). Both the exe and the DLL import the Universal C Runtime (UCRT), which ships with Windows 10 and newer. The shared library keeps the **`FVS<v>`** basename without a `lib` prefix (embedders formerly used `libFVS<v>.*` — **breaking rename**).
-
-The Linux container workflow consumes **only** the Linux bundle; Windows and macOS bundles are for native delivery on those platforms.
-
-### Floating-point traps on arm64
-
-Both profiles compile with `-ffpe-trap=invalid,zero,underflow,overflow,denormal`, as upstream's `bin/makefile` does. On aarch64 (Linux arm64 and Apple Silicon macOS), `denormal` is left out, because aarch64 has no such exception. The remaining traps are requested but have no effect there: the arm64 cores behind GitHub's runners and Apple Silicon do not trap floating-point exceptions in hardware, so a division by zero yields `Infinity` instead of `SIGFPE`. That defeats the `debug` profile's `-finit-real=snan` check, so run the `debug` profile on x86_64.
+The **executable** and **shared library** artifacts produced by the workflows are independent link products (following USFS FVS patterns that use`bin/makefile` `%.prg` rules). This means that executables used to run FVS from the CLI do not require the `.so` / `.dll` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). Both the exe and the DLL import the Universal C Runtime (UCRT), which ships with Windows 10 and newer. The shared library keeps the `FVS<v>` basename and do not add a `lib` prefix.
 
 ### Shared native CI helpers
 
 The three `build-native-*.yml` workflows share the same overall shape; repeated steps are centralized so the YAML stays short and changes stay in one place:
 
 | Location | Role |
-| -------- | ---- |
-| [`tools/ci/expand_variants_matrix.py`](../tools/ci/expand_variants_matrix.py) | Preflight: expand the `variants` CSV into the JSON matrix for `strategy.matrix`. |
-| [`.github/actions/prepare-fvs-native-checkout/action.yml`](../.github/actions/prepare-fvs-native-checkout/action.yml) | Matrix jobs: resolve the overlay repo/ref, check out `fvs-build/` and `fvs-source/`, delete stray `*.mod` under `fvs-source`, emit `source_sha` and `fvs_build_sha` outputs. |
-| [`tools/ci/meson_configure_native.sh`](../tools/ci/meson_configure_native.sh) | Matrix jobs: `meson setup` / `--reconfigure` with `profile` and fail-fast validation. |
-| [`tools/ci/stage_variant_native.py`](../tools/ci/stage_variant_native.py) | After compile: populate `staging/<variant>/`, tail `meson-log.txt`, invoke `provenance.py` (`extract-fortran-args`, `write-build-info`). |
-| [`.github/actions/collect-native-bundle/action.yml`](../.github/actions/collect-native-bundle/action.yml) | Collect job: download OS-prefixed `*-variant-*` artifacts, run `provenance.py collect-bundle`, Syft SBOM, upload the final bundle. |
-| [`.github/actions/resolve-fvs-build-ref`](../.github/actions/resolve-fvs-build-ref/action.yml) | Parse `github.workflow_ref` into overlay `owner/name` + ref (used by native matrix/collect steps and by `build-container-linux.yml`). |
+| --- | --- |
+| `tools/ci/expand_variants_matrix.py` | Preflight: expand the `variants` CSV into the JSON matrix for `strategy.matrix`. |
+| `.github/actions/prepare-fvs-native-checkout/action.yml` | Matrix jobs: resolve the overlay repo/ref, check out `fvs-build/` and `fvs-source/`, emit `source_sha` and `fvs_build_sha` outputs. |
+| `tools/ci/meson_configure_native.sh` | Matrix jobs: `meson setup` / `--reconfigure` with `profile` and fail-fast validation. |
+| `tools/ci/stage_variant_native.py` | After compile: populate `staging/<variant>/`, tail `meson-log.txt`, invoke `provenance.py` (`extract-fortran-args`, `write-build-info`). |
+| `.github/actions/collect-native-bundle/action.yml` | Collect job: download OS-prefixed `*-variant-*` artifacts, run `provenance.py collect-bundle`, Syft SBOM, upload the final bundle. |
+| `.github/actions/resolve-fvs-build-ref` | Parse `github.workflow_ref` into overlay `owner/name` + ref (used by native matrix/collect steps and by `build-container-linux.yml`). |
 
 ## `build-native-linux.yml`
 
@@ -90,34 +77,30 @@ Builds Linux native binaries for one or more FVS variants from any source repo +
 
 `runner_image` picks the arch: `ubuntu-24.04` builds x86_64, `ubuntu-24.04-arm` builds aarch64 (free for public repositories). There is no cross-compilation. A caller that wants both arches calls the workflow twice; the artifact names carry the arch, so the two calls do not collide.
 
-Jobs that need the overlay resolve `owner/name` and git ref from [`github.workflow_ref`](https://docs.github.com/en/actions/learn-github-actions/contexts#github-context) (the invoked reusable workflow file) via the shared [`.github/actions/resolve-fvs-build-ref`](../.github/actions/resolve-fvs-build-ref/action.yml) composite action, then check out this repository before cloning FVS source.
+Jobs that need the overlay resolve `owner/name` and git ref from `github.workflow_ref` (the invoked reusable workflow file) via the shared `.github/actions/resolve-fvs-build-ref` composite action, then check out this repository before cloning FVS source.
 
 ### Inputs
 
-
-| Input                | Type   | Required | Default                                                             | Description                                                                                                                                                                                                                               |
-| -------------------- | ------ | -------- | ------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `source_repo`        | string | yes      | —                                                                   | Source repo containing FVS code, in `owner/name` form (e.g. `USDAForestService/ForestVegetationSimulator`, `Vibrant-Planet-Open-Science/fvs-engine`).                                                                                     |
-| `source_ref`         | string | yes      | —                                                                   | Tag, branch, or SHA in `source_repo` to build from.                                                                                                                                                                                       |
-| `variants`           | string | no       | `ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws` | Comma-separated FVS variant codes. Default is the 22 cleanly-buildable US variants. The Canadian variants (`bc`, `on`) are excluded by default; their upstream source lists are incomplete (see [`README.md`](../README.md) for details). |
-| `runner_image`       | string | no       | `ubuntu-24.04`                                                      | GitHub-hosted runner image label. Pinned to keep the glibc baseline stable and matched to the Ubuntu 24.04 runtime container base. `ubuntu-24.04` builds x86_64; `ubuntu-24.04-arm` builds aarch64.                                       |
-| `gcc_major`          | string | no       | `14`                                                                | GCC major version; installs `gfortran-N`, `gcc-N` and `g++-N` (see [GCC toolchain selection](#gcc-toolchain-selection)). The macOS and Windows workflows take the same input with default `15`.                                    |
-| `meson_version`      | string | no       | `1.5.2`                                                             | Exact Meson version installed via pip. Pinned to the version `fvs-build` was developed against.                                                                                                                                           |
-| `profile`            | string | no       | `reference`                                                         | Build profile: `reference` (default, goldens-aligned flags matching upstream `bin/makefile`) or `debug` (paranoid runtime checks for regression testing; not goldens-compatible). Both use `--buildtype=plain`.                          |
-| `python_version`     | string | no       | `3.12`                                                              | Version string for `actions/setup-python` (matrix Meson / scripts and the collect job's interpreter when setup-python runs).                                                                                                         |
-
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `source_repo` | string | yes | — | Source repo containing FVS code, in `owner/name` form (e.g. `USDAForestService/ForestVegetationSimulator`). |
+| `source_ref` | string | yes | — | Tag, branch, or SHA in `source_repo` to build from. |
+| `variants` | string | no | `ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws` | Comma-separated FVS variant codes. Default is the 22 cleanly-buildable US variants. The Canadian variants (`bc`, `on`) are excluded by default; their upstream source lists are incomplete (see `README.md` for details). |
+| `runner_image` | string | no | `ubuntu-24.04` | GitHub-hosted runner image label. Pinned to keep the glibc baseline stable and matched to the Ubuntu 24.04 runtime container base. `ubuntu-24.04` builds x86_64; `ubuntu-24.04-arm` builds aarch64. |
+| `gcc_major` | string | no | `14` | GCC major version; installs `gfortran-N`, `gcc-N` and `g++-N` (see [GCC toolchain selection](#gcc-toolchain-selection)). The macOS and Windows workflows take the same input with default `15`. |
+| `meson_version` | string | no | `1.5.2` | Exact Meson version installed via pip. Pinned to the version `fvs-build` was developed against. |
+| `profile` | string | no | `reference` | Build profile: `reference` (default, goldens-aligned flags matching upstream `bin/makefile`) or `debug` (paranoid runtime checks for regression testing; not goldens-compatible). Both use `--buildtype=plain`. |
+| `python_version` | string | no | `3.12` | Version string for `actions/setup-python` (matrix Meson / scripts and the collect job's interpreter when setup-python runs). |
 
 ### Outputs
 
-
-| Output          | Description                                                                                                                                                                       |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Output | Description |
+| --- | --- |
 | `artifact_name` | Name of the bundled artifact uploaded by this workflow. Exactly `fvs-native-linux-<arch>-<run_id>` (`<arch>` is `x86_64` or `aarch64`). The downstream container workflow consumes this name to fetch and unpack the bundle. |
-
 
 ### Artifact contract
 
-The workflow uploads exactly one artifact with the canonical layout below. This layout is the public contract; downstream consumers (the container workflow, regression test runners, release-attachment scripts, fork CI) depend on these paths. The JSON under `provenance/` is assembled by [`tools/ci/provenance.py`](../tools/ci/provenance.py) (invoked from the workflows).
+The workflow uploads exactly one artifact with the canonical layout below. This layout is the public contract; downstream consumers (the container workflow, regression test runners, release-attachment scripts, fork CI) depend on these paths. The JSON under `provenance/` is assembled by `tools/ci/provenance.py` (invoked from the workflows).
 
 ```
 fvs-native-linux-<arch>-<run_id>/
@@ -283,7 +266,7 @@ Build a custom subset of variants:
 
 ### Authentication
 
-The default behavior assumes `source_repo` is public; `actions/checkout@v5` works without explicit credentials. If the source repo is private, add `secrets: inherit` to the caller's `uses:` block — see the commented hint in [`dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml).
+The default behavior assumes `source_repo` is public; `actions/checkout@v5` works without explicit credentials. If the source repo is private, add `secrets: inherit` to the caller's `uses:` block — see the commented hint in `dispatch-native-linux.yml`.
 
 The workflow itself only requests `contents: read`. SBOM generation requires no extra permissions; SLSA build attestation (`id-token: write`) is deferred — the in-bundle `provenance/manifest.json` plus the SPDX SBOM provide build metadata without the operational complexity of attestation right now.
 
@@ -295,7 +278,7 @@ Per-variant Fortran compile time dominates. Caching the Meson build directory (`
 
 ### Local validation before any external caller exists
 
-Validate end-to-end via [`dispatch-native-linux.yml`](../.github/workflows/dispatch-native-linux.yml):
+Validate end-to-end via `dispatch-native-linux.yml`:
 
 ```bash
 gh workflow run dispatch-native-linux.yml \
@@ -303,54 +286,55 @@ gh workflow run dispatch-native-linux.yml \
   -f source_ref=FS2026.3
 ```
 
-The same pattern applies on **Windows** and **macOS** via [`dispatch-native-windows.yml`](../.github/workflows/dispatch-native-windows.yml) and [`dispatch-native-macos.yml`](../.github/workflows/dispatch-native-macos.yml) (substitute the workflow file name in `gh workflow run`).
+The same pattern applies on **Windows** and **macOS** via `dispatch-native-windows.yml` and `dispatch-native-macos.yml` (substitute the workflow file name in `gh workflow run`).
 
 This invokes the reusable workflow with the same inputs an external caller would supply.
 
 ## `build-container-linux.yml`
 
-Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 24.04 container image and (optionally) pushes it to GHCR. The container does **not** recompile FVS — it copies the already-validated native binaries into a slim runtime image with the matching `libgfortran5` runtime library (plus `libquadmath0` on amd64; Ubuntu does not build it for arm64, where `long double` is already IEEE quad). Given an aarch64 bundle in `artifact_name_arm64`, it builds a linux/arm64 image too and publishes both behind the same tags (see [Multi-arch images](#multi-arch-images)). **Per-variant `STOP 20` smoke runs on the native Linux build runner** before bundling; this workflow does not re-run those binaries inside the image (see the **Validation / smoke testing** subsection later in this document).
+Packages a `build-native-linux.yml` artifact bundle into a runtime-only Ubuntu 24.04 container image and (optionally) pushes it to GHCR. The container does **not** recompile FVS — it copies the already-validated native binaries into a slim runtime image with the matching `libgfortran5` runtime library (plus `libquadmath0` on amd64; Ubuntu does not build it for arm64, where `long double` is already IEEE quad). Given an aarch64 bundle in `artifact_name_arm64`, it builds a linux/arm64 image too and publishes both behind the same tags (see [Multi-arch images](#multi-arch-images)). **Each variant is smoke tested on the native Linux build runner** before bundling; this workflow does not re-run those binaries inside the image (see the **Validation / smoke testing** subsection later in this document).
 
 ### Inputs
 
-
-| Input              | Type    | Required | Default        | Description                                                                                                                                                                      |
-| ------------------ | ------- | -------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `artifact_name`    | string  | yes      | —              | Name of the x86_64 bundle artifact produced by a prior `build-native-linux.yml` job in the same workflow run. Pass through the upstream job's `artifact_name` output.            |
-| `artifact_name_arm64` | string | no    | `""`           | Name of the aarch64 bundle from a second `build-native-linux.yml` job (`runner_image: ubuntu-24.04-arm`). When set, the image is also built for linux/arm64. Empty builds linux/amd64 only. |
-| `image_name`       | string  | yes      | —              | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs`). Caller picks the namespace.                                             |
-| `image_tag`        | string  | yes      | —              | Primary tag, typically the FVS source ref (e.g. `FS2026.3`).                                                                                                                    |
-| `image_extra_tags` | string  | no       | `""`           | Comma-separated extra tags applied at push time (e.g. `latest`, `<short-sha>`). Each points at the same manifest list as the primary tag.                                       |
-| `runtime_base`     | string  | no       | `ubuntu:24.04` | Base image for the runtime container. Pinned to `ubuntu:24.04` (same version as the Linux native build runner so glibc baselines match). |
-| `runner_image`     | string  | no       | `ubuntu-24.04` | GitHub-hosted runner image label for the amd64 leg and the manifest job. The arm64 leg always runs on `ubuntu-24.04-arm`.                                                        |
-| `push`             | boolean | no       | `false`        | Push to the registry after the image build succeeds. Defaults to `false`; production callers explicitly opt in.                                                                  |
-
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `artifact_name` | string | yes | — | Name of the x86_64 bundle artifact produced by a prior `build-native-linux.yml` job in the same workflow run. Pass through the upstream job's `artifact_name` output. |
+| `artifact_name_arm64` | string | no | `""` | Name of the aarch64 bundle from a second `build-native-linux.yml` job (`runner_image: ubuntu-24.04-arm`). When set, the image is also built for linux/arm64. Empty builds linux/amd64 only. |
+| `image_name` | string | yes | — | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs`). Caller picks the namespace. |
+| `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `FS2026.3`). |
+| `image_extra_tags` | string | no | `""` | Comma-separated extra tags applied at push time (e.g. `latest`, `<short-sha>`). Each points at the same manifest list as the primary tag. |
+| `runtime_base` | string | no | `ubuntu:24.04` | Base image for the runtime container. Pinned to `ubuntu:24.04` (same version as the Linux native build runner so glibc baselines match). |
+| `runner_image` | string | no | `ubuntu-24.04` | GitHub-hosted runner image label for the amd64 leg and the manifest job. The arm64 leg always runs on `ubuntu-24.04-arm`. |
+| `push` | boolean | no | `false` | Push to the registry after the image build succeeds. Defaults to `false`; production callers explicitly opt in. |
 
 ### Outputs
 
-
-| Output         | Description                                                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------ |
-| `image_ref`    | Primary image reference: `<image_name>:<image_tag>`.                                                   |
+| Output | Description |
+| --- | --- |
+| `image_ref` | Primary image reference: `<image_name>:<image_tag>`. |
 | `image_digest` | Digest (`sha256:...`) of the manifest list behind the tags, not of a single-platform image. Empty when `push: false` since digests are only stable for pushed images. |
-
 
 ### What the workflow does
 
-1. Self-checkout `fvs-build` at the ref implied by `github.workflow_ref` using [`.github/actions/resolve-fvs-build-ref`](../.github/actions/resolve-fvs-build-ref/action.yml) (for [`docker/Dockerfile.runtime`](../docker/Dockerfile.runtime)).
-Steps 2–7 run once per arch, as a matrix: an `amd64` leg on `runner_image`, plus an `arm64` leg on `ubuntu-24.04-arm` when `artifact_name_arm64` is set.
+1. Self-checkout `fvs-build` at the ref implied by `github.workflow_ref` using `.github/actions/resolve-fvs-build-ref` (for `docker/Dockerfile.runtime`). Steps 2–7 run once per arch, as a matrix: an `amd64` leg on `runner_image`, plus an `arm64` leg on `ubuntu-24.04-arm` when `artifact_name_arm64` is set.
 
 2. Download that leg's artifact bundle into `bundle/` and verify the layout.
-3. Extract source repo/ref/sha, toolchain versions and `arch` from `bundle/provenance/manifest.json` via [`tools/ci/provenance.py`](../tools/ci/provenance.py) (`manifest-to-github-env`); pass them into `docker buildx build` as `--build-arg` values which become OCI image labels.
+
+3. Extract source repo/ref/sha, toolchain versions and `arch` from `bundle/provenance/manifest.json` via `tools/ci/provenance.py` (`manifest-to-github-env`); pass them into `docker buildx build` as `--build-arg` values which become OCI image labels.
+
 4. Fail unless the bundle's `arch` matches the leg (`x86_64` ↔ `amd64`, `aarch64` ↔ `arm64`), so an aarch64 bundle passed as `artifact_name` is never published as amd64.
+
 5. `docker buildx build --load --platform linux/<arch>` produces the image into the local Docker daemon (no push yet).
+
 6. If `push: true`: log in to GHCR (when `image_name` starts with `ghcr.io/`), re-run the same build from the builder cache with `push-by-digest=true`, and upload the resulting digest as a `container-digest-<arch>-<run_id>` artifact. The per-arch image gets no tag of its own.
+
 7. Generate an SPDX SBOM of the *built image* via `syft` (separate from the binary-only SBOM in the bundle — the image SBOM also captures the Ubuntu base layers and `libgfortran5`). Upload as a sibling `container-sbom-<arch>-<run_id>` artifact.
+
 8. If `push: true`, a `manifest` job joins the per-arch digests with `docker buildx imagetools create` into one manifest list carrying `image_tag` and every `image_extra_tags` entry. An amd64-only call produces a one-entry list.
 
 ### Multi-arch images
 
-Each tag points at a manifest list, so `docker pull <image_name>:<tag>` picks the image matching the host: an Apple Silicon Mac or an arm64 cloud host gets linux/arm64 with no `--platform` flag, and an amd64 host (including mybinder.org) gets linux/amd64. To pull one arch explicitly: `docker pull --platform linux/arm64 <image_name>:<tag>`. There are no `-amd64` / `-arm64` tags.
+Each tag points at a manifest list, so `docker pull <image_name>:<tag>` picks the image matching the host: an Apple Silicon Mac or an arm64 cloud host gets linux/arm64 (with no `--platform` flag needed), and an amd64 host (including mybinder.org) gets the linux/amd64 image. To pull one arch explicitly: `docker pull --platform linux/arm64 <image_name>:<tag>`. There are no `-amd64` / `-arm64` tags.
 
 The per-arch images appear in GHCR as **untagged** versions. **Do not delete them**, by hand or with a retention policy that prunes untagged versions: every tag that points at the manifest list breaks when they go.
 
@@ -358,47 +342,41 @@ The per-arch images appear in GHCR as **untagged** versions. **Do not delete the
 
 Standard [OpenContainers annotations](https://github.com/opencontainers/image-spec/blob/main/annotations.md):
 
-
-| Label                                    | Source                                                                           |
-| ---------------------------------------- | -------------------------------------------------------------------------------- |
-| `org.opencontainers.image.source`        | `https://github.com/<fvs_build_repo>` (the repo whose workflow built this image) |
-| `org.opencontainers.image.revision`      | `fvs_build` SHA from manifest                                                    |
-| `org.opencontainers.image.version`       | `source_ref` from manifest (the FVS version)                                     |
-| `org.opencontainers.image.created`       | Build timestamp (ISO 8601 UTC)                                                   |
-| `org.opencontainers.image.title`         | `usfs-fvs`                                                                       |
-| `org.opencontainers.image.description`   | Project description                                                              |
-| `org.opencontainers.image.licenses`      | `MIT AND CC0-1.0` — SPDX expression for the software contained in the image (static literal, not from the manifest): `CC0-1.0` for the public-domain upstream FVS sources the binaries are compiled from, `MIT` for the `fvs-build` code and provenance records shipped alongside them |
-| `org.opencontainers.image.documentation` | URL to this document at the build's `fvs-build` ref                              |
-
+| Label | Source |
+| --- | --- |
+| `org.opencontainers.image.source` | `https://github.com/<fvs_build_repo>` (the repo whose workflow built this image) |
+| `org.opencontainers.image.revision` | `fvs_build` SHA from manifest |
+| `org.opencontainers.image.version` | `source_ref` from manifest (the FVS version) |
+| `org.opencontainers.image.created` | Build timestamp (ISO 8601 UTC) |
+| `org.opencontainers.image.title` | `usfs-fvs` |
+| `org.opencontainers.image.description` | Project description |
+| `org.opencontainers.image.licenses` | `MIT AND CC0-1.0` — SPDX expression for the software contained in the image (static literal, not from the manifest): `CC0-1.0` for the public-domain upstream FVS sources the binaries are compiled from, `MIT` for the `fvs-build` code and provenance records shipped alongside them |
+| `org.opencontainers.image.documentation` | URL to this document at the build's `fvs-build` ref |
 
 Plus `fvs-build`-specific labels for full source / toolchain provenance:
 
-
-| Label                                    | Source                                                           |
-| ---------------------------------------- | ---------------------------------------------------------------- |
-| `org.vibrantplanet.fvs.source-repo`      | source repo (e.g. `USDAForestService/ForestVegetationSimulator`) |
-| `org.vibrantplanet.fvs.source-ref`       | source ref (FVS tag/branch)                                      |
-| `org.vibrantplanet.fvs.source-sha`       | source commit SHA                                                |
-| `org.vibrantplanet.fvs.fvs-build-repo`   | this repo (e.g. `Vibrant-Planet-Open-Science/fvs-build`)         |
-| `org.vibrantplanet.fvs.fvs-build-ref`    | `fvs-build` ref the workflow ran from                            |
-| `org.vibrantplanet.fvs.fvs-build-sha`    | `fvs-build` commit SHA                                           |
-| `org.vibrantplanet.fvs.variants`         | comma-separated 2-letter variant codes baked in                  |
-| `org.vibrantplanet.fvs.gfortran-version` | exact gfortran version (first line of `gfortran --version`)      |
-| `org.vibrantplanet.fvs.meson-version`    | exact Meson version                                              |
-
+| Label | Source |
+| --- | --- |
+| `org.vibrantplanet.fvs.source-repo` | source repo (e.g. `USDAForestService/ForestVegetationSimulator`) |
+| `org.vibrantplanet.fvs.source-ref` | source ref (FVS tag/branch) |
+| `org.vibrantplanet.fvs.source-sha` | source commit SHA |
+| `org.vibrantplanet.fvs.fvs-build-repo` | this repo (e.g. `Vibrant-Planet-Open-Science/fvs-build`) |
+| `org.vibrantplanet.fvs.fvs-build-ref` | `fvs-build` ref the workflow ran from |
+| `org.vibrantplanet.fvs.fvs-build-sha` | `fvs-build` commit SHA |
+| `org.vibrantplanet.fvs.variants` | comma-separated 2-letter variant codes baked in |
+| `org.vibrantplanet.fvs.gfortran-version` | exact gfortran version (first line of `gfortran --version`) |
+| `org.vibrantplanet.fvs.meson-version` | exact Meson version |
 
 Inspect on a built image with `docker inspect <image_ref> | jq '.[0].Config.Labels'`.
 
 ### Files baked into the image
 
-
-| Path                                           | Content                                                                                         |
-| ---------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `/usr/local/bin/FVS<v>`                        | per-variant standalone executable, +x, on `PATH`                                                |
-| `/usr/local/lib/FVS<v>.so`                     | per-variant embedder shared library                                                             |
-| `/usr/share/fvs-build/manifest.json`           | the bundle's top-level provenance manifest                                                      |
+| Path | Content |
+| --- | --- |
+| `/usr/local/bin/FVS<v>` | per-variant standalone executable, +x, on `PATH` |
+| `/usr/local/lib/FVS<v>.so` | per-variant shared library |
+| `/usr/share/fvs-build/manifest.json` | the bundle's top-level provenance manifest |
 | `/usr/share/fvs-build/sbom-binaries.spdx.json` | the bundle's binary-only SBOM (the image-level SBOM is uploaded as a sibling workflow artifact) |
-
 
 The image has no `ENTRYPOINT`. With `WORKDIR=/data` and the variant binaries on `PATH`, callers invoke FVS with its native command line:
 
@@ -454,9 +432,9 @@ For non-GHCR registries the workflow's GHCR-only `docker/login-action` step is s
 
 ### Validation / smoke testing
 
-**Native Linux matrix:** each variant binary is smoke-tested on the build runner (`</dev/null`, expect gfortran `STOP 20`) before staging and bundle collection — the same minimal pattern as local development (see `README.md`).
+**Native Linux matrix:** each variant binary is smoke-tested on the build runner before staging and bundle collection — the same minimal pattern as local development (see `local-builds.md`).
 
-**Container workflow:** the image is **not** smoke-tested after `docker build`. That keeps CI fast and avoids duplicating the native gate. The tradeoff is weaker coverage for mistakes that only show up inside the runtime image (for example wrong `apt` packages in `Dockerfile.runtime` or a broken `COPY` layout). Teams that need in-image confirmation can add a separate integration job, reintroduce a targeted `docker run` check, or rely on downstream tests.
+**Container workflow:** the image is **not** smoke-tested after `docker build`. That keeps CI fast and avoids duplicating the native gate. Teams that need in-image confirmation can add a separate integration job, reintroduce a targeted `docker run` check, or rely on downstream tests.
 
 Future enhancements (porting `docker_fvs/tests/test_fvs_build.py`-style checks, keyfiles, log assertions, etc.) remain possible without changing the native contract.
 
@@ -476,39 +454,35 @@ gh workflow run dispatch-container-linux.yml \
 
 ## `build-container-fvs-gui-linux.yml`
 
-Builds a **Binder-ready FVSOnLocal (`fvsOL`) GUI image** and (optionally) pushes it to GHCR. Like `build-container-linux.yml`, it does **not** compile FVS: it reuses the `FVS<v>.so` embedder set from a prior `build-native-linux.yml` bundle. What it *does* build in Docker is the pure-R glue layer — `rFVS` and `fvsOL` from `USDAForestService/ForestVegetationSimulator-Interface` — on top of `rocker/r2u:noble` (Ubuntu 24.04, r2u + bspm for signed apt R binaries), together with a Jupyter + `jupyter-server-proxy` stack so the Shiny app is reachable at the `/fvs-gui/` subpath. Building the R layer in Docker preserves the "FVS is never compiled in Docker" rule: no second FVS binary is produced, only the pure-R glue around the one the native build already made.
+Builds a **Binder-ready FVSOnLocal (**`fvsOL`**) GUI image** and (optionally) pushes it to GHCR. Like `build-container-linux.yml`, it does **not** compile FVS: it reuses the `FVS<v>.so` embedder set from a prior `build-native-linux.yml` bundle. What it *does* build in Docker is the pure-R glue layer — `rFVS` and `fvsOL` from `USDAForestService/ForestVegetationSimulator-Interface` — on top of `rocker/r2u:noble` (Ubuntu 24.04, r2u + bspm for signed apt R binaries), together with a Jupyter + `jupyter-server-proxy` stack so the Shiny app is reachable at the `/fvs-gui/` subpath. Building the R layer in Docker preserves the "FVS is never compiled in Docker" rule: no second FVS binary is produced, only the pure-R glue around the one the native build already made.
 
 ### Inputs
 
-
-| Input              | Type    | Required | Default                                                          | Description                                                                                                                       |
-| ------------------ | ------- | -------- | ---------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| `artifact_name`    | string  | yes      | —                                                                | Name of the x86_64 `build-native-linux.yml` bundle produced in the same run. Only its `FVS<v>.so` set is consumed.                |
-| `artifact_name_arm64` | string | no    | `""`                                                             | Name of the aarch64 bundle from a second `build-native-linux.yml` job. When set, the image is also built for linux/arm64. Empty builds linux/amd64 only. |
-| `interface_repo`   | string  | no       | `USDAForestService/ForestVegetationSimulator-Interface`          | Source repo (`owner/name`) providing the `rFVS` + `fvsOL` R packages.                                                             |
-| `interface_ref`    | string  | no       | `FS2026.3`                                                       | Tag, branch, or SHA in `interface_repo` for the `rFVS`/`fvsOL` sources. Must carry the RSQLite fix — see below.                     |
-| `image_name`       | string  | yes      | —                                                                | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`).                      |
-| `image_tag`        | string  | yes      | —                                                                | Primary tag, typically matching `interface_ref` (e.g. `FS2026.3`).                                                               |
-| `image_extra_tags` | string  | no       | `""`                                                             | Comma-separated extra tags applied at push time (e.g. `latest`). Each points at the same manifest list as the primary tag.         |
-| `runner_image`     | string  | no       | `ubuntu-24.04`                                                   | GitHub-hosted runner image label for the amd64 leg and the manifest job. The arm64 leg always runs on `ubuntu-24.04-arm`.         |
-| `push`             | boolean | no       | `false`                                                          | Push to the registry after the build succeeds. **For mybinder.org to pull the image it must be pushed AND made public.**          |
-
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `artifact_name` | string | yes | — | Name of the x86_64 `build-native-linux.yml` bundle produced in the same run. Only its `FVS<v>.so` set is consumed. |
+| `artifact_name_arm64` | string | no | `""` | Name of the aarch64 bundle from a second `build-native-linux.yml` job. When set, the image is also built for linux/arm64. Empty builds linux/amd64 only. |
+| `interface_repo` | string | no | `USDAForestService/ForestVegetationSimulator-Interface` | Source repo (`owner/name`) providing the `rFVS` + `fvsOL` R packages. |
+| `interface_ref` | string | no | `FS2026.3` | Tag, branch, or SHA in `interface_repo` for the `rFVS`/`fvsOL` sources. Must carry the RSQLite fix — see below. |
+| `image_name` | string | yes | — | Fully-qualified image name without the tag suffix (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`). |
+| `image_tag` | string | yes | — | Primary tag, typically matching `interface_ref` (e.g. `FS2026.3`). |
+| `image_extra_tags` | string | no | `""` | Comma-separated extra tags applied at push time (e.g. `latest`). Each points at the same manifest list as the primary tag. |
+| `runner_image` | string | no | `ubuntu-24.04` | GitHub-hosted runner image label for the amd64 leg and the manifest job. The arm64 leg always runs on `ubuntu-24.04-arm`. |
+| `push` | boolean | no | `false` | Push to the registry after the build succeeds. **For mybinder.org to pull the image it must be pushed AND made public.** |
 
 ### Outputs
 
-
-| Output         | Description                                                                                            |
-| -------------- | ------------------------------------------------------------------------------------------------------ |
-| `image_ref`    | Primary image reference: `<image_name>:<image_tag>`.                                                   |
+| Output | Description |
+| --- | --- |
+| `image_ref` | Primary image reference: `<image_name>:<image_tag>`. |
 | `image_digest` | Digest (`sha256:...`) of the manifest list behind the tags, not of a single-platform image. Empty when `push: false` since digests are only stable for pushed images. |
-
 
 ### What the workflow does
 
-1. Self-checkout `fvs-build` at the ref implied by `github.workflow_ref` (for [`docker/Dockerfile.fvs-gui`](../docker/Dockerfile.fvs-gui) and the files baked into the image).
+1. Self-checkout `fvs-build` at the ref implied by `github.workflow_ref` (for `docker/Dockerfile.fvs-gui` and the files baked into the image).
 2. Download the named native bundle into `bundle/` and verify it provides the `FVS<v>.so` set.
 3. Check out `interface_repo` at `interface_ref` into `interface/`, then **stage** the `rFVS` and `fvsOL` package roots into `fvs-gui-context/rFVS` and `fvs-gui-context/fvsOL`. The package roots are located by their `DESCRIPTION` files (`Package: rFVS` / `Package: fvsOL`), so the Dockerfile's `COPY` paths stay stable regardless of where the packages live inside the Interface repo. The resolved interface commit SHA is captured for provenance.
-4. Extract FVS source/toolchain/variant provenance from `bundle/provenance/manifest.json` via [`tools/ci/provenance.py`](../tools/ci/provenance.py) (`manifest-to-github-env`), and fail unless the bundle's `arch` matches the leg.
+4. Extract FVS source/toolchain/variant provenance from `bundle/provenance/manifest.json` via `tools/ci/provenance.py` (`manifest-to-github-env`), and fail unless the bundle's `arch` matches the leg.
 5. `docker buildx build --load --platform linux/<arch> -f docker/Dockerfile.fvs-gui .` with the bundle + interface provenance passed as `--build-arg` values (which become OCI labels). The GitHub Actions layer cache is scoped per arch (`fvs-gui-<arch>`).
 6. Run the [smoke test](#smoke-test) against the loaded image.
 7. If `push: true`: log in to GHCR (when `image_name` starts with `ghcr.io/`), push the image by digest, and upload the digest as `container-fvs-gui-digest-<arch>-<run_id>`.
@@ -521,77 +495,83 @@ Steps 1–8 run once per arch, as a matrix: `amd64` on `runner_image`, plus `arm
 
 The same OCI standard labels and `org.vibrantplanet.fvs.*` labels as the runtime image (source repo/ref/sha, fvs-build repo/ref/sha, variants, gfortran/meson versions, `licenses` of `MIT AND CC0-1.0`; `title` is `usfs-fvs-gui`), **plus** three labels recording the R-layer source:
 
-
-| Label                                    | Source                                                        |
-| ---------------------------------------- | ------------------------------------------------------------- |
-| `org.vibrantplanet.fvs.interface-repo`   | Interface repo (e.g. `USDAForestService/ForestVegetationSimulator-Interface`) |
-| `org.vibrantplanet.fvs.interface-ref`    | Interface ref the `rFVS`/`fvsOL` layer was built from         |
-| `org.vibrantplanet.fvs.interface-sha`    | Interface commit SHA                                          |
-
+| Label | Source |
+| --- | --- |
+| `org.vibrantplanet.fvs.interface-repo` | Interface repo (e.g. `USDAForestService/ForestVegetationSimulator-Interface`) |
+| `org.vibrantplanet.fvs.interface-ref` | Interface ref the `rFVS`/`fvsOL` layer was built from |
+| `org.vibrantplanet.fvs.interface-sha` | Interface commit SHA |
 
 ### Files baked into the image
 
+| Path | Content |
+| --- | --- |
+| `/opt/fvs/FVSbin/FVS<v>.so` | per-variant embedder shared library (the `.so` set; `rFVS::fvsLoad()` globs these) |
+| `/opt/fvs/launch.R` | launch shim (`docker/fvs-gui/launch.R`) — neutralizes `launch.browser=TRUE`, pins host/port, and calls `shiny::runApp()` inside a **supervise loop**: `fvsOL` calls `stopApp()` on every session end, which makes `runApp()` return, and jupyter-server-proxy never respawns a cleanly-exited process. A fast-exit guard (3 consecutive exits under 5s) fails loudly instead of spinning. See smoke check 9 |
+| `jupyter-fvsol-proxy` (pip-installed into `/opt/venv`) | registers the `fvs-gui` proxy entry via the `jupyter_serverproxy_servers` entry point (`docker/fvs-gui/jupyter-fvsol-proxy/`) — `timeout: 120`, `absolute_url: False`, no `environment` (leaving `SHINY_PORT` unset selects Local mode), plus the launcher icon. Entry points live in package metadata — the same mechanism `jupyter-rsession-proxy` and `rocker-org/binder` use. See smoke checks 7 and 8 |
+| `/opt/fvs/patches/` | `fvsOL` source patches (`docker/fvs-gui/patches/`), applied before the package is built. Copied in rather than applied-and-discarded so the shipped image records what it was patched with. See [Local mode and the ](#local-mode-and-the-fvsol-patch)`fvsOL`[ patch](#local-mode-and-the-fvsol-patch) |
+| `/usr/share/fvs-build/manifest.json` | the native bundle's top-level provenance manifest |
+| `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary-only SBOM |
 
-| Path                                        | Content                                                                                     |
-| ------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| `/opt/fvs/FVSbin/FVS<v>.so`                 | per-variant embedder shared library (the `.so` set; `rFVS::fvsLoad()` globs these)          |
-| `/opt/fvs/launch.R`                         | launch shim ([`docker/fvs-gui/launch.R`](../docker/fvs-gui/launch.R)) — neutralizes `launch.browser=TRUE`, pins host/port, and calls `shiny::runApp()` inside a **supervise loop**: `fvsOL` calls `stopApp()` on every session end, which makes `runApp()` return, and jupyter-server-proxy never respawns a cleanly-exited process. A fast-exit guard (3 consecutive exits under 5s) fails loudly instead of spinning. See smoke check 9 |
-| `jupyter-fvsol-proxy` (pip-installed into `/opt/venv`) | registers the `fvs-gui` proxy entry via the `jupyter_serverproxy_servers` entry point ([`docker/fvs-gui/jupyter-fvsol-proxy/`](../docker/fvs-gui/jupyter-fvsol-proxy/)) — `timeout: 120`, `absolute_url: False`, no `environment` (leaving `SHINY_PORT` unset selects Local mode), plus the launcher icon. Entry points live in package metadata — the same mechanism `jupyter-rsession-proxy` and `rocker-org/binder` use. See smoke checks 7 and 8 |
-| `/opt/fvs/patches/`                         | `fvsOL` source patches ([`docker/fvs-gui/patches/`](../docker/fvs-gui/patches/)), applied before the package is built. Copied in rather than applied-and-discarded so the shipped image records what it was patched with. See [Local mode and the `fvsOL` patch](#local-mode-and-the-fvsol-patch) |
-| `/usr/share/fvs-build/manifest.json`        | the native bundle's top-level provenance manifest                                           |
-| `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary-only SBOM                                                      |
+The image has **no** `ENTRYPOINT`. On Binder, JupyterHub spawns `jupyterhub-singleuser` (supplied by the `jupyterhub` pip package — **not** `jupyter lab` or `jupyter notebook`, a distinction that matters: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404 while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the FVS `.so` live under `/opt/fvs/FVSbin` (`FVSOL_BIN`).
 
-The image has **no `ENTRYPOINT`**. On Binder, JupyterHub spawns `jupyterhub-singleuser` (supplied by the `jupyterhub` pip package — **not** `jupyter lab` or `jupyter notebook`, a distinction that matters: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404 while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the FVS `.so` live under `/opt/fvs/FVSbin` (`FVSOL_BIN`).
+### Publishing for Binder
+
+`binder/Dockerfile` is a single `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>`, so mybinder.org builds it in seconds. Two things govern whether the README badge picks up a published image:
+
+- **The GHCR package must be public.** mybinder.org pulls the image anonymously, so publish it (`push: true`) and mark the package public.
+- **Re-publishing a tag does not reach an existing Binder.** mybinder caches builds by *repo ref*, not by the digest behind the tag in `binder/Dockerfile`, so once it has built this repo at a commit it will not re-pull GHCR. A new commit on the branch the badge points at forces a rebuild; deleting or overwriting the GHCR tag does not.
+
+The `/fvs-gui/` route is registered by `docker/fvs-gui/jupyter-fvsol-proxy/`, a small package declaring a `jupyter_serverproxy_servers` entry point — the same mechanism `jupyter-rsession-proxy` and `rocker-org/binder` use. It is deliberately not a Jupyter config file: mybinder mounts a Kubernetes ConfigMap over `/etc/jupyter` at runtime, so anything registered there is invisible on Binder even though `docker run` works.
 
 ### Local mode and the `fvsOL` patch
 
 `fvsOL` picks its mode from `isLocal()`, which is `Sys.getenv('SHINY_PORT') == ""` (`server.R:113`). The proxy config sets no environment, so the image runs in **Local** mode. Local is what makes the Manage Projects tab whole: `shinyDirChoose` for "Change Working Directory" is registered only under `if (isLocal())` (`server.R:421`), the "Upload project backup zip file" observer returns immediately otherwise (`server.R:6156`), and "Open selected project" only does the `setwd`/reload in the Local branch (`server.R:8781`). Online mode does **not** hide those three: `FVSOnlineUI` (`ui.R:1`) is a package-level *object*, so its `isLocal()` branches were frozen `TRUE` when the package was installed during `docker build`, while the server re-evaluates them per request. Under Online mode they therefore render and do nothing.
 
-Local mode needs three fixes to work here. Two are source-level and ship as [`docker/fvs-gui/patches/0001-fvsol-local-mode-behind-proxy.patch`](../docker/fvs-gui/patches/0001-fvsol-local-mode-behind-proxy.patch), applied by `Dockerfile.fvs-gui` before `document()`/`install()`:
+Local mode needs three fixes to work here. Two are source-level and ship as `docker/fvs-gui/patches/0001-fvsol-local-mode-behind-proxy.patch`, applied by `Dockerfile.fvs-gui` before `document()`/`install()`:
 
 | Fix | Where | Why |
-| --- | ----- | --- |
+| --- | --- | --- |
 | "View On Maps" popup graph URL | `server.R:5933` | with `Display: graph`, each stand's leaflet popup shows a PNG written to `./www/s<sid>.png` and served via `addResourcePath("www", …)`. The Local branch addresses it as an origin-absolute `/www/s<sid>.png`, which 404s under the `/fvs-gui/` prefix. The other branch derives the URL from `session$clientData$url_pathname`, correct both behind a proxy and with none (`url_pathname` is `/`), so the patch drops the `isLocal()` special case rather than adding a case |
 | lock-file name case | `server.R:8783`, `8920` | the lock is written as `projectIsLocked.txt` (`server.R:224`) but removed as `ProjectIsLocked.txt`. On a case-sensitive filesystem the removal silently fails, so every project the user leaves keeps a stale lock — and `getProjectList()` drops locked projects, so it vanishes from the picker with no way back |
-| `fs` not attached | [`launch.R`](../docker/fvs-gui/launch.R) | `getVolumes2()` (`change_project_dir.R`) calls `fs::dir_exists`/`dir_ls` unqualified while `fvsOL` neither `Depends` on nor `Imports` `fs`, and `server.R:421` calls it inside `if (isLocal())` — so the session dies at construction with `could not find function "dir_exists"`. `fs` is already in the image transitively and only needs attaching. Kept deployment-side deliberately, so it is not a third source hunk to carry across `interface_ref` bumps |
+| `fs` not attached | `launch.R` | `getVolumes2()` (`change_project_dir.R`) calls `fs::dir_exists`/`dir_ls` unqualified while `fvsOL` neither `Depends` on nor `Imports` `fs`, and `server.R:421` calls it inside `if (isLocal())` — so the session dies at construction with `could not find function "dir_exists"`. `fs` is already in the image transitively and only needs attaching. Kept deployment-side deliberately, so it is not a third source hunk to carry across `interface_ref` bumps |
 
 The patch is applied with `git apply`. The Dockerfile then re-greps `fvsOL/R` for both defects, and smoke check 10 greps the sources baked into the built image so a published ref can be audited after the fact. `.pre-commit-config.yaml` excludes `docker/fvs-gui/patches/` from the whitespace and end-of-file hooks — the diff's context lines carry upstream's trailing whitespace, and "cleaning" them would make `git apply` reject the patch.
 
 Two Local-mode behaviours are known and not fixed:
 
-- **The directory chooser is rooted at `/`** — `getVolumes2()` returns `c(Computer = "/")` on Linux. In a single-user Binder container that grants nothing the JupyterLab terminal does not already, but it needs a deliberate decision before any shared or multi-tenant deployment.
+- **The directory chooser is rooted at** `/` — `getVolumes2()` returns `c(Computer = "/")` on Linux. In a single-user Binder container that grants nothing the JupyterLab terminal does not already, but it needs a deliberate decision before any shared or multi-tenant deployment.
 - **A working-directory change does not survive a relaunch.** `launch.R`'s supervise loop re-enters `fvsOL(prjDir = FVSOL_PRJDIR, …)`, so a session that ends after the user switched directories comes back in the starter project. Documented in `launch.R`.
 
 Both source fixes are worth landing upstream. When they merge, delete `docker/fvs-gui/patches/`, the Dockerfile apply and assert steps, and smoke check 10, then bump `interface_ref` to the merged SHA.
 
 ### Why `interface_ref` must be FS2026.3 or later
 
-`fvsOL` used to write scratch tables with `dbWriteTable(con, DBI::SQL("temp.X"), …)`. On **RSQLite ≥ 3.53.1** that call fails with `Named parameters not used in query: name`, which greys out the app the moment a stand is selected. Upstream fixed it in **[ForestVegetationSimulator-Interface PR #29](https://github.com/USDAForestService/ForestVegetationSimulator-Interface/pull/29)**, rewriting those calls as `dbWriteTable(con, "X", …, temporary = TRUE, overwrite = TRUE)`.
+`fvsOL` used to write scratch tables with `dbWriteTable(con, DBI::SQL("temp.X"), …)`. On **RSQLite ≥ 3.53.1** that call fails with `Named parameters not used in query: name`, which greys out the app the moment a stand is selected. Upstream fixed it in [**ForestVegetationSimulator-Interface PR #29**](https://github.com/USDAForestService/ForestVegetationSimulator-Interface/pull/29), rewriting those calls as `dbWriteTable(con, "X", …, temporary = TRUE, overwrite = TRUE)`.
 
-The fix landed on upstream `main` at `92dc046` and was first released in **`FS2026.3`**, the `interface_ref` default. `FS2026.2` and earlier tags predate it.
+The fix landed on upstream `main` at `92dc046` and was first released in `FS2026.3`, the `interface_ref` default. `FS2026.2` and earlier tags predate it.
 
 `Dockerfile.fvs-gui` asserts the staged sources contain no `DBI::SQL("temp…")` in `fvsOL/R` and fails the build otherwise, so pointing `interface_ref` at an affected ref is caught at build time instead of surfacing as a broken UI.
 
 ### Smoke test
 
-Unlike [`build-container-linux.yml`](#build-container-linuxyml) — which skips in-image smoke tests and leans on the native `STOP 20` gate — this workflow **smoke-tests the built image before pushing**. The GUI image has no equivalent upstream gate for its R/Shiny layer, and several failure modes (packages not attaching, a copied `.so` not loadable in-image, the RSQLite regression, a broken proxy path) only surface at runtime.
+Unlike `build-container-linux.yml` — which skips in-image smoke tests — this workflow **smoke-tests the built image before pushing**. The GUI image has no equivalent upstream gate for its R/Shiny layer, and several failure modes (packages not attaching, a copied `.so` not loadable in-image, the RSQLite regression, a broken proxy path) only surface at runtime.
 
-[`tools/ci/smoke_fvs_gui.sh`](../tools/ci/smoke_fvs_gui.sh) runs against an already-built image (it does not build). The workflow invokes it after `docker buildx build --load` and **before** the GHCR login/push, so a failure blocks publication; `--load` has already placed the image in the local daemon, so no registry access is needed. Checks:
+`tools/ci/smoke_fvs_gui.sh` runs against an already-built image (it does not build). The workflow invokes it after `docker buildx build --load` and **before** the GHCR login/push, so a failure blocks publication; `--load` has already placed the image in the local daemon, so no registry access is needed. Checks:
 
 | Check | Catches |
-| ----- | ------- |
-| 1. `fvsOL` + `rFVS` attach (`library()`) | `Depends` not attaching (e.g. unqualified `addResourcePath`) |
-| 2. an `FVS<v>.so` loads via `rFVS::fvsLoad` with its expected C API symbols | a copied `.so` not runnable in-image (glibc/libgfortran mismatch) |
-| 3. the `temporary = TRUE` write pattern works + the default `FVS_Data.db` opens | a *future* RSQLite breaking the call style `fvsOL` relies on — r2u installs it unpinned, and it broke once already. Sources predating the fix are caught earlier, by the Dockerfile guard |
-| 4. the app boots headless via `launch.R` → HTTP 200 Shiny page | `fvsOL()` startup errors, hardcoded `launch.browser`, missing assets |
-| 5. jupyter-server-proxy serves the app at `<base_url>/fvs-gui/`, under a JupyterHub-style prefix | proxy config and `absolute_url: False` prefix handling |
-| 6. `jupyterhub-singleuser` is on `PATH` | the binary BinderHub actually spawns being absent — checks 4 and 5 start the server themselves, so nothing else notices, and the image 404s on every Binder path while looking healthy locally |
-| 7. `<base_url>/fvs-gui/` still serves with an empty dir mounted over `/etc/jupyter`, and `server-proxy/icon/fvs-gui` returns `image/png` | the proxy registration living only where mybinder's ConfigMap mount shadows it. Reproduces the Binder failure exactly (302 to the slash-less path, then a Jupyter 404) in a plain container. The icon assertion is second evidence the entry point loaded, since the tile and the route share one registration |
-| 8. the `jupyter_serverproxy_servers` entry point is registered, its returned config validates as a `ServerProcess`, and it sets no `SHINY_PORT` | a broken entry point — jupyter-server-proxy `warn()`s and skips one that raises, so the only symptom is a silent 404, with every other check still passing. Also a reintroduced Online mode, which leaves the working-directory chooser, backup upload and project switching rendering but inert |
-| 9. `launch.R` relaunches `fvsOL` after `stopApp()` | the supervise loop regressing. `fvsOL` calls `stopApp()` from `onSessionEnded` on every ordinary session end (closed tab, reload, uncaught observer error), and jupyter-server-proxy never respawns a process that exits cleanly — so without the loop, closing the tab bricks the Binder session until the Jupyter server restarts |
-| 10. neither patched defect is present in the `fvsOL/R` sources baked into the image | a published image built without the patch. The Dockerfile asserts the same thing at build time, which protects the build but says nothing about an image someone already pulled — and both defects are silent until a live session draws a View On Maps popup graph or leaves a project |
-| 11. `isLocal()` is `TRUE` and `getVolumes2()()` returns a non-empty volume list | `launch.R` no longer attaching `fs`. `getVolumes2()` calls `fs::dir_exists` unqualified and `fvsOL` declares no `fs` dependency, so `server.R:421` kills every Local-mode session at construction with `could not find function "dir_exists"` — after the app has bound its port and served the page, so checks 4, 5 and 7 all pass and only a real browser fails |
-| 12. `getProjectList()` returns instead of erroring with the open project locked | the Manage Projects tab greying out on first click. Its observer calls straight into `getProjectList()`, and checks 4, 5 and 7 all boot the app happily without reaching that path |
+| --- | --- |
+| 1\. `fvsOL` + `rFVS` attach (`library()`) | `Depends` not attaching (e.g. unqualified `addResourcePath`) |
+| 2\. an `FVS<v>.so` loads via `rFVS::fvsLoad` with its expected C API symbols | a copied `.so` not runnable in-image (glibc/libgfortran mismatch) |
+| 3\. the `temporary = TRUE` write pattern works + the default `FVS_Data.db` opens | a *future* RSQLite breaking the call style `fvsOL` relies on — r2u installs it unpinned, and it broke once already. Sources predating the fix are caught earlier, by the Dockerfile guard |
+| 4\. the app boots headless via `launch.R` → HTTP 200 Shiny page | `fvsOL()` startup errors, hardcoded `launch.browser`, missing assets |
+| 5\. jupyter-server-proxy serves the app at `<base_url>/fvs-gui/`, under a JupyterHub-style prefix | proxy config and `absolute_url: False` prefix handling |
+| 6\. `jupyterhub-singleuser` is on `PATH` | the binary BinderHub actually spawns being absent — checks 4 and 5 start the server themselves, so nothing else notices, and the image 404s on every Binder path while looking healthy locally |
+| 7\. `<base_url>/fvs-gui/` still serves with an empty dir mounted over `/etc/jupyter`, and `server-proxy/icon/fvs-gui` returns `image/png` | the proxy registration living only where mybinder's ConfigMap mount shadows it. Reproduces the Binder failure exactly (302 to the slash-less path, then a Jupyter 404) in a plain container. The icon assertion is second evidence the entry point loaded, since the tile and the route share one registration |
+| 8\. the `jupyter_serverproxy_servers` entry point is registered, its returned config validates as a `ServerProcess`, and it sets no `SHINY_PORT` | a broken entry point — jupyter-server-proxy `warn()`s and skips one that raises, so the only symptom is a silent 404, with every other check still passing. Also a reintroduced Online mode, which leaves the working-directory chooser, backup upload and project switching rendering but inert |
+| 9\. `launch.R` relaunches `fvsOL` after `stopApp()` | the supervise loop regressing. `fvsOL` calls `stopApp()` from `onSessionEnded` on every ordinary session end (closed tab, reload, uncaught observer error), and jupyter-server-proxy never respawns a process that exits cleanly — so without the loop, closing the tab bricks the Binder session until the Jupyter server restarts |
+| 10\. neither patched defect is present in the `fvsOL/R` sources baked into the image | a published image built without the patch. The Dockerfile asserts the same thing at build time, which protects the build but says nothing about an image someone already pulled — and both defects are silent until a live session draws a View On Maps popup graph or leaves a project |
+| 11\. `isLocal()` is `TRUE` and `getVolumes2()()` returns a non-empty volume list | `launch.R` no longer attaching `fs`. `getVolumes2()` calls `fs::dir_exists` unqualified and `fvsOL` declares no `fs` dependency, so `server.R:421` kills every Local-mode session at construction with `could not find function "dir_exists"` — after the app has bound its port and served the page, so checks 4, 5 and 7 all pass and only a real browser fails |
+| 12\. `getProjectList()` returns instead of erroring with the open project locked | the Manage Projects tab greying out on first click. Its observer calls straight into `getProjectList()`, and checks 4, 5 and 7 all boot the app happily without reaching that path |
 
 Run it locally against a `--load`ed image before committing:
 
@@ -614,4 +594,4 @@ gh workflow run dispatch-container-fvs-gui-linux.yml \
   -f push=false
 ```
 
-`push=false` (the default) builds the GUI image without publishing, confirming the native→image handoff and the R-layer build. Set `-f push=true` to publish to `ghcr.io/<your-account>/usfs-fvs-gui:FS2026.3`; then make the GHCR package **public** before pointing mybinder.org at it (see the README Binder section).
+`push=false` (the default) builds the GUI image without publishing, confirming the native→image handoff and the R-layer build. Set `-f push=true` to publish to `ghcr.io/<your-account>/usfs-fvs-gui:FS2026.3`; then make the GHCR package **public** before pointing mybinder.org at it (see [Publishing for Binder](#publishing-for-binder)).

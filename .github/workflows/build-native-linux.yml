@@ -5,8 +5,7 @@
 # This workflow is source-agnostic. Callers supply a source repo URL and
 # ref; this workflow produces a single artifact bundle (per-variant
 # binaries + shared libraries + provenance manifest + SBOM) that downstream
-# callers consume. The bundle layout is the contract documented in
-# docs/workflow-interface.md.
+# callers consume.
 #
 # Container packaging is intentionally out of scope for this workflow;
 # this workflow's artifacts may be consumed by a separate container workflow
@@ -30,8 +29,7 @@ on:
         description: >-
           Comma-separated list of FVS variant codes. Defaults to the 22
           cleanly-buildable US variants. The Canadian variants (bc, on)
-          are excluded by default due to incomplete upstream source lists;
-          see fvs-build README for details.
+          are excluded by default due to incomplete upstream source lists.
         required: false
         type: string
         default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
@@ -139,8 +137,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      # Recursive FVS checkout, strip *.mod under fvs-source, record SHAs — see
-      # README and .github/actions/prepare-fvs-native-checkout/action.yml.
+      # Recursive FVS checkout and provenance SHAs.
       - id: prepare
         uses: ./.github/actions/prepare-fvs-native-checkout
         with:
@@ -209,10 +206,9 @@ jobs:
       - name: Compile (Ninja)
         run: ninja -C _build -k 0
 
-      # Smoke test mirrors the local-dev pattern documented in fvs-build's
-      # README: pipe EOF on stdin, expect the binary to start up and reach
-      # gfortran's `STOP 20` (raised when FVS hits EOF before reading a
-      # keyfile). Run from a temp dir so any fort.<N> spillover does not
+      # Smoke test: pipe EOF on stdin, expect the binary to start up and
+      # reach gfortran's `STOP 20` (raised when FVS hits EOF before reading
+      # a keyfile). Run from a temp dir so any fort.<N> spillover does not
       # land next to the build outputs.
       - name: Smoke-test the variant executable
         env:
@@ -339,9 +335,8 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Collect-and-finalize: download every per-variant artifact, fan it into
-  # the canonical bundle layout (the contract documented in
-  # docs/workflow-interface.md), generate an SBOM, and upload the single
-  # final artifact that callers (and the container workflow) consume.
+  # the canonical bundle layout, generate an SBOM, and upload the single final
+  # artifact that callers (and the container workflow) consume.
   # ---------------------------------------------------------------------------
   collect-and-finalize:
     name: Collect, SBOM, and finalize

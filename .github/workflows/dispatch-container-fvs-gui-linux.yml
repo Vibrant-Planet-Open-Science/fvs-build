@@ -3,18 +3,18 @@
 # Thin workflow_dispatch wrapper demonstrating the orchestrator pattern:
 # call build-native-linux first (produces the FVS<v>.so bundle), then call
 # build-container-fvs-gui-linux with `needs:` on the native job, passing the
-# artifact name through. The GUI image reuses the native .so (ADR-001: FVS is
-# never compiled in Docker; only the rFVS/fvsOL R layer is -- see docs/adr-002).
+# artifact name through. The GUI image reuses the native .so (FVS is never
+# compiled in Docker; only the rFVS/fvsOL R layer is).
 #
 # Defaults assume an upstream-tracking build (USDAForestService FVS source +
 # USDAForestService Interface source + ghcr.io/<owner>/usfs-fvs-gui namespace).
 # `push` defaults to false so a manual dispatch never accidentally publishes.
 #
 # NOTE: for mybinder.org to launch the image it must be pushed (push=true) AND
-# the GHCR package must be made public. See the README Binder section.
+# the GHCR package must be made public.
 #
 # This is NOT a caller interface for other repos -- they should compose the
-# two reusable workflows themselves. See docs/workflow-interface.md.
+# two reusable workflows themselves.
 
 name: Dispatch native + FVS GUI container build (manual)
 

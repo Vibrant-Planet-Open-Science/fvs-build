@@ -52,7 +52,7 @@ dmypy.json
 build-context/
 staging/
 
-# Meson build directories. The conventional name documented in README.md
+# Meson build directories. The conventional name documented in docs/local-builds.md
 # is `builddir/`; other names (build-debug/, builddir-release/, etc.) are
 # accepted but should be ignored too. The plain `build/` entry above
 # already catches one common name.

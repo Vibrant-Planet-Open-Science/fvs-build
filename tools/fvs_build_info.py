@@ -69,10 +69,7 @@ def collect(source_dir: Path) -> dict[str, str]:
     """Return the six ``FVS_GIT_*`` values for a source tree.
 
     A tree with uncommitted changes -- including untracked files -- gets
-    ``-dirty`` appended to both version and hash. Submodule worktree changes
-    do not count: ``volume/NVEL`` tracks ``*.mod`` files that every build
-    strips before configure, which would otherwise mark every build dirty. A
-    changed submodule *commit* is still a real difference and does count.
+    ``-dirty`` appended to both version and hash.
 
     Args:
         source_dir: Root of the FVS source checkout.
@@ -88,7 +85,7 @@ def collect(source_dir: Path) -> dict[str, str]:
     )
     commit = _git(source_dir, "rev-parse", "--short", "HEAD") or UNKNOWN
 
-    if _git(source_dir, "status", "--porcelain", "--ignore-submodules=dirty"):
+    if _git(source_dir, "status", "--porcelain"):
         version = f"{version}-dirty"
         commit = f"{commit}-dirty"
 

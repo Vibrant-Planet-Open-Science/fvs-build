@@ -1,13 +1,13 @@
-# Composite: resolve fvs-build ref from workflow_ref, check out overlay + FVS source,
-# strip stray *.mod under fvs-source, record SHAs for provenance.
+# Composite: resolve fvs-build ref from workflow_ref, check out overlay + FVS
+# source, record SHAs for provenance.
 #
 # Call after the workflow repository is checked out (so ./.github/actions exists).
 # On Windows build-variant jobs, install MSYS2 *before* this action so find/git
 # behave like the rest of the job. Pass run_shell: "msys2 {0}" on Windows.
 name: Prepare fvs-build + FVS checkouts for native matrix
 description: >
-  Resolve overlay repo/ref, clone fvs-build and FVS into fvs-build/ and fvs-source/,
-  delete tracked *.mod under fvs-source, emit source_sha and fvs_build_sha.
+  Resolve overlay repo/ref, clone fvs-build and FVS into fvs-build/ and
+  fvs-source/, emit source_sha and fvs_build_sha.
 
 inputs:
   source_repo:
@@ -61,13 +61,6 @@ runs:
         clean: true
         submodules: recursive
         fetch-depth: 0
-
-    - name: Remove stray Fortran .mod files from source tree
-      shell: ${{ inputs.run_shell }}
-      run: |
-        set -euo pipefail
-        find fvs-source -name '*.mod' -type f -delete
-        echo "Stripped any *.mod under fvs-source before Meson (see README)."
 
     - name: Capture source and fvs-build SHAs for provenance
       id: git_shas
