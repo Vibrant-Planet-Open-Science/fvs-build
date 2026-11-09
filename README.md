@@ -1,6 +1,8 @@
 # fvs-build
 
-![Binder](https://mybinder.org/badge_logo.svg)Builds and publishes the Forest Vegetation Simulator (FVS) from USDA Forest Service (and other compatible) sources. FVS products available include a free version of the FVS GUI running on the cloud, multi-arch Docker container images available on GHCR, and reusable GitHub workflows that can be called from other repositories to produce Linux, Windows, and macOS binaries of FVS (executables and shared libraries) with provenance and SBOMs.
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/Vibrant-Planet-Open-Science/fvs-build/main?urlpath=lab)
+
+Builds and publishes the Forest Vegetation Simulator (FVS) from USDA Forest Service (and other compatible) sources. FVS products available include a free version of the FVS GUI running on the cloud, multi-arch Docker container images available on GHCR, and reusable GitHub workflows that can be called from other repositories to produce Linux, Windows, and macOS binaries of FVS (executables and shared libraries) with provenance and SBOMs.
 
 ## Run the FVS GUI on Binder
 
