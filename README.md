@@ -12,7 +12,7 @@ The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-scie
 
 ## Run FVS on your machine using Docker
 
-Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs`(for binaries alone) and`ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`(for the FVS graphical interface). The images are tagged by FVS release (e.g. `FS2026.3`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
+Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs`(for binaries alone) and`ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`(for the FVS graphical interface). The images are tagged by FVS release (e.g. `2027.1.0`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
 
 To run a keyfile in your current working directory with the `usfs-fvs` image, you do a volume mount of your working directory into the Docker container (`-v "$PWD:/data"`) and then call the FVS variant of your choice as a command line tool (`FVSak --keywordfile=mykeyfile.key`):
 
@@ -86,7 +86,7 @@ Five reusable `workflow_call` workflows can be used to build the native binaries
 
 ### Supported FVS versions
 
-The workflows build from`USDAForestService/ForestVegetationSimulator` and support release tags from "**FS2026.3" or more recent**. FVS versions prior to FS2026.3 include copies of the`volume/NVEL` submodule that included stale gfortran `.mod` files, which cause errors during the build. Those were fixed in release FS2026.3.
+The workflows build from`USDAForestService/ForestVegetationSimulator` and support release tags from "**FS2026.3" or more recent**. FVS versions prior to FS2026.3 include copies of the`volume/NVEL` submodule that included stale gfortran `.mod` files, which cause errors during the build. Those were fixed in release FS2026.3. Upstream tags use `YYYY.N.P` from `2027.1.0`, which is the default ref and the one CI tests.
 
 ### Native binaries only
 
@@ -96,7 +96,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       profile: reference
 ```
 
@@ -116,7 +116,7 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
 
   container:
     needs: native
@@ -124,7 +124,7 @@ jobs:
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2026.3
+      image_tag: 2027.1.0
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -142,20 +142,20 @@ Five `workflow_dispatch` drivers allow the workflows to be triggered manually. T
 # Native binaries only
 gh workflow run dispatch-native-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.3 \
+  -f source_ref=2027.1.0 \
   -f profile=reference
 
 # Full native + container, dry run (no push)
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.3 \
-  -f image_tag=FS2026.3
+  -f source_ref=2027.1.0 \
+  -f image_tag=2027.1.0
 
-# Same, but actually push to ghcr.io/vibrant-planet-open-science/usfs-fvs:FS2026.3
+# Same, but actually push to ghcr.io/vibrant-planet-open-science/usfs-fvs:2027.1.0
 gh workflow run dispatch-container-linux.yml \
   -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=FS2026.3 \
-  -f image_tag=FS2026.3 \
+  -f source_ref=2027.1.0 \
+  -f image_tag=2027.1.0 \
   -f push=true
 ```
 
@@ -163,9 +163,9 @@ To build the FVS GUI image (dry run, no push):
 
 ```bash
 gh workflow run dispatch-container-fvs-gui-linux.yml \
-  -f source_ref=FS2026.3 \
+  -f source_ref=2027.1.0 \
   -f interface_ref=20261109 \
-  -f image_tag=FS2026.3
+  -f image_tag=2027.1.0
 ```
 
 ## Known upstream issues in `USDAForestService/ForestVegetationSimulator`

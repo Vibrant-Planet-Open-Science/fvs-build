@@ -24,7 +24,7 @@
 #         artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
 #         interface_ref: "20261109"
 #         image_name: ghcr.io/<owner>/usfs-fvs-gui
-#         image_tag: FS2026.3
+#         image_tag: 2027.1.0
 #         push: true
 #       secrets: inherit
 #       permissions: { contents: read, packages: write }
@@ -73,7 +73,7 @@ on:
         type: string
       image_tag:
         description: >-
-          Primary tag for the built image, e.g. `FS2026.3`.
+          Primary tag for the built image, e.g. `2027.1.0`.
         required: true
         type: string
       image_extra_tags:

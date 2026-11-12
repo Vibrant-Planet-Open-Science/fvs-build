@@ -13,7 +13,7 @@ The supported way to build FVS is the reusable workflows (see the [README](../RE
 ## Configure and build
 
 ```bash
-git clone --recurse-submodules --branch FS2026.3 \
+git clone --recurse-submodules --branch 2027.1.0 \
   https://github.com/USDAForestService/ForestVegetationSimulator /tmp/fvs-source
 
 # fvs_source_dir is required; variants defaults to ['pn'];
