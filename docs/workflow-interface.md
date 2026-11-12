@@ -229,9 +229,9 @@ Builds a Binder-ready FVSOnLocal (`fvsOL`) GUI image and optionally pushes it. I
 | `artifact_name` | string | yes | — | x86_64 `build-native-linux.yml` bundle; only its `FVS<v>.so` set is used. |
 | `artifact_name_arm64` | string | no | `""` | aarch64 bundle; when set, the image is also built for linux/arm64. |
 | `interface_repo` | string | no | `USDAForestService/ForestVegetationSimulator-Interface` | Repo providing `rFVS` and `fvsOL`. |
-| `interface_ref` | string | no | `FS2026.3` | Ref in `interface_repo`; must be `FS2026.3` or later. |
+| `interface_ref` | string | no | `20261109` | Ref in `interface_repo`; release `20261019` or later (earlier refs ship `rFVS`/`fvsOL` without `NAMESPACE`). |
 | `image_name` | string | yes | — | Image name without tag (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`). |
-| `image_tag` | string | yes | — | Primary tag, typically matching `interface_ref`. |
+| `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `FS2026.3`). |
 | `image_extra_tags` | string | no | `""` | Comma-separated extra tags. |
 | `runner_image` | string | no | `ubuntu-24.04` | Runner for the amd64 leg and the manifest job. |
 | `push` | boolean | no | `false` | Push after the build and smoke test succeed. For Binder, the GHCR package must also be public. |
@@ -244,4 +244,4 @@ Same as `build-container-linux.yml`: `image_ref` and `image_digest`. Multi-arch 
 
 The runtime image's labels (with `title` `usfs-fvs-gui`), plus `org.vibrantplanet.fvs.interface-repo`, `interface-ref` and `interface-sha` for the R layer.
 
-To run it by hand: `gh workflow run dispatch-container-fvs-gui-linux.yml -f source_ref=FS2026.3 -f interface_ref=FS2026.3 -f image_tag=FS2026.3 -f push=false`.
+To run it by hand: `gh workflow run dispatch-container-fvs-gui-linux.yml -f source_ref=FS2026.3 -f interface_ref=20261109 -f image_tag=FS2026.3 -f push=false`.

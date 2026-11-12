@@ -59,13 +59,13 @@ Two Local-mode behaviours are known and not fixed:
 
 **Exit criteria:** when both source fixes merge upstream, delete `docker/fvs-gui/patches/`, the Dockerfile apply and assert steps, and smoke check 10, then bump `interface_ref` to the merged SHA.
 
-## Why `interface_ref` must be FS2026.3 or later
+## Minimum `interface_ref`
 
-`fvsOL` used to write scratch tables with `dbWriteTable(con, DBI::SQL("temp.X"), …)`. On **RSQLite ≥ 3.53.1** that fails with `Named parameters not used in query: name`, which greys out the app as soon as a stand is selected. Upstream fixed it in [ForestVegetationSimulator-Interface PR #29](https://github.com/USDAForestService/ForestVegetationSimulator-Interface/pull/29) (`92dc046`), first released in `FS2026.3`. `Dockerfile.fvs-gui` asserts the staged sources contain no `DBI::SQL("temp…")` in `fvsOL/R`, so an affected ref fails at build time.
+`interface_ref` must be Interface release `20261019` or later. From that release `rFVS` and `fvsOL` ship `NAMESPACE` and `man/`, which the image needs to install them with `R CMD INSTALL`; `Dockerfile.fvs-gui` fails the build otherwise.
 
 ## Smoke test
 
-Unlike the runtime image, the GUI image is smoke-tested before it is pushed: several failure modes (packages not attaching, a copied `.so` not loadable in-image, the RSQLite regression, a broken proxy path) only surface at runtime. `tools/ci/smoke_fvs_gui.sh` runs against an already-built image after `docker buildx build --load` and before the GHCR push, so a failure blocks publication.
+Unlike the runtime image, the GUI image is smoke-tested before it is pushed: several failure modes (packages not attaching, a copied `.so` not loadable in-image, an RSQLite incompatibility, a broken proxy path) only surface at runtime. `tools/ci/smoke_fvs_gui.sh` runs against an already-built image after `docker buildx build --load` and before the GHCR push, so a failure blocks publication.
 
 | Check | Catches |
 | --- | --- |
@@ -96,7 +96,7 @@ Override the variant used in check 2 with `SMOKE_VARIANT=<code>`; it otherwise a
 ```bash
 gh workflow run dispatch-container-fvs-gui-linux.yml \
   -f source_ref=FS2026.3 \
-  -f interface_ref=FS2026.3 \
+  -f interface_ref=20261109 \
   -f image_tag=FS2026.3 \
   -f push=false
 ```

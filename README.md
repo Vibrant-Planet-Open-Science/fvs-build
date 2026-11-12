@@ -164,7 +164,7 @@ To build the FVS GUI image (dry run, no push):
 ```bash
 gh workflow run dispatch-container-fvs-gui-linux.yml \
   -f source_ref=FS2026.3 \
-  -f interface_ref=FS2026.3 \
+  -f interface_ref=20261109 \
   -f image_tag=FS2026.3
 ```
 

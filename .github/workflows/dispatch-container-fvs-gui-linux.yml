@@ -43,11 +43,10 @@ on:
         type: string
       interface_ref:
         description: >-
-          Interface source ref (tag, branch, or SHA). Refs predating the
-          RSQLite temp-table fix (including the FS2026.2 tag) fail the
-          Dockerfile's guard.
+          Interface source ref (tag, branch, or SHA); release 20261019 or
+          later (earlier refs ship rFVS/fvsOL without NAMESPACE).
         required: true
-        default: "FS2026.3"
+        default: "20261109"
         type: string
       image_name:
         description: "Fully-qualified image name without tag (defaults to usfs-fvs-gui namespace)"
@@ -55,7 +54,7 @@ on:
         default: ""
         type: string
       image_tag:
-        description: "Primary image tag (typically matches interface_ref)"
+        description: "Primary image tag (typically the FVS source_ref)"
         required: true
         default: "FS2026.3"
         type: string

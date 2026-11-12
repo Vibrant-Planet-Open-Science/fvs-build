@@ -58,7 +58,7 @@ jobs:
     uses: ./.github/workflows/build-container-fvs-gui-linux.yml
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
-      interface_ref: FS2026.3
+      interface_ref: "20261109"
       image_name: usfs-fvs-gui
       image_tag: ci-${{ github.run_id }}
       push: false
