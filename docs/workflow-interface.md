@@ -116,7 +116,7 @@ jobs:
     needs: fvs-x86_64
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: ${{ needs.fvs-x86_64.outputs.artifact_name }}
           path: fvs-bundle

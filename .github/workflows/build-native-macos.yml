@@ -85,7 +85,7 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -126,7 +126,7 @@ jobs:
           source_ref: ${{ inputs.source_ref }}
 
       - name: Set up Python for Meson and parse_sourcelist.py
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python_version }}
 
@@ -147,7 +147,7 @@ jobs:
         run: find fvs-source fvs-build -name .git -prune -o -type f -exec touch -t 200001010000 {} +
 
       - name: Cache Meson build directory
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: _build
           key: >-
@@ -254,7 +254,7 @@ jobs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 

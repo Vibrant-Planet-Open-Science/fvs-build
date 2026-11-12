@@ -13,8 +13,13 @@ updates:
       prefix: build
       include: scope
     groups:
-      # Minor/patch updates land together; each major gets its own PR and CI run.
+      # Minor/patch updates land together; each major gets its own PR and CI
+      # run, covering every directory that uses that action.
       actions-minor-patch:
         update-types:
           - minor
           - patch
+      actions-major:
+        update-types:
+          - major
+        group-by: dependency-name
