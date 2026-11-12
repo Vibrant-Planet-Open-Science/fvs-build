@@ -1,6 +1,8 @@
 # Reusable workflow: build native Linux FVS artifacts via the fvs-build
 # Meson overlay. Runs on x86_64 or aarch64: the runner_image picks the arch
 # (ubuntu-24.04 or ubuntu-24.04-arm). A caller wanting both calls it twice.
+# Builds run inside quay.io/pypa/manylinux_2_28_<arch> (gcc-toolset-14), so
+# binaries need at most GLIBC_2.28 and can be repaired into manylinux wheels.
 #
 # This workflow is source-agnostic. Callers supply a source repo URL and
 # ref; this workflow produces a single artifact bundle (per-variant
@@ -35,18 +37,16 @@ on:
         default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
       runner_image:
         description: >-
-          GitHub-hosted runner image label. Pinned to keep the glibc baseline
-          stable and matched to the runtime container base. ubuntu-24.04
-          builds x86_64; ubuntu-24.04-arm builds aarch64.
+          GitHub-hosted runner image label. ubuntu-24.04 builds x86_64;
+          ubuntu-24.04-arm builds aarch64. The build itself runs in the
+          matching manylinux_2_28 container.
         required: false
         type: string
         default: "ubuntu-24.04"
       gcc_major:
         description: >-
-          GCC major version. Installs gfortran-N, gcc-N and g++-N from the
-          runner's Ubuntu archive (noble: 9-14); a major the archive does not
-          carry fails before compiling. A handful of variants compile .cpp
-          files (fire/cfim/cfim.cpp), so g++ comes from the same family.
+          GCC major version. Must match the manylinux_2_28 image's
+          gcc-toolset (14); any other major fails before compiling.
         required: false
         type: string
         default: "14"
@@ -70,8 +70,9 @@ on:
         default: "reference"
       python_version:
         description: >-
-          Version string for actions/setup-python (Meson, parse_sourcelist,
-          and collect-bundle when setup-python runs).
+          Python version for Meson and the build scripts: the image's
+          /opt/python/cpXY build in the build jobs, actions/setup-python in
+          the collect job.
         required: false
         type: string
         default: "3.12"
@@ -100,6 +101,7 @@ jobs:
     runs-on: ${{ inputs.runner_image }}
     outputs:
       matrix_variants: ${{ steps.matrix.outputs.matrix_variants }}
+      container_image: ${{ steps.image.outputs.container_image }}
     steps:
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v5
@@ -114,17 +116,23 @@ jobs:
           set -euo pipefail
           python3 tools/ci/expand_variants_matrix.py
 
+      - name: Pick the manylinux image for this runner's arch
+        id: image
+        run: echo "container_image=quay.io/pypa/manylinux_2_28_$(uname -m)" >> "$GITHUB_OUTPUT"
+
   # ---------------------------------------------------------------------------
   # Per-variant build: one matrix leg per requested variant. Each leg checks
   # out fvs-build (this repo, at the same ref the workflow is invoked from)
-  # plus the caller's source tree, installs the gcc_major toolchain, runs
-  # Meson + Ninja, smoke-tests the produced executable, and uploads an
-  # ephemeral per-variant artifact for the collect job.
+  # plus the caller's source tree, runs Meson + Ninja inside the manylinux
+  # container, smoke-tests the produced executable, and uploads an ephemeral
+  # per-variant artifact for the collect job.
   # ---------------------------------------------------------------------------
   build-variant:
     name: Build FVS${{ matrix.variant }}
     runs-on: ${{ inputs.runner_image }}
     needs: preflight
+    container:
+      image: ${{ needs.preflight.outputs.container_image }}
     strategy:
       fail-fast: false
       matrix:
@@ -144,44 +152,30 @@ jobs:
           source_repo: ${{ inputs.source_repo }}
           source_ref: ${{ inputs.source_ref }}
 
-      - name: Install Fortran/C/C++ toolchain (gcc_major)
+      - name: Select toolchain and Python from the manylinux image
         id: toolchain
         env:
           V: ${{ inputs.gcc_major }}
-        run: |
-          set -euo pipefail
-          sudo apt-get update
-          if ! apt-cache policy "gfortran-${V}" | grep -q 'Candidate: [0-9]'; then
-            echo "ERROR: gcc_major=${V}: gfortran-${V} is not available from this runner's Ubuntu archive" >&2
-            exit 1
-          fi
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
-            --no-install-recommends \
-            "gfortran-${V}" "g++-${V}" ninja-build
-          # Use the -N binaries so Meson picks the matching gcc/g++/gfortran
-          # trio rather than whatever update-alternatives points at.
-          {
-            echo "FC=gfortran-${V}"
-            echo "CC=gcc-${V}"
-            echo "CXX=g++-${V}"
-          } >> "$GITHUB_ENV"
-          # Cache keys cannot contain commas; keep the version line's identity.
-          echo "fc_id=$("gfortran-${V}" --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Python for Meson and parse_sourcelist.py
-        uses: actions/setup-python@v6
-        with:
-          python-version: ${{ inputs.python_version }}
-
-      - name: Install pinned Meson
-        env:
+          PYV: ${{ inputs.python_version }}
           MESON_VERSION: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
-          python3 -m pip install --upgrade pip
-          python3 -m pip install "meson==${MESON_VERSION}"
-          meson --version
-          ninja --version
+          have="$(gfortran -dumpversion)"
+          if [ "${have%%.*}" != "$V" ]; then
+            echo "ERROR: gcc_major=${V}, but this manylinux image provides GCC ${have}" >&2
+            exit 1
+          fi
+          py="/opt/python/cp${PYV/./}-cp${PYV/./}/bin"
+          test -x "$py/python3" || { echo "ERROR: no Python ${PYV} in the image" >&2; exit 1; }
+          echo "$py" >> "$GITHUB_PATH"
+          {
+            echo "FC=gfortran"
+            echo "CC=gcc"
+            echo "CXX=g++"
+          } >> "$GITHUB_ENV"
+          "$py/python3" -m pip install "meson==${MESON_VERSION}" ninja
+          # Cache keys cannot contain commas; keep the version line's identity.
+          echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
 
       # Cache is a light-touch optimization: tag-driven release builds change
       # source_ref every run and miss; branch/PR builds against the same ref
@@ -249,27 +243,28 @@ jobs:
         env:
           VARIANT: ${{ matrix.variant }}
           # glibc is backward compatible, so binaries needing at most this
-          # version run on that release and every newer one. x86_64: 2.35
-          # (Ubuntu 22.04). aarch64: 2.38 (Ubuntu 24.04), because gfortran
-          # calls libm's fmod/fmodf for MOD() there, which noble versions
-          # GLIBC_2.38; on x86_64 it inlines MOD() instead. Lowering either
-          # floor means building against an older glibc, not pinning symbols.
-          GLIBC_FLOOR: ${{ runner.arch == 'ARM64' && '2.38' || '2.35' }}
+          # version run on that release and every newer one: the
+          # manylinux_2_28 build environment's glibc.
+          GLIBC_FLOOR: "2.28"
         run: |
           set -euo pipefail
-          # Linux intentionally dynamic-links libgfortran.so.5 by SONAME (see
-          # meson.build: no -static-libgfortran on linux); the loader resolves
-          # it from the runtime container's glibc/gfortran baseline. Unlike
+          # The shared library dynamic-links libgfortran.so.5 by SONAME (see
+          # meson.build: libgfortran.a is not PIC); the executable links the
+          # GCC runtime statically and needs only glibc. Unlike
           # macOS Mach-O, ELF DT_NEEDED records sonames -- never the build
           # machine's absolute path -- so that failure class cannot occur here.
           # Guard instead against a build-tree or toolchain search path leaking
           # into DT_RPATH/DT_RUNPATH, a NEEDED library the runtime images do
           # not install, and a glibc symbol newer than GLIBC_FLOOR.
           # aarch64 shared libraries record the glibc loader as NEEDED.
-          allowed='^(libc\.so\.6|libm\.so\.6|libgfortran\.so\.5|libgcc_s\.so\.1|ld-linux-aarch64\.so\.1)$'
+          glibc='libc\.so\.6|libm\.so\.6|ld-linux-aarch64\.so\.1'
           status=0
           for f in "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"; do
             test -f "$f"
+            case "$f" in
+              *.so) allowed="^(${glibc}|libgfortran\.so\.5|libgcc_s\.so\.1)$" ;;
+              *) allowed="^(${glibc})$" ;;
+            esac
             echo "----- readelf -d $f -----"
             readelf -d "$f" | grep -E 'NEEDED|RPATH|RUNPATH' || true
             if readelf -d "$f" | grep -qE '\((RPATH|RUNPATH)\)'; then
@@ -309,10 +304,10 @@ jobs:
           FVS_BUILD_REPO: ${{ steps.prepare.outputs.overlay_repo }}
           FVS_BUILD_REF: ${{ steps.prepare.outputs.overlay_ref }}
           FVS_BUILD_SHA: ${{ steps.prepare.outputs.fvs_build_sha }}
-          RUNNER_IMAGE: ${{ inputs.runner_image }}
+          RUNNER_IMAGE: ${{ inputs.runner_image }} / ${{ needs.preflight.outputs.container_image }}
           GCC_MAJOR: ${{ inputs.gcc_major }}
-          GFORTRAN_PKG: gfortran-${{ inputs.gcc_major }}
-          GPP_PKG: g++-${{ inputs.gcc_major }}
+          GFORTRAN_PKG: gcc-toolset-${{ inputs.gcc_major }}-gcc-gfortran
+          GPP_PKG: gcc-toolset-${{ inputs.gcc_major }}-gcc-c++
           MESON_PIN: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail

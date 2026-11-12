@@ -7,13 +7,28 @@
 # Usage: GCC_MAJOR=15 check_gcc_major.sh FILE...
 # Mach-O artifacts may carry no GCC ident strings; then the version of $FC
 # (default gfortran), the compiler that built them, is checked instead.
+#
+# On Linux, glibc's own startup objects (crt1.o, Scrt1.o, libc_nonshared.a) are
+# linked into every binary and carry the ident of whatever compiler built glibc
+# (GCC 8.5 in manylinux_2_28). They are not part of the GCC toolchain, so their
+# versions are ignored. Not on Windows, where the CRT is exactly what #71 is about.
 set -euo pipefail
 
 : "${GCC_MAJOR:?GCC_MAJOR must be set}"
+idents() { strings -a "$@" | grep -oE 'GCC: \([^)]*\) [0-9]+(\.[0-9]+)*' | sed 's/.* //' | sort -u || true; }
+
+libc_versions=""
+if [ "$(uname -s)" = Linux ]; then
+  for o in crt1.o Scrt1.o libc_nonshared.a; do
+    p="$("${CC:-gcc}" -print-file-name="$o")"
+    if [ -f "$p" ]; then libc_versions+="$(idents "$p")"$'\n'; fi
+  done
+fi
+
 status=0
 for f in "$@"; do
   test -f "$f"
-  versions="$(strings "$f" | grep -oE 'GCC: \([^)]*\) [0-9]+(\.[0-9]+)*' | sed 's/.* //' | sort -u || true)"
+  versions="$(idents "$f" | grep -vxF -f <(printf '%s' "$libc_versions") || true)"
   if [ -z "$versions" ]; then
     versions="$("${FC:-gfortran}" -dumpfullversion)"
     echo "$f: no GCC ident strings; checking ${FC:-gfortran} ${versions}"

@@ -173,7 +173,6 @@ jobs:
             pacman -Rdd --noconfirm "${RUNTIME[@]}"
           fi
           pacman -U --noconfirm "${DL}"/*.pkg.tar.zst
-          ninja --version
           python -c 'import ssl, sqlite3'
           rm -rf "$DL"
           {
@@ -197,9 +196,6 @@ jobs:
           # packaged at a pinnable version in pacman, so overriding is fine;
           # pacman-managed pip is left alone (no self-upgrade).
           python -m pip install --break-system-packages "meson==${MESON_VERSION}"
-          meson --version
-          ninja --version
-          gfortran --version | head -n 1
 
       - name: Cache Meson build directory
         uses: actions/cache@v5

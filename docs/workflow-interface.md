@@ -27,7 +27,7 @@ The three native workflows build an executable and a shared library per variant 
 | Windows | `build-native-windows.yml` | `fvs-native-windows-<run_id>` | `FVS<v>.exe` | `FVS<v>.dll` | `sbom/fvs-native-windows.spdx.json` |
 | macOS | `build-native-macos.yml` | `fvs-native-macos-<run_id>` | `FVS<v>` | `FVS<v>.so` | `sbom/fvs-native-macos.spdx.json` |
 
-On Linux, `<arch>` is `x86_64` (`ubuntu-24.04`) or `aarch64` (`ubuntu-24.04-arm`).
+On Linux, `<arch>` is `x86_64` (`ubuntu-24.04`) or `aarch64` (`ubuntu-24.04-arm`), and the build runs inside the matching `quay.io/pypa/manylinux_2_28_<arch>` container.
 
 The executable and shared library are independent link products (upstream `bin/makefile` `%.prg` rules): the executable does not need the library beside it. Shared libraries keep the `FVS<v>` basename with no `lib` prefix, and use `.so` on macOS as well as Linux (matching upstream and R's `.Platform$dynlib.ext`). On Windows both are statically linked and import only the Universal C Runtime (Windows 10+). macOS binaries target macOS 15.0 (`MACOSX_DEPLOYMENT_TARGET`), built on the `macos-15` runner, whose Homebrew GCC targets the same release.
 
@@ -37,20 +37,20 @@ All three native workflows take a `gcc_major` input. A major the platform cannot
 
 | OS | Default | Source |
 | --- | --- | --- |
-| Linux | `14` | `gfortran-N` / `gcc-N` / `g++-N` from the runner's Ubuntu archive (noble: 9–14). |
+| Linux | `14` | `gcc-toolset-14` in the manylinux_2_28 image; no other major. |
 | macOS | `15` | Homebrew `gcc@N`, or the unversioned `gcc` formula when N is its current major. |
 | Windows | `15` | The exact MSYS2 package set for N in `tools/ci/msys2-toolchains.json`. |
 
 ### Linux runtime compatibility
 
-Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1` (plus the glibc loader `ld-linux-aarch64.so.1` on aarch64), and a `libgfortran5` from GCC 10 or newer. The build fails if an artifact needs any other library, or a `GLIBC_` symbol version newer than the arch's floor:
+Linux binaries need at most glibc 2.28, on both arches: RHEL/AlmaLinux/Rocky 8+, Debian 10+, Ubuntu 18.10+, and any distribution with glibc ≥ 2.28. The build fails if an artifact needs a newer `GLIBC_` symbol version or any library outside these:
 
-| Arch | glibc floor | Runs on |
-| --- | --- | --- |
-| x86_64 | 2.35 | Ubuntu 22.04+, Debian 12+, any distribution with glibc ≥ 2.35 |
-| aarch64 | 2.38 | Ubuntu 24.04+, Debian 13+, any distribution with glibc ≥ 2.38 |
+| Artifact | Needs |
+| --- | --- |
+| Executable `FVS<v>` | `libc.so.6`, `libm.so.6` (the GCC runtime is linked statically) |
+| Shared library `FVS<v>.so` | `libc.so.6`, `libm.so.6`, `libgfortran.so.5` (from GCC 8 or newer), `libgcc_s.so.1` |
 
-The floors differ because gfortran calls libm's `fmod`/`fmodf` for `MOD()` on aarch64, which noble's glibc versions `GLIBC_2.38`. Older systems should use the container images.
+On aarch64 both also list the glibc loader `ld-linux-aarch64.so.1`.
 
 ## `build-native-linux.yml`
 
