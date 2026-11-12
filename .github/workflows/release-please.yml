@@ -1,0 +1,19 @@
+# Opens and updates a release PR from conventional commits on main; merging
+# it tags vX.Y.Z and publishes the GitHub release. Configuration lives in
+# release-please-config.json and .release-please-manifest.json. Releases
+# trigger no other workflows, so the default GITHUB_TOKEN is enough.
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: googleapis/release-please-action@v5

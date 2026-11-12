@@ -1,0 +1,20 @@
+# Keeps GitHub Actions current in the workflows and the composite actions
+# (.github/actions/* is not scanned from "/"). Commits are `build(deps): …`,
+# a visible release-please type, so updates feed the next release.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /.github/actions/*
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      # Minor/patch updates land together; each major gets its own PR and CI run.
+      actions-minor-patch:
+        update-types:
+          - minor
+          - patch

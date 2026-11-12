@@ -181,6 +181,10 @@ undefined reference to `dbsreference_'
 
 This is a source-list completeness bug in upstream `USDAForestService/ForestVegetationSimulator`. Until a fix lands there, omit `bc` and `on` from the `variants` option.
 
+## Releases
+
+Releases are cut by [release-please](https://github.com/googleapis/release-please). PRs are squash-merged, so each PR title must be a [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `build:`, `docs:`, …; `!` or a `BREAKING CHANGE:` footer for breaking changes). release-please keeps an open release PR that bumps the version, `CHANGELOG.md` and the `@vX.Y.Z` pins in `docs/workflow-interface.md`; merging it tags the release. Before 1.0, a breaking change bumps the minor version and a feature or fix bumps the patch. Dependabot keeps the GitHub Actions current with `build(deps):` PRs, which count toward the next release.
+
 ## Repository layout
 
 - `meson.build` — Meson build definition that compiles FVS from a source repository. Reads options, parses the repository's`bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
@@ -197,6 +201,8 @@ This is a source-list completeness bug in upstream `USDAForestService/ForestVege
 - `binder/Dockerfile` — thin `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>` shim so mybinder.org can launch the GUI image in seconds rather than building from scratch.
 - `docs/local-builds.md` — details for running the Meson build by hand, primarily intended for developers who would like to work on the `fvs-build` project or run Meson-based builds themselves.
 - `docs/workflow-interface.md` — the reusable workflows' inputs, outputs and artifact contract.
+- `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/release-please.yml` — release automation (see [Releases](#releases)).
+- `.github/dependabot.yml` — weekly GitHub Actions updates for the workflows and composite actions.
 - `docs/fvs-gui-container.md` — maintainer notes for the FVS GUI image: build steps, the `fvsOL` Local-mode patch, smoke checks and Binder publishing.
 - Shared CI helpers used by the three native workflows:
   - `tools/ci/resolve_variants.sh` — normalizes the `variants` input into the list each build job loops over.

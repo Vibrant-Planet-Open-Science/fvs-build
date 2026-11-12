@@ -95,6 +95,7 @@ Provenance JSON (`schema_version: 1`), written by `tools/ci/provenance.py`:
 
 ### Calling the workflow
 
+<!-- x-release-please-start-version -->
 ```yaml
 jobs:
   fvs-x86_64:
@@ -120,6 +121,7 @@ jobs:
           name: ${{ needs.fvs-x86_64.outputs.artifact_name }}
           path: fvs-bundle
 ```
+<!-- x-release-please-end -->
 
 Pin `fvs-build` to a tag or SHA for reproducible pipelines. The workflow requests only `contents: read`; for a private `source_repo`, add `secrets: inherit` to the caller's `uses:` block.
 
@@ -178,6 +180,7 @@ Standard labels: `source` (fvs-build repo URL), `revision` (fvs-build SHA), `ver
 
 ### Composing native + container
 
+<!-- x-release-please-start-version -->
 ```yaml
 permissions:
   contents: read
@@ -209,6 +212,7 @@ jobs:
       push: true
     secrets: inherit
 ```
+<!-- x-release-please-end -->
 
 Pushing to GHCR uses `GITHUB_TOKEN`; the caller must grant `packages: write`. For other registries the caller handles login. Drop `native-arm64` and `artifact_name_arm64` for an amd64-only image.
 
