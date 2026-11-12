@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Stage per-variant FVS binaries and shared libs, then write ``build-info.json``.
 
+Shared libraries are stripped of debug info (smaller wheels and bundles) and
+load-checked; executables are copied unchanged and keep theirs, so a crash
+seen through a library can be reproduced with the executable for file:line.
+
 Run from native build jobs after Meson has populated ``_build/``. Stages each
 variant in ``VARIANTS`` (space-separated) into ``staging/<os>-variant-<v>/``.
 Requires the same environment variables previously exported for
@@ -12,6 +16,7 @@ Requires the same environment variables previously exported for
 
 from __future__ import annotations
 
+import ctypes
 import hashlib
 import json
 import os
@@ -126,6 +131,11 @@ def _stage(variant: str) -> int:
     dst_lib = stage / st_shlib
     shutil.copy2(bin_src, dst_bin)
     shutil.copy2(shlib_src, dst_lib)
+    # -S is --strip-debug in GNU strip (Linux, MSYS2) and Apple's strip alike.
+    subprocess.run(["strip", "-S", str(dst_lib)], check=True)
+    # Stripping rewrites the file (and on macOS its ad-hoc signature): make
+    # sure the shipped library still loads.
+    ctypes.CDLL(str(dst_lib.resolve()))
     if platform != "windows":
         mode = dst_bin.stat().st_mode
         dst_bin.chmod(mode | 0o111)

@@ -80,7 +80,7 @@ Builds the requested variants and uploads one bundle. `runner_image` picks the a
 ```
 fvs-native-linux-<arch>-<run_id>/
 ├── FVS<v>                    # standalone executable, one per variant
-├── FVS<v>.so                 # shared library, one per variant
+├── FVS<v>.so                 # shared library, one per variant, debug info stripped
 ├── provenance/
 │   ├── manifest.json         # aggregated build provenance
 │   ├── per-variant/FVS<v>.json
@@ -91,7 +91,7 @@ fvs-native-linux-<arch>-<run_id>/
 Provenance JSON (`schema_version: 1`), written by `tools/ci/provenance.py`:
 
 - `manifest.json`: `artifact_name`; `arch` (Python's `platform.machine()`: `x86_64`/`aarch64`, `arm64` on macOS, `AMD64` on Windows); `build` (run id/attempt/URL, timestamp, variants requested and built, `profile`, `buildtype`); `source` and `fvs_build` (`repo`, `ref`, `sha`); `toolchain` (runner image, GCC major and package names, compiler/Meson/Ninja versions); `artifacts` (`binaries`, `shared_libraries`, `sbom`).
-- `per-variant/FVS<v>.json`: `variant`, `arch`, `binary` and `shared_library` with their `*_sha256`, `compiled_at_utc`, `source`, `fvs_build`, `toolchain`, and `build.fortran_args` (the flags gfortran received, from `compile_commands.json`).
+- `per-variant/FVS<v>.json`: `variant`, `arch`, `binary` and `shared_library` with their `*_sha256` (the library's of the stripped file), `compiled_at_utc`, `source`, `fvs_build`, `toolchain`, and `build.fortran_args` (the flags gfortran received, from `compile_commands.json`).
 
 ### Calling the workflow
 
