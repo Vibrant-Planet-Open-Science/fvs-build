@@ -58,7 +58,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Resolve fvs-build repo and ref from workflow_ref
+    - name: Resolve fvs-build repo, ref and commit
       id: fb_ref
       uses: ./.github/actions/resolve-fvs-build-ref
 
@@ -66,7 +66,7 @@ runs:
       uses: actions/checkout@v7
       with:
         repository: ${{ steps.fb_ref.outputs.repo }}
-        ref: ${{ steps.fb_ref.outputs.ref }}
+        ref: ${{ steps.fb_ref.outputs.sha }}
         path: fvs-build
         fetch-depth: 1
 

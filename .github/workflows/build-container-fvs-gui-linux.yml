@@ -130,21 +130,15 @@ jobs:
     env:
       ARCH: ${{ matrix.arch }}
     steps:
-      # Reusable-workflow jobs need the workflow repo on disk before uses: ./...
+      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
+      # disk. In a called workflow github.* and a bare checkout are the caller's
+      # repo; job.workflow_* is this workflow's own repo and commit.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           fetch-depth: 1
-
-      - name: Resolve fvs-build repo and ref from workflow_ref
-        id: fb_ref
-        uses: ./.github/actions/resolve-fvs-build-ref
-
-      - name: Check out fvs-build (Dockerfile.fvs-gui + baked files)
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ steps.fb_ref.outputs.repo }}
-          ref: ${{ steps.fb_ref.outputs.ref }}
 
       - name: Download fvs-native-linux artifact bundle
         uses: actions/download-artifact@v8

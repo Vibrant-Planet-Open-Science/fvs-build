@@ -84,9 +84,14 @@ jobs:
       # 15.0. Without it, minos follows the runner's macOS.
       MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
+      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
+      # disk. In a called workflow github.* and a bare checkout are the caller's
+      # repo; job.workflow_* is this workflow's own repo and commit.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           fetch-depth: 1
 
       # Later steps loop over $VARIANTS.
@@ -253,9 +258,14 @@ jobs:
     outputs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
+      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
+      # disk. In a called workflow github.* and a bare checkout are the caller's
+      # repo; job.workflow_* is this workflow's own repo and commit.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
           fetch-depth: 1
 
       - id: collect

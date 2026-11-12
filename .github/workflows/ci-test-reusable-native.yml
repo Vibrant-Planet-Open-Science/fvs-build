@@ -53,6 +53,7 @@ jobs:
           changed=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
             .github/actions/collect-native-bundle/action.yml \
             .github/actions/prepare-fvs-native-checkout/action.yml \
+            .github/actions/resolve-fvs-build-ref/action.yml \
             .github/workflows/build-native-linux.yml \
             .github/workflows/build-native-windows.yml \
             .github/workflows/build-native-macos.yml \

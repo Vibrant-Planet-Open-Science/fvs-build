@@ -4,7 +4,7 @@ Maintainer notes for `build-container-fvs-gui-linux.yml` and `docker/Dockerfile.
 
 ## What the workflow does
 
-1. Check out `fvs-build` at the ref implied by `github.workflow_ref` (for `docker/Dockerfile.fvs-gui` and the files baked into the image).
+1. Check out `fvs-build` at the commit that defines the called workflow (`job.workflow_repository` @ `job.workflow_sha`), for `docker/Dockerfile.fvs-gui` and the files baked into the image.
 2. Download the named native bundle into `bundle/` and verify it provides the `FVS<v>.so` set.
 3. Check out `interface_repo` at `interface_ref` into `interface/`, then stage the `rFVS` and `fvsOL` package roots into `fvs-gui-context/rFVS` and `fvs-gui-context/fvsOL`. The roots are found by their `DESCRIPTION` files (`Package: rFVS` / `Package: fvsOL`), so the Dockerfile's `COPY` paths do not depend on where the packages live in the Interface repo. The resolved Interface SHA is captured for provenance.
 4. Extract FVS source/toolchain/variant provenance from `bundle/provenance/manifest.json` with `tools/ci/provenance.py` (`manifest-to-github-env`), and fail unless the bundle's `arch` matches the leg.

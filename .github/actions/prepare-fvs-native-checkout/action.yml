@@ -1,4 +1,4 @@
-# Composite: resolve fvs-build ref from workflow_ref, check out overlay + FVS
+# Composite: resolve fvs-build repo/ref/commit, check out overlay + FVS
 # source, record SHAs for provenance.
 #
 # Call after the workflow repository is checked out (so ./.github/actions exists).
@@ -27,7 +27,7 @@ outputs:
     description: Resolved fvs-build repository (owner/name).
     value: ${{ steps.fb_ref.outputs.repo }}
   overlay_ref:
-    description: Resolved git ref for the overlay checkout.
+    description: Git ref the reusable workflow was called at (recorded in provenance).
     value: ${{ steps.fb_ref.outputs.ref }}
   source_sha:
     description: HEAD of fvs-source after checkout.
@@ -39,7 +39,7 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Resolve fvs-build repo and ref from workflow_ref
+    - name: Resolve fvs-build repo, ref and commit
       id: fb_ref
       uses: ./.github/actions/resolve-fvs-build-ref
 
@@ -47,7 +47,7 @@ runs:
       uses: actions/checkout@v7
       with:
         repository: ${{ steps.fb_ref.outputs.repo }}
-        ref: ${{ steps.fb_ref.outputs.ref }}
+        ref: ${{ steps.fb_ref.outputs.sha }}
         path: fvs-build
 
     # fetch-depth: 0 because meson.build derives build-info macros from git in
