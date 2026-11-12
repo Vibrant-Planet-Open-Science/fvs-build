@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Stage per-variant FVS binaries and shared libs, then write ``build-info.json``.
 
-Run from native matrix jobs after Meson has populated ``_build/``. Requires the
-same environment variables previously exported for
-``provenance.py write-build-info`` (``VARIANT``, ``FVS_NATIVE_PLATFORM``,
+Run from native build jobs after Meson has populated ``_build/``. Stages each
+variant in ``VARIANTS`` (space-separated) into ``staging/<os>-variant-<v>/``.
+Requires the same environment variables previously exported for
+``provenance.py write-build-info`` (``FVS_NATIVE_PLATFORM``,
 ``SOURCE_*``, ``FVS_BUILD_*``, ``RUNNER_IMAGE``, ``GCC_MAJOR``, ``GFORTRAN_PKG``,
 ``GPP_PKG``, ``GITHUB_RUN_ID``, ``GITHUB_RUN_ATTEMPT``, and on Linux/macOS
 ``FC``/``CC``/``CXX``).
@@ -19,6 +20,8 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+
+from provenance import _variant_artifact_staging_prefix
 
 
 def _require_env(name: str) -> str:
@@ -85,16 +88,15 @@ def _artifact_paths(
     )
 
 
-def main() -> int:
-    """Copy artifacts into ``staging/<variant>/`` and invoke ``write-build-info``."""
+def _stage(variant: str) -> int:
+    """Copy one variant's artifacts into staging and invoke ``write-build-info``."""
     platform = _require_env("FVS_NATIVE_PLATFORM").lower()
     if platform not in {"linux", "windows", "darwin"}:
         sys.stderr.write(f"error: unsupported FVS_NATIVE_PLATFORM: {platform!r}\n")
         return 1
-    variant = _require_env("VARIANT")
     build_dir = Path(os.environ.get("BUILD_DIR", "_build"))
     fvs_build = Path(os.environ.get("FVS_BUILD_DIR", "fvs-build"))
-    stage = Path(os.environ.get("STAGE_DIR", f"staging/{variant}"))
+    stage = Path("staging") / f"{_variant_artifact_staging_prefix()}{variant}"
     provenance_py = fvs_build / "tools/ci/provenance.py"
     if not provenance_py.is_file():
         sys.stderr.write(f"error: missing {provenance_py}\n")
@@ -133,7 +135,11 @@ def main() -> int:
     gfortran_v, gcc_v, gpp_v = _compiler_versions(platform)
     ninja_ver = _first_line(["ninja", "--version"])
     meson_ver = _first_line(["meson", "--version"])
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # The executable's mtime is when it was linked: Ninja leaves unchanged
+    # outputs alone, so on a build-cache hit this stays the original link time.
+    timestamp = datetime.fromtimestamp(bin_src.stat().st_mtime, timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
     meson_log = build_dir / "meson-logs/meson-log.txt"
     tail_out = stage / "provenance/meson-logs/meson-log.tail.txt"
@@ -161,6 +167,7 @@ def main() -> int:
     env = os.environ.copy()
     env.update(
         {
+            "VARIANT": variant,
             "BIN_SHA": bin_sha,
             "LIB_SHA": lib_sha,
             "TIMESTAMP": timestamp,
@@ -186,6 +193,14 @@ def main() -> int:
     print(f"----- staged {stage} -----")
     subprocess.run(["ls", "-laR", str(stage)], check=True)
 
+    return 0
+
+
+def main() -> int:
+    """Stage every variant in ``VARIANTS``; stop at the first failure."""
+    for variant in _require_env("VARIANTS").split():
+        if rc := _stage(variant):
+            return rc
     return 0
 
 

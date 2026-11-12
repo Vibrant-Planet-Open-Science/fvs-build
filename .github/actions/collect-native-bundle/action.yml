@@ -1,8 +1,8 @@
-# Composite: download per-variant native artifacts, fan into the canonical bundle
+# Composite: download the build job's staging artifact, fan into the canonical bundle
 # (tools/ci/provenance.py collect-bundle), SPDX scan with syft, upload bundle.
 name: Collect native FVS bundle
 description: >
-  Download OS-prefixed variant artifacts, run collect-bundle, SPDX scan with syft,
+  Download the build job's staging artifact, run collect-bundle, SPDX scan with syft,
   upload the bundle. The calling job must run actions/checkout on the workflow
   repository first so uses: ./.github/actions/collect-native-bundle resolves.
 
@@ -10,11 +10,12 @@ inputs:
   fvs_native_platform:
     description: >
       Value for FVS_NATIVE_PLATFORM passed to provenance.py (linux, windows, or
-      darwin). Must match download_pattern / SBOM paths used by the matrix job.
+      darwin). Must match the staging layout and SBOM paths used by the build job.
     required: true
-  download_pattern:
+  staging_artifact:
     description: >
-      Glob for actions/download-artifact (e.g. linux-x86_64-variant-*, windows-variant-*).
+      Name of the build job's staging artifact (e.g. linux-x86_64-staging,
+      windows-staging); it holds staging/<os>-variant-<v>/ directories.
     required: true
   artifact_name:
     description: >
@@ -48,11 +49,6 @@ inputs:
     description: Version for setup-python when use_setup_python is true.
     required: false
     default: "3.12"
-  run_staging_diagnostics:
-    description: >
-      If the string "true", list staging after download (find FVS binaries and shlibs).
-    required: false
-    default: "true"
 
 outputs:
   artifact_name:
@@ -79,22 +75,11 @@ runs:
       with:
         python-version: ${{ inputs.python_version }}
 
-    - name: Download all variant artifacts
+    - name: Download staging artifact
       uses: actions/download-artifact@v7
       with:
         path: staging
-        pattern: ${{ inputs.download_pattern }}
-
-    - name: Log staging tree after download (diagnostics)
-      if: ${{ inputs.run_staging_diagnostics == 'true' }}
-      shell: bash
-      run: |
-        set -euo pipefail
-        cd "${GITHUB_WORKSPACE}"
-        echo "== top: staging =="
-        ls -la staging
-        echo "== FVS* binaries and shared libs under staging (maxdepth 5) =="
-        find staging -maxdepth 5 -type f -name 'FVS*' ! -path '*/provenance/*' | sort | head -500
+        name: ${{ inputs.staging_artifact }}
 
     - name: Fan into canonical bundle layout
       id: bundle

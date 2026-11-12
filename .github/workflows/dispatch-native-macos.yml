@@ -47,7 +47,7 @@ on:
         default: "reference"
         type: string
       python_version:
-        description: "actions/setup-python version (preflight, matrix, collect)"
+        description: "actions/setup-python version (build, collect)"
         required: false
         default: "3.12"
         type: string
