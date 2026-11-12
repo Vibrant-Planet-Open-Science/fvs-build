@@ -37,7 +37,7 @@ on:
         default: "ubuntu-24.04"
         type: string
       gcc_major:
-        description: "GCC major version (noble archive: 9-14)"
+        description: "GCC major version (manylinux_2_28 gcc-toolset: 14)"
         required: false
         default: "14"
         type: string

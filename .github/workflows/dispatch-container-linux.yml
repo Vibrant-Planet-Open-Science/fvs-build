@@ -70,7 +70,7 @@ on:
         default: "3.12"
         type: string
       gcc_major:
-        description: "GCC major version for the native Linux build (noble archive: 9-14)"
+        description: "GCC major version for the native Linux build (manylinux_2_28 gcc-toolset: 14)"
         required: false
         default: "14"
         type: string

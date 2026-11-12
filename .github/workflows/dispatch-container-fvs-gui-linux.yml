@@ -80,12 +80,12 @@ on:
         default: "ubuntu-24.04"
         type: string
       gcc_major:
-        description: "GCC major version for the native Linux build (noble archive: 9-14)"
+        description: "GCC major version for the native Linux build (manylinux_2_28 gcc-toolset: 14)"
         required: false
         default: "14"
         type: string
         # Note: python_version is not exposed here; the native Linux build
-        # job follows its own default (actions/setup-python 3.12).
+        # job follows its own default (the image's Python 3.12).
 
 permissions:
   contents: read

@@ -19,7 +19,7 @@
 project(
   'fvs-build',
   ['c', 'cpp', 'fortran'],
-  version: '0.6.0',
+  version: '0.7.0',
   meson_version: '>=1.8.0',
   default_options: [
     'c_std=c11',
@@ -181,8 +181,15 @@ else
     shlib_link_args = fortran_runtime_static
     exe_link_args = fortran_runtime_static
   else
+    # Linux: the shared library links the GCC runtime dynamically, because
+    # libgfortran.a is not built -fPIC and cannot go into a shared object;
+    # wheels vendor it with auditwheel. The executable links it statically
+    # and needs only glibc. -static-libquadmath is GCC 13+ (CI uses 14).
     shlib_link_args = []
-    exe_link_args = []
+    exe_link_args = ['-static-libgfortran', '-static-libgcc']
+    if meson.get_compiler('fortran').has_link_argument('-static-libquadmath')
+      exe_link_args += '-static-libquadmath'
+    endif
   endif
 endif
 
