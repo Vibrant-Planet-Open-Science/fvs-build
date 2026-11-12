@@ -150,16 +150,25 @@ jobs:
           # Cache keys cannot contain commas; keep the version line's identity.
           echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
 
-      # Cache is a light-touch optimization: tag-driven release builds change
-      # source_ref every run and miss; branch/PR builds against the same ref
-      # can hit and skip the long Fortran compile. The compiler is in the key
-      # because `meson setup --reconfigure` keeps the cached compiler and
-      # Ninja keeps objects whose command lines did not change.
+      # Ninja rebuilds any object older than its sources, and a fresh checkout
+      # stamps every file with the current time, so a restored _build would be
+      # rebuilt in full. Pin source timestamps to a fixed past date instead.
+      # Safe because the cache key holds the source SHA (a hit means identical
+      # sources) and the build-relevant overlay files; changed compile flags
+      # still rebuild through Ninja's command-line tracking.
+      - name: Pin source timestamps for the build cache
+        run: find fvs-source fvs-build -name .git -prune -o -type f -exec touch -t 200001010000 {} +
+
+      # Cache is a light-touch optimization: a new source commit misses, so
+      # release builds compile from scratch; repeat PR runs against the same
+      # source commit hit and skip the long Fortran compile. The compiler is in
+      # the key because `meson setup --reconfigure` keeps the cached compiler
+      # and Ninja keeps objects whose command lines did not change.
       - name: Cache Meson build directory
         uses: actions/cache@v5
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
+          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ steps.prepare.outputs.source_sha }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
 
       - name: Configure Meson
         env:

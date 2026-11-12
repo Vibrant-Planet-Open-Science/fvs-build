@@ -173,12 +173,21 @@ jobs:
           # pacman-managed pip is left alone (no self-upgrade).
           python -m pip install --break-system-packages "meson==${MESON_VERSION}"
 
+      # Ninja rebuilds any object older than its sources, and a fresh checkout
+      # stamps every file with the current time, so a restored _build would be
+      # rebuilt in full. Pin source timestamps to a fixed past date instead.
+      # Safe because the cache key holds the source SHA (a hit means identical
+      # sources) and the build-relevant overlay files; changed compile flags
+      # still rebuild through Ninja's command-line tracking.
+      - name: Pin source timestamps for the build cache
+        run: find fvs-source fvs-build -name .git -prune -o -type f -exec touch -t 200001010000 {} +
+
       - name: Cache Meson build directory
         uses: actions/cache@v5
         with:
           path: _build
           key: >-
-            meson-win-${{ steps.variants.outputs.id }}-${{ inputs.source_ref }}-${{
+            meson-win-${{ steps.variants.outputs.id }}-${{ steps.prepare.outputs.source_sha }}-${{
               inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{
               hashFiles(
                 'fvs-build/meson.build',
