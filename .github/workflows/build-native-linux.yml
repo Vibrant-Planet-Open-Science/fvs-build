@@ -107,7 +107,7 @@ jobs:
       # Reusable-workflow jobs do not populate the workspace by default; local
       # composite actions need .github/actions/* on disk before uses: ./...
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -165,7 +165,7 @@ jobs:
       # the key because `meson setup --reconfigure` keeps the cached compiler
       # and Ninja keeps objects whose command lines did not change.
       - name: Cache Meson build directory
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: _build
           key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ steps.prepare.outputs.source_sha }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
@@ -290,7 +290,7 @@ jobs:
       # can resolve uses: ./.github/actions/... (the composite's own checkout
       # runs too late).
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 

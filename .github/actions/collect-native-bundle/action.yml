@@ -63,20 +63,20 @@ runs:
       uses: ./.github/actions/resolve-fvs-build-ref
 
     - name: Check out fvs-build (CI scripts)
-      uses: actions/checkout@v5
+      uses: actions/checkout@v7
       with:
         repository: ${{ steps.fb_ref.outputs.repo }}
         ref: ${{ steps.fb_ref.outputs.ref }}
         path: fvs-build
         fetch-depth: 1
 
-    - uses: actions/setup-python@v6
+    - uses: actions/setup-python@v7
       if: ${{ inputs.use_setup_python == 'true' }}
       with:
         python-version: ${{ inputs.python_version }}
 
     - name: Download staging artifact
-      uses: actions/download-artifact@v7
+      uses: actions/download-artifact@v8
       with:
         path: staging
         name: ${{ inputs.staging_artifact }}
