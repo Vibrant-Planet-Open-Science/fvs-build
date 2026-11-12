@@ -92,7 +92,7 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: ubuntu-24.04
       gcc_major: "14"
@@ -106,7 +106,7 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: ubuntu-24.04-arm
       gcc_major: "14"
@@ -120,7 +120,7 @@ jobs:
     uses: ./.github/workflows/build-native-windows.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: windows-latest
       gcc_major: "15"
@@ -134,7 +134,7 @@ jobs:
     uses: ./.github/workflows/build-native-macos.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
       runner_image: macos-15
       gcc_major: "15"

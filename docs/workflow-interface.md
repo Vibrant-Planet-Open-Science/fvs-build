@@ -102,14 +102,14 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       # variants: pn,wc,nc   # optional subset
 
   fvs-aarch64:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       runner_image: ubuntu-24.04-arm
 
   use-binaries:
@@ -125,7 +125,7 @@ jobs:
 
 Pin `fvs-build` to a tag or SHA for reproducible pipelines. The workflow requests only `contents: read`; for a private `source_repo`, add `secrets: inherit` to the caller's `uses:` block.
 
-To run it by hand: `gh workflow run dispatch-native-linux.yml -f source_repo=USDAForestService/ForestVegetationSimulator -f source_ref=FS2026.3` (likewise `dispatch-native-macos.yml` and `dispatch-native-windows.yml`).
+To run it by hand: `gh workflow run dispatch-native-linux.yml -f source_repo=USDAForestService/ForestVegetationSimulator -f source_ref=2027.1.0` (likewise `dispatch-native-macos.yml` and `dispatch-native-windows.yml`).
 
 ## `build-container-linux.yml`
 
@@ -138,7 +138,7 @@ Packages `build-native-linux.yml` bundles into a runtime-only Ubuntu 24.04 image
 | `artifact_name` | string | yes | — | x86_64 bundle from a `build-native-linux.yml` job in the same run. |
 | `artifact_name_arm64` | string | no | `""` | aarch64 bundle; when set, the image is also built for linux/arm64. |
 | `image_name` | string | yes | — | Image name without tag (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs`). |
-| `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `FS2026.3`). |
+| `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `2027.1.0`). |
 | `image_extra_tags` | string | no | `""` | Comma-separated extra tags (e.g. `latest`). |
 | `runtime_base` | string | no | `ubuntu:24.04` | Runtime base image. |
 | `runner_image` | string | no | `ubuntu-24.04` | Runner for the amd64 leg and the manifest job; the arm64 leg runs on `ubuntu-24.04-arm`. |
@@ -191,13 +191,13 @@ jobs:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
 
   native-arm64:
     uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       runner_image: ubuntu-24.04-arm
 
   container:
@@ -207,7 +207,7 @@ jobs:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: FS2026.3
+      image_tag: 2027.1.0
       image_extra_tags: latest
       push: true
     secrets: inherit
@@ -216,7 +216,7 @@ jobs:
 
 Pushing to GHCR uses `GITHUB_TOKEN`; the caller must grant `packages: write`. For other registries the caller handles login. Drop `native-arm64` and `artifact_name_arm64` for an amd64-only image.
 
-To run it by hand: `gh workflow run dispatch-container-linux.yml -f source_repo=USDAForestService/ForestVegetationSimulator -f source_ref=FS2026.3 -f image_tag=FS2026.3 -f push=false` (`-f arm64=false` for amd64 only).
+To run it by hand: `gh workflow run dispatch-container-linux.yml -f source_repo=USDAForestService/ForestVegetationSimulator -f source_ref=2027.1.0 -f image_tag=2027.1.0 -f push=false` (`-f arm64=false` for amd64 only).
 
 ## `build-container-fvs-gui-linux.yml`
 
@@ -231,7 +231,7 @@ Builds a Binder-ready FVSOnLocal (`fvsOL`) GUI image and optionally pushes it. I
 | `interface_repo` | string | no | `USDAForestService/ForestVegetationSimulator-Interface` | Repo providing `rFVS` and `fvsOL`. |
 | `interface_ref` | string | no | `20261109` | Ref in `interface_repo`; release `20261019` or later (earlier refs ship `rFVS`/`fvsOL` without `NAMESPACE`). |
 | `image_name` | string | yes | — | Image name without tag (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`). |
-| `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `FS2026.3`). |
+| `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `2027.1.0`). |
 | `image_extra_tags` | string | no | `""` | Comma-separated extra tags. |
 | `runner_image` | string | no | `ubuntu-24.04` | Runner for the amd64 leg and the manifest job. |
 | `push` | boolean | no | `false` | Push after the build and smoke test succeed. For Binder, the GHCR package must also be public. |
@@ -244,4 +244,4 @@ Same as `build-container-linux.yml`: `image_ref` and `image_digest`. Multi-arch 
 
 The runtime image's labels (with `title` `usfs-fvs-gui`), plus `org.vibrantplanet.fvs.interface-repo`, `interface-ref` and `interface-sha` for the R layer.
 
-To run it by hand: `gh workflow run dispatch-container-fvs-gui-linux.yml -f source_ref=FS2026.3 -f interface_ref=20261109 -f image_tag=FS2026.3 -f push=false`.
+To run it by hand: `gh workflow run dispatch-container-fvs-gui-linux.yml -f source_ref=2027.1.0 -f interface_ref=20261109 -f image_tag=2027.1.0 -f push=false`.

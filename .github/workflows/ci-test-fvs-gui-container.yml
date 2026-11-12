@@ -45,7 +45,7 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: FS2026.3
+      source_ref: 2027.1.0
       runner_image: ubuntu-24.04
       profile: reference
 

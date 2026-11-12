@@ -95,10 +95,10 @@ Override the variant used in check 2 with `SMOKE_VARIANT=<code>`; it otherwise a
 
 ```bash
 gh workflow run dispatch-container-fvs-gui-linux.yml \
-  -f source_ref=FS2026.3 \
+  -f source_ref=2027.1.0 \
   -f interface_ref=20261109 \
-  -f image_tag=FS2026.3 \
+  -f image_tag=2027.1.0 \
   -f push=false
 ```
 
-`push=false` (the default) builds the image without publishing. With `-f push=true` it publishes to `ghcr.io/<your-account>/usfs-fvs-gui:FS2026.3`; make the GHCR package public before pointing mybinder.org at it.
+`push=false` (the default) builds the image without publishing. With `-f push=true` it publishes to `ghcr.io/<your-account>/usfs-fvs-gui:2027.1.0`; make the GHCR package public before pointing mybinder.org at it.

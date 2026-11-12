@@ -63,7 +63,7 @@ on:
         type: string
       image_tag:
         description: >-
-          Primary tag for the built image, e.g. `FS2026.3` for a USFS release.
+          Primary tag for the built image, e.g. `2027.1.0` for a USFS release.
         required: true
         type: string
       image_extra_tags:
