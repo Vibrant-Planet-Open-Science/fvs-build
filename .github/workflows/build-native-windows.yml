@@ -212,36 +212,7 @@ jobs:
         run: ninja -C _build -k 0
 
       - name: Smoke-test the variant executables
-        env:
-          FVS_SOURCE: ${{ github.workspace }}/fvs-source
-        run: |
-          set -euo pipefail
-          for VARIANT in $VARIANTS; do
-            BIN_REL="_build/FVS${VARIANT}.exe"
-            test -f "$BIN_REL"
-            SMOKE_DIR=$(mktemp -d)
-            cp "$BIN_REL" "$SMOKE_DIR/"
-            OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" </dev/null 2>&1) || true )"
-            # version.f90 present means the -D macros must have landed; "unknown" = they did not.
-            if [ -f "${FVS_SOURCE}/base/version.f90" ]; then
-              VERSION_OUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" --version) )"
-              echo "FVS${VARIANT} --version: ${VERSION_OUT}"
-              case "$VERSION_OUT" in
-                ""|unknown*|*-dirty*)
-                  echo "ERROR: unusable build info for FVS${VARIANT}: ${VERSION_OUT}" >&2
-                  exit 1
-                  ;;
-              esac
-            fi
-            rm -rf "$SMOKE_DIR"
-            echo "----- smoke output (first 30 lines) -----"
-            printf '%s\n' "$OUTPUT" | head -n 30
-            echo "----- end smoke output -----"
-            printf '%s\n' "$OUTPUT" | grep -q 'STOP 20' || {
-              echo "ERROR: smoke test for FVS${VARIANT} did not reach STOP 20" >&2
-              exit 1
-            }
-          done
+        run: bash fvs-build/tools/ci/smoke_test_native.sh
 
       - name: Verify artifacts are self-contained (objdump)
         run: |
