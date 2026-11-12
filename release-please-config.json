@@ -20,7 +20,7 @@
   ],
   "packages": {
     ".": {
-      "extra-files": ["meson.build", "docs/workflow-interface.md"]
+      "extra-files": ["docs/workflow-interface.md"]
     }
   }
 }
