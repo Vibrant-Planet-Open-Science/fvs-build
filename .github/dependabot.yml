@@ -13,13 +13,9 @@ updates:
       prefix: build
       include: scope
     groups:
-      # Minor/patch updates land together; each major gets its own PR and CI
-      # run, covering every directory that uses that action.
-      actions-minor-patch:
-        update-types:
-          - minor
-          - patch
-      actions-major:
-        update-types:
-          - major
-        group-by: dependency-name
+      # One PR per run for every action and directory, majors included:
+      # with "require branches to be up to date", separate PRs each need a
+      # rebase and a full CI run before the next can merge.
+      actions:
+        patterns:
+          - "*"
