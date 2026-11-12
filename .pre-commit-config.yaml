@@ -72,6 +72,16 @@ repos:
   # over the native one means contributors do not need to install the
   # hadolint binary themselves; only Docker (which they probably already
   # have for the runtime image work). Config lives in .hadolint.yaml.
+  # GitHub input defaults must be literals, so the default FVS and Interface
+  # refs are copied across workflows and docs; this fails unless each agrees.
+  - repo: local
+    hooks:
+      - id: check-default-refs
+        name: check default refs agree
+        entry: python3 tools/ci/check_default_refs.py
+        language: system
+        pass_filenames: false
+
   - repo: https://github.com/hadolint/hadolint
     rev: v2.13.1-beta
     hooks:
