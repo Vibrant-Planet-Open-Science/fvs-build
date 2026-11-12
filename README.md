@@ -199,7 +199,7 @@ This is a source-list completeness bug in upstream `USDAForestService/ForestVege
 - `docs/workflow-interface.md` — the reusable workflows' inputs, outputs and artifact contract.
 - `docs/fvs-gui-container.md` — maintainer notes for the FVS GUI image: build steps, the `fvsOL` Local-mode patch, smoke checks and Binder publishing.
 - Shared CI helpers used by the three native workflows:
-  - `tools/ci/expand_variants_matrix.py` — expands the `variants` CSV into the job matrix.
+  - `tools/ci/resolve_variants.sh` — normalizes the `variants` input into the list each build job loops over.
   - `.github/actions/prepare-fvs-native-checkout/` — resolves the overlay repo/ref and checks out `fvs-build/` and `fvs-source/`.
   - `tools/ci/meson_configure_native.sh` — `meson setup` with the requested `profile`.
   - `tools/ci/stage_variant_native.py` — stages each variant's binaries and writes its build info via `tools/ci/provenance.py`.

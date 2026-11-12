@@ -48,7 +48,7 @@ on:
         default: "reference"
         type: string
       python_version:
-        description: "actions/setup-python version (preflight, collect, Meson pip)"
+        description: "actions/setup-python version (collect)"
         required: false
         default: "3.12"
         type: string

@@ -63,7 +63,7 @@ Builds the requested variants and uploads one bundle. `runner_image` picks the a
 | `source_repo` | string | yes | — | FVS source repo, `owner/name`. |
 | `source_ref` | string | yes | — | Tag, branch, or SHA in `source_repo`. |
 | `variants` | string | no | the 22 US variants | Comma-separated variant codes. `bc` and `on` are excluded: their upstream source lists are incomplete (see `README.md`). |
-| `runner_image` | string | no | `ubuntu-24.04` | `ubuntu-24.04` builds x86_64; `ubuntu-24.04-arm` builds aarch64. |
+| `runner_image` | string | no | `ubuntu-24.04` | `ubuntu-24.04` builds x86_64; `ubuntu-24.04-arm` builds aarch64. A label containing `arm` selects the aarch64 manylinux image. |
 | `gcc_major` | string | no | `14` | GCC major version (see [GCC toolchain selection](#gcc-toolchain-selection)). |
 | `meson_version` | string | no | `1.12.0` | Exact Meson version installed via pip. |
 | `profile` | string | no | `reference` | `reference` (goldens-aligned, matches upstream `bin/makefile`) or `debug` (runtime checks; not goldens-compatible). |

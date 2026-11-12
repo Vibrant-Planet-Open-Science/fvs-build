@@ -16,8 +16,6 @@ variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
   prefix (``linux-<arch>-``, ``macos-``, ``windows-``) so parallel reusable
   native workflows in the **same** GitHub Actions run do not collide on
   ``variant-<v>``. Linux adds ``uname -m`` because it builds on two arches.
-  When only one artifact is downloaded, ``actions/download-artifact`` may leave
-  files at the staging root; those are moved into ``<os>-variant-<v>/`` first.
 * ``manifest-to-github-env`` — append Docker-related variables to
   ``$GITHUB_ENV`` from ``bundle/provenance/manifest.json``.
 """
@@ -99,46 +97,6 @@ def _variant_artifact_staging_prefix() -> str:
     if plat == "darwin":
         return "macos-variant-"
     return "windows-variant-"
-
-
-def _normalize_flat_single_variant_staging(
-    staging_dir: Path,
-    dir_prefix: str,
-) -> str | None:
-    """Re-home a lone artifact downloaded flat into ``<dir_prefix><variant>/``.
-
-    ``actions/download-artifact`` with ``pattern`` places each match under
-    ``path/<artifact-name>/`` only when **two or more** artifacts match. A
-    single match (e.g. ``variants=pn`` → only ``linux-x86_64-variant-pn``) is
-    extracted directly into ``path/``, which matches per-variant upload layout
-    (``FVSpn``, ``FVSpn.so``, ``provenance/`` at the staging root).
-    """
-    info_path = staging_dir / "provenance" / "build-info.json"
-    if not info_path.is_file():
-        return None
-    try:
-        info = json.loads(info_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return None
-    variant = info.get("variant")
-    if not isinstance(variant, str) or not variant.strip():
-        return None
-    variant = variant.strip()
-    target = staging_dir / f"{dir_prefix}{variant}"
-    if target.is_dir() and any(target.iterdir()):
-        return target.name
-    target.mkdir(parents=True, exist_ok=True)
-    for child in list(staging_dir.iterdir()):
-        if child.resolve() == target.resolve():
-            continue
-        dest = target / child.name
-        if dest.exists():
-            if dest.is_dir():
-                shutil.rmtree(dest)
-            else:
-                dest.unlink()
-        shutil.move(str(child), str(dest))
-    return target.name
 
 
 def _binary_filename(variant: str) -> str:
@@ -294,100 +252,6 @@ def _make_executable(path: Path) -> None:
     path.chmod(mode | 0o111)
 
 
-def _describe_path_entry(path: Path) -> str:
-    """One-line description for diagnostic listings (collect-bundle)."""
-    if path.is_symlink():
-        try:
-            target = path.readlink()
-            tail = f"symlink -> {target}"
-        except OSError as exc:
-            tail = f"symlink (readlink failed: {exc})"
-    elif path.is_dir():
-        tail = "directory"
-    elif path.is_file():
-        tail = "file"
-    else:
-        tail = "other"
-    return f"{path.name!r} ({tail})"
-
-
-def _emit_collect_bundle_missing_file(
-    *,
-    role: str,
-    variant: str,
-    expected: Path,
-    vd: Path,
-    staging_dir: Path,
-) -> None:
-    plat = _native_platform()
-    lib_expect = _shared_library_filename(variant)
-    lines = [
-        f"error: collect-bundle: {role} missing for variant {variant!r}",
-        f"  FVS_NATIVE_PLATFORM={plat!r} "
-        f"(expected shared library filename: {lib_expect!r})",
-        f"  expected path: {expected}",
-        f"  exists={expected.exists()}  is_file={expected.is_file()}  "
-        f"is_symlink={expected.is_symlink()}",
-    ]
-    if vd.is_dir():
-        lines.append(f"  contents of {vd}:")
-        try:
-            for child in sorted(vd.iterdir(), key=lambda p: p.name.lower()):
-                lines.append(f"    {_describe_path_entry(child)}")
-        except OSError as exc:
-            lines.append(f"    (could not list directory: {exc})")
-    else:
-        lines.append(f"  variant directory missing or not a directory: {vd}")
-    want = _variant_artifact_staging_prefix()
-    lines.append(
-        f"  sibling {want}* directories under {staging_dir}:",
-    )
-    try:
-        sibs = sorted(
-            staging_dir.glob(f"{want}*/"),
-            key=lambda p: p.name.lower(),
-        )
-        if sibs:
-            for s in sibs:
-                lines.append(f"    {s.name}/")
-        else:
-            lines.append("    (none)")
-    except OSError as exc:
-        lines.append(f"    (could not list: {exc})")
-    lines.append(
-        "  hints: (1) open the matrix job log and confirm "
-        "'----- staged staging/<code> -----' lists the same filenames; "
-        "(2) download the linux-<arch>-variant-* (or macos-/windows-) zip and check "
-        "the shared library is inside; "
-        "(3) merge-multiple=false (default) extracts each artifact under "
-        "staging/<artifact-name>/; "
-        "(4) if you see macos-variant-* while collecting a Linux bundle, "
-        "another job in the same workflow run likely overwrote unprefixed "
-        "variant-* artifacts — use OS-prefixed artifact names (this repo does)."
-    )
-    sys.stderr.write("\n".join(lines) + "\n")
-    sys.exit(1)
-
-
-def _collect_require_file(
-    path: Path,
-    *,
-    role: str,
-    variant: str,
-    vd: Path,
-    staging_dir: Path,
-) -> None:
-    if path.is_file():
-        return
-    _emit_collect_bundle_missing_file(
-        role=role,
-        variant=variant,
-        expected=path,
-        vd=vd,
-        staging_dir=staging_dir,
-    )
-
-
 def cmd_collect_bundle(_args: argparse.Namespace) -> int:
     """Fan staging artifacts into the bundle directory and write manifest.json."""
     staging_dir = Path(os.environ.get("STAGING_DIR", "staging"))
@@ -403,65 +267,10 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
         (bundle / sub).mkdir(parents=True, exist_ok=True)
 
     dir_prefix = _variant_artifact_staging_prefix()
-    normalized = _normalize_flat_single_variant_staging(staging_dir, dir_prefix)
-    if normalized:
-        print(
-            f"collect-bundle: normalized flat single-artifact staging -> {normalized}/",
-        )
     variant_dirs = sorted(staging_dir.glob(f"{dir_prefix}*/"))
     if not variant_dirs:
-        sys.stderr.write(
-            f"error: no directories matching {staging_dir}/{dir_prefix}*/\n",
-        )
-        abs_staging = staging_dir.resolve()
-        if staging_dir.is_dir():
-            sys.stderr.write(f"  contents of {abs_staging}:\n")
-            try:
-                for child in sorted(
-                    staging_dir.iterdir(),
-                    key=lambda p: p.name.lower(),
-                ):
-                    sys.stderr.write(f"    {_describe_path_entry(child)}\n")
-            except OSError as exc:
-                sys.stderr.write(f"    (could not list: {exc})\n")
-            if dir_prefix.startswith("linux-") and list(
-                staging_dir.glob("macos-variant-*/"),
-            ):
-                sys.stderr.write(
-                    f"  hint: found macos-variant-* but expected {dir_prefix}* — "
-                    f"download-artifact pattern should be {dir_prefix}* for "
-                    "build-native-linux.yml.\n",
-                )
-            if dir_prefix.startswith("linux-") and list(
-                staging_dir.glob("linux-*-variant-*/"),
-            ):
-                sys.stderr.write(
-                    f"  hint: found linux-*-variant-* for another arch; expected "
-                    f"{dir_prefix}* (collect must run on the build legs' arch).\n",
-                )
-            if dir_prefix.startswith("linux-") and list(
-                staging_dir.glob("variant-*/"),
-            ):
-                sys.stderr.write(
-                    "  hint: found legacy variant-* directories (no OS prefix). "
-                    "Older workflows collided when Linux and macOS reusable jobs "
-                    "ran in the same run; upgrade fvs-build workflows to "
-                    "linux-<arch>-variant-* / macos-variant-* artifact names.\n",
-                )
-        else:
-            sys.stderr.write(
-                f"  staging directory does not exist: {abs_staging}\n",
-            )
-        sys.stderr.write(
-            "  hint: with two or more matched artifacts, download-artifact "
-            "extracts each into staging/<artifact-name>/ by default. A single "
-            "matched artifact is extracted directly into staging/ (no "
-            "subdirectory); collect-bundle re-homes that when "
-            "staging/provenance/build-info.json exists. "
-            "merge-multiple=true with multiple artifacts places all files "
-            "directly in path/ and breaks this layout.\n",
-        )
-        sys.exit(1)
+        found = sorted(os.listdir(staging_dir)) if staging_dir.is_dir() else "missing"
+        sys.exit(f"error: no {staging_dir}/{dir_prefix}*/ directories; found: {found}")
 
     abs_staging = staging_dir.resolve()
     print(
@@ -480,27 +289,12 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
         bin_path = vd / bin_name
         lib_path = vd / lib_name
         info_path = vd / "provenance" / "build-info.json"
-        _collect_require_file(
-            bin_path,
-            role="executable",
-            variant=variant,
-            vd=vd,
-            staging_dir=staging_dir,
-        )
-        _collect_require_file(
-            lib_path,
-            role="shared library",
-            variant=variant,
-            vd=vd,
-            staging_dir=staging_dir,
-        )
-        _collect_require_file(
-            info_path,
-            role="provenance/build-info.json",
-            variant=variant,
-            vd=vd,
-            staging_dir=staging_dir,
-        )
+        for path in (bin_path, lib_path, info_path):
+            if not path.is_file():
+                sys.exit(
+                    f"error: collect-bundle: {path} missing; "
+                    f"{vd} has {sorted(os.listdir(vd))}",
+                )
         shutil.copy2(bin_path, bundle / bin_name)
         shutil.copy2(lib_path, bundle / lib_name)
         shutil.copy2(

@@ -2,7 +2,7 @@
 # source, record SHAs for provenance.
 #
 # Call after the workflow repository is checked out (so ./.github/actions exists).
-# On Windows build-variant jobs, install MSYS2 *before* this action so find/git
+# On Windows build jobs, install MSYS2 *before* this action so find/git
 # behave like the rest of the job. Pass run_shell: "msys2 {0}" on Windows.
 name: Prepare fvs-build + FVS checkouts for native matrix
 description: >

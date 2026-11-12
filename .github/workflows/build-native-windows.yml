@@ -1,7 +1,7 @@
 # Reusable workflow: build native Windows x86_64 FVS artifacts (MSYS2 UCRT64)
 # via the fvs-build Meson overlay.
 #
-# Same contract as build-native-linux.yml (per-variant matrix, bundle layout,
+# Same contract as build-native-linux.yml (one build job, bundle layout,
 # provenance) with Windows paths (.exe / .dll). Downstream container packaging
 # is Linux-only; this workflow is for native Windows delivery and validation.
 
@@ -57,8 +57,7 @@ on:
         default: "reference"
       python_version:
         description: >-
-          Version string for actions/setup-python (preflight, collect-bundle,
-          and UCRT64 Meson via pip).
+          Version string for actions/setup-python in collect-bundle.
         required: false
         type: string
         default: "3.12"
@@ -72,44 +71,14 @@ permissions:
   contents: read
 
 jobs:
-  preflight:
-    name: Preflight (expand variant matrix)
+  build:
+    name: Build (Windows)
     runs-on: ${{ inputs.runner_image }}
-    defaults:
-      run:
-        shell: bash
-    outputs:
-      matrix_variants: ${{ steps.matrix.outputs.matrix_variants }}
-    steps:
-      - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: ${{ inputs.python_version }}
-
-      - name: Expand variants input into matrix JSON
-        id: matrix
-        env:
-          VARIANTS_CSV: ${{ inputs.variants }}
-        run: |
-          python tools/ci/expand_variants_matrix.py
-
-  build-variant:
-    name: Build FVS${{ matrix.variant }}
-    runs-on: ${{ inputs.runner_image }}
-    needs: preflight
     defaults:
       run:
         shell: msys2 {0}
     env:
       MSYSTEM: UCRT64
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: ${{ fromJSON(needs.preflight.outputs.matrix_variants) }}
     steps:
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v5
@@ -134,6 +103,13 @@ jobs:
             gawk
             git
             curl
+
+      # Later steps loop over $VARIANTS.
+      - name: Resolve variant list
+        id: variants
+        env:
+          VARIANTS_CSV: ${{ inputs.variants }}
+        run: bash tools/ci/resolve_variants.sh
 
       - id: prepare
         uses: ./.github/actions/prepare-fvs-native-checkout
@@ -202,7 +178,7 @@ jobs:
         with:
           path: _build
           key: >-
-            meson-win-${{ matrix.variant }}-${{ inputs.source_ref }}-${{
+            meson-win-${{ steps.variants.outputs.id }}-${{ inputs.source_ref }}-${{
               inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{
               hashFiles(
                 'fvs-build/meson.build',
@@ -217,7 +193,6 @@ jobs:
 
       - name: Configure Meson
         env:
-          VARIANT: ${{ matrix.variant }}
           PROFILE: ${{ inputs.profile }}
           FVS_SOURCE: ${{ github.workspace }}/fvs-source
           BUILD_DIR: _build
@@ -227,40 +202,39 @@ jobs:
       - name: Compile (Ninja)
         run: ninja -C _build -k 0
 
-      - name: Smoke-test the variant executable
+      - name: Smoke-test the variant executables
         env:
-          VARIANT: ${{ matrix.variant }}
           FVS_SOURCE: ${{ github.workspace }}/fvs-source
         run: |
           set -euo pipefail
-          BIN_REL="_build/FVS${VARIANT}.exe"
-          test -f "$BIN_REL"
-          SMOKE_DIR=$(mktemp -d)
-          cp "$BIN_REL" "$SMOKE_DIR/"
-          OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" </dev/null 2>&1) || true )"
-          # version.f90 present means the -D macros must have landed; "unknown" = they did not.
-          if [ -f "${FVS_SOURCE}/base/version.f90" ]; then
-            VERSION_OUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" --version) )"
-            echo "FVS${VARIANT} --version: ${VERSION_OUT}"
-            case "$VERSION_OUT" in
-              ""|unknown*|*-dirty*)
-                echo "ERROR: unusable build info for FVS${VARIANT}: ${VERSION_OUT}" >&2
-                exit 1
-                ;;
-            esac
-          fi
-          rm -rf "$SMOKE_DIR"
-          echo "----- smoke output (first 30 lines) -----"
-          printf '%s\n' "$OUTPUT" | head -n 30
-          echo "----- end smoke output -----"
-          printf '%s\n' "$OUTPUT" | grep -q 'STOP 20' || {
-            echo "ERROR: smoke test for FVS${VARIANT} did not reach STOP 20" >&2
-            exit 1
-          }
+          for VARIANT in $VARIANTS; do
+            BIN_REL="_build/FVS${VARIANT}.exe"
+            test -f "$BIN_REL"
+            SMOKE_DIR=$(mktemp -d)
+            cp "$BIN_REL" "$SMOKE_DIR/"
+            OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" </dev/null 2>&1) || true )"
+            # version.f90 present means the -D macros must have landed; "unknown" = they did not.
+            if [ -f "${FVS_SOURCE}/base/version.f90" ]; then
+              VERSION_OUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}.exe" --version) )"
+              echo "FVS${VARIANT} --version: ${VERSION_OUT}"
+              case "$VERSION_OUT" in
+                ""|unknown*|*-dirty*)
+                  echo "ERROR: unusable build info for FVS${VARIANT}: ${VERSION_OUT}" >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+            rm -rf "$SMOKE_DIR"
+            echo "----- smoke output (first 30 lines) -----"
+            printf '%s\n' "$OUTPUT" | head -n 30
+            echo "----- end smoke output -----"
+            printf '%s\n' "$OUTPUT" | grep -q 'STOP 20' || {
+              echo "ERROR: smoke test for FVS${VARIANT} did not reach STOP 20" >&2
+              exit 1
+            }
+          done
 
       - name: Verify artifacts are self-contained (objdump)
-        env:
-          VARIANT: ${{ matrix.variant }}
         run: |
           set -euo pipefail
           # -static build: neither the standalone exe nor the embedder DLL may
@@ -280,22 +254,23 @@ jobs:
               status=1
             fi
           }
-          check "_build/FVS${VARIANT}.exe" "FVS${VARIANT}\.dll|${runtime}"
-          check "_build/FVS${VARIANT}.dll" "${runtime}"
+          for v in $VARIANTS; do
+            check "_build/FVS${v}.exe" "FVS${v}\.dll|${runtime}"
+            check "_build/FVS${v}.dll" "${runtime}"
+          done
           exit $status
 
       - name: Verify single GCC major in artifacts
         env:
           GCC_MAJOR: ${{ inputs.gcc_major }}
-          VARIANT: ${{ matrix.variant }}
-        run: bash fvs-build/tools/ci/check_gcc_major.sh "_build/FVS${VARIANT}.exe" "_build/FVS${VARIANT}.dll"
+        # $VARIANTS is unquoted on purpose: one path per variant.
+        run: bash fvs-build/tools/ci/check_gcc_major.sh $(printf '_build/FVS%s.exe ' $VARIANTS) $(printf '_build/FVS%s.dll ' $VARIANTS)
 
       - name: Stage artifacts and per-variant build-info
         env:
           FVS_NATIVE_PLATFORM: windows
           BUILD_PROFILE: ${{ inputs.profile }}
           MESON_BUILDTYPE: plain
-          VARIANT: ${{ matrix.variant }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
           SOURCE_SHA: ${{ steps.prepare.outputs.source_sha }}
@@ -305,22 +280,20 @@ jobs:
           RUNNER_IMAGE: ${{ inputs.runner_image }}
           GCC_MAJOR: ${{ inputs.gcc_major }}
           MESON_PIN: ${{ inputs.meson_version }}
-        run: |
-          set -euo pipefail
-          python fvs-build/tools/ci/stage_variant_native.py
+        run: python fvs-build/tools/ci/stage_variant_native.py
 
-      - name: Upload variant artifact
+      - name: Upload staging artifact
         uses: actions/upload-artifact@v7
         with:
-          name: windows-variant-${{ matrix.variant }}
-          path: staging/${{ matrix.variant }}/
+          name: windows-staging
+          path: staging/
           retention-days: 1
           if-no-files-found: error
 
   collect-and-finalize:
     name: Collect, SBOM, and finalize
     runs-on: ${{ inputs.runner_image }}
-    needs: build-variant
+    needs: build
     outputs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
@@ -333,7 +306,7 @@ jobs:
         uses: ./.github/actions/collect-native-bundle
         with:
           fvs_native_platform: windows
-          download_pattern: windows-variant-*
+          staging_artifact: windows-staging
           artifact_name: fvs-native-windows-${{ github.run_id }}
           sbom_spdx_relpath: sbom/fvs-native-windows.spdx.json
           variants_input: ${{ inputs.variants }}

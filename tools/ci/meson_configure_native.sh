@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Configure (or reconfigure) the Meson build directory for native CI matrix jobs.
+# Configure (or reconfigure) the Meson build directory for native CI build jobs.
 #
 # Required environment variables:
 #   BUILD_DIR   — Meson build directory (default: _build)
 #   OVERLAY_DIR — path to fvs-build overlay (default: fvs-build)
 #   FVS_SOURCE  — path to checked-out FVS source tree
-#   VARIANT     — single variant code for this matrix leg
+#   VARIANTS    — space-separated variant codes to build
 #   PROFILE     — reference or debug (default: reference)
 #
 set -euo pipefail
@@ -13,7 +13,7 @@ set -euo pipefail
 BUILD_DIR="${BUILD_DIR:-_build}"
 OVERLAY_DIR="${OVERLAY_DIR:-fvs-build}"
 FVS_SOURCE="${FVS_SOURCE:?FVS_SOURCE is required}"
-VARIANT="${VARIANT:?VARIANT is required}"
+VARIANTS="${VARIANTS:?VARIANTS is required}"
 PROFILE="${PROFILE:-reference}"
 
 case "${PROFILE}" in
@@ -27,7 +27,7 @@ esac
 ARGS=(
   --buildtype=plain
   -Dfvs_source_dir="${FVS_SOURCE}"
-  -Dvariants="${VARIANT}"
+  -Dvariants="${VARIANTS// /,}"
   -Dprofile="${PROFILE}"
 )
 

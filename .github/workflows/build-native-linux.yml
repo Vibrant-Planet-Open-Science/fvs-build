@@ -39,7 +39,8 @@ on:
         description: >-
           GitHub-hosted runner image label. ubuntu-24.04 builds x86_64;
           ubuntu-24.04-arm builds aarch64. The build itself runs in the
-          matching manylinux_2_28 container.
+          matching manylinux_2_28 container, chosen from the label: one
+          containing "arm" gets the aarch64 image.
         required: false
         type: string
         default: "ubuntu-24.04"
@@ -90,53 +91,18 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Preflight: parse the comma-separated variants input into a JSON array
-  # the build matrix can consume. Done once so every matrix leg sees the
-  # same expanded list; also surfaces empty-input errors before any compile
-  # work runs. Logic lives in tools/ci/expand_variants_matrix.py (shared with
-  # Windows and macOS native workflows).
+  # Build: one job configures every requested variant in a single Meson build
+  # directory (so the common archives compile once), runs Meson + Ninja inside
+  # the manylinux container, checks and stages each variant, and uploads one
+  # ephemeral staging artifact for the collect job. container.image cannot
+  # read the runner's arch, so the image follows the runner label: one
+  # containing "arm" gets the aarch64 image.
   # ---------------------------------------------------------------------------
-  preflight:
-    name: Preflight (expand variant matrix)
+  build:
+    name: Build (${{ inputs.runner_image }})
     runs-on: ${{ inputs.runner_image }}
-    outputs:
-      matrix_variants: ${{ steps.matrix.outputs.matrix_variants }}
-      container_image: ${{ steps.image.outputs.container_image }}
-    steps:
-      - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 1
-
-      - name: Expand variants input into matrix JSON
-        id: matrix
-        env:
-          VARIANTS_CSV: ${{ inputs.variants }}
-        run: |
-          set -euo pipefail
-          python3 tools/ci/expand_variants_matrix.py
-
-      - name: Pick the manylinux image for this runner's arch
-        id: image
-        run: echo "container_image=quay.io/pypa/manylinux_2_28_$(uname -m)" >> "$GITHUB_OUTPUT"
-
-  # ---------------------------------------------------------------------------
-  # Per-variant build: one matrix leg per requested variant. Each leg checks
-  # out fvs-build (this repo, at the same ref the workflow is invoked from)
-  # plus the caller's source tree, runs Meson + Ninja inside the manylinux
-  # container, smoke-tests the produced executable, and uploads an ephemeral
-  # per-variant artifact for the collect job.
-  # ---------------------------------------------------------------------------
-  build-variant:
-    name: Build FVS${{ matrix.variant }}
-    runs-on: ${{ inputs.runner_image }}
-    needs: preflight
     container:
-      image: ${{ needs.preflight.outputs.container_image }}
-    strategy:
-      fail-fast: false
-      matrix:
-        variant: ${{ fromJSON(needs.preflight.outputs.matrix_variants) }}
+      image: quay.io/pypa/manylinux_2_28_${{ contains(inputs.runner_image, 'arm') && 'aarch64' || 'x86_64' }}
     steps:
       # Reusable-workflow jobs do not populate the workspace by default; local
       # composite actions need .github/actions/* on disk before uses: ./...
@@ -144,6 +110,13 @@ jobs:
         uses: actions/checkout@v5
         with:
           fetch-depth: 1
+
+      # Later steps loop over $VARIANTS.
+      - name: Resolve variant list
+        id: variants
+        env:
+          VARIANTS_CSV: ${{ inputs.variants }}
+        run: bash tools/ci/resolve_variants.sh
 
       # Recursive FVS checkout and provenance SHAs.
       - id: prepare
@@ -186,11 +159,10 @@ jobs:
         uses: actions/cache@v5
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ matrix.variant }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
+          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ inputs.source_ref }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
 
       - name: Configure Meson
         env:
-          VARIANT: ${{ matrix.variant }}
           PROFILE: ${{ inputs.profile }}
           BUILD_DIR: _build
           OVERLAY_DIR: fvs-build
@@ -205,44 +177,43 @@ jobs:
       # reach gfortran's `STOP 20` (raised when FVS hits EOF before reading
       # a keyfile). Run from a temp dir so any fort.<N> spillover does not
       # land next to the build outputs.
-      - name: Smoke-test the variant executable
-        env:
-          VARIANT: ${{ matrix.variant }}
+      - name: Smoke-test the variant executables
         run: |
           set -euo pipefail
           FVS_SOURCE="$GITHUB_WORKSPACE/fvs-source"
-          BIN_REL="_build/FVS${VARIANT}"
-          test -x "$BIN_REL"
-          if ldd "$BIN_REL" | grep -q "FVS${VARIANT}\.so"; then
-            echo "ERROR: ${BIN_REL} must not depend on FVS${VARIANT}.so at runtime" >&2
-            exit 1
-          fi
-          SMOKE_DIR=$(mktemp -d)
-          cp "$BIN_REL" "$SMOKE_DIR/"
-          OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}" </dev/null 2>&1) || true )"
-          # version.f90 present means the -D macros must have landed; "unknown" = they did not.
-          if [ -f "${FVS_SOURCE}/base/version.f90" ]; then
-            VERSION_OUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}" --version) )"
-            echo "FVS${VARIANT} --version: ${VERSION_OUT}"
-            case "$VERSION_OUT" in
-              ""|unknown*|*-dirty*)
-                echo "ERROR: unusable build info for FVS${VARIANT}: ${VERSION_OUT}" >&2
-                exit 1
-                ;;
-            esac
-          fi
-          rm -rf "$SMOKE_DIR"
-          echo "----- smoke output (first 30 lines) -----"
-          printf '%s\n' "$OUTPUT" | head -n 30
-          echo "----- end smoke output -----"
-          printf '%s\n' "$OUTPUT" | grep -q 'STOP 20' || {
-            echo "ERROR: smoke test for FVS${VARIANT} did not reach STOP 20" >&2
-            exit 1
-          }
+          for VARIANT in $VARIANTS; do
+            BIN_REL="_build/FVS${VARIANT}"
+            test -x "$BIN_REL"
+            if ldd "$BIN_REL" | grep -q "FVS${VARIANT}\.so"; then
+              echo "ERROR: ${BIN_REL} must not depend on FVS${VARIANT}.so at runtime" >&2
+              exit 1
+            fi
+            SMOKE_DIR=$(mktemp -d)
+            cp "$BIN_REL" "$SMOKE_DIR/"
+            OUTPUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}" </dev/null 2>&1) || true )"
+            # version.f90 present means the -D macros must have landed; "unknown" = they did not.
+            if [ -f "${FVS_SOURCE}/base/version.f90" ]; then
+              VERSION_OUT="$( (cd "$SMOKE_DIR" && "./FVS${VARIANT}" --version) )"
+              echo "FVS${VARIANT} --version: ${VERSION_OUT}"
+              case "$VERSION_OUT" in
+                ""|unknown*|*-dirty*)
+                  echo "ERROR: unusable build info for FVS${VARIANT}: ${VERSION_OUT}" >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+            rm -rf "$SMOKE_DIR"
+            echo "----- smoke output (first 30 lines) -----"
+            printf '%s\n' "$OUTPUT" | head -n 30
+            echo "----- end smoke output -----"
+            printf '%s\n' "$OUTPUT" | grep -q 'STOP 20' || {
+              echo "ERROR: smoke test for FVS${VARIANT} did not reach STOP 20" >&2
+              exit 1
+            }
+          done
 
       - name: Verify artifacts' runtime dependencies (readelf)
         env:
-          VARIANT: ${{ matrix.variant }}
           # glibc is backward compatible, so binaries needing at most this
           # version run on that release and every newer one: the
           # manylinux_2_28 build environment's glibc.
@@ -260,7 +231,9 @@ jobs:
           # aarch64 shared libraries record the glibc loader as NEEDED.
           glibc='libc\.so\.6|libm\.so\.6|ld-linux-aarch64\.so\.1'
           status=0
-          for f in "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"; do
+          files=()
+          for v in $VARIANTS; do files+=("_build/FVS$v" "_build/FVS$v.so"); done
+          for f in "${files[@]}"; do
             test -f "$f"
             case "$f" in
               *.so) allowed="^(${glibc}|libgfortran\.so\.5|libgcc_s\.so\.1)$" ;;
@@ -290,54 +263,51 @@ jobs:
       - name: Verify single GCC major in artifacts
         env:
           GCC_MAJOR: ${{ inputs.gcc_major }}
-          VARIANT: ${{ matrix.variant }}
-        run: bash fvs-build/tools/ci/check_gcc_major.sh "_build/FVS${VARIANT}" "_build/FVS${VARIANT}.so"
+        # $VARIANTS is unquoted on purpose: one path per variant.
+        run: bash fvs-build/tools/ci/check_gcc_major.sh $(printf '_build/FVS%s ' $VARIANTS) $(printf '_build/FVS%s.so ' $VARIANTS)
 
       - name: Stage artifacts and per-variant build-info
         env:
           FVS_NATIVE_PLATFORM: linux
           BUILD_PROFILE: ${{ inputs.profile }}
           MESON_BUILDTYPE: plain
-          VARIANT: ${{ matrix.variant }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
           SOURCE_SHA: ${{ steps.prepare.outputs.source_sha }}
           FVS_BUILD_REPO: ${{ steps.prepare.outputs.overlay_repo }}
           FVS_BUILD_REF: ${{ steps.prepare.outputs.overlay_ref }}
           FVS_BUILD_SHA: ${{ steps.prepare.outputs.fvs_build_sha }}
-          RUNNER_IMAGE: ${{ inputs.runner_image }} / ${{ needs.preflight.outputs.container_image }}
+          RUNNER_IMAGE: ${{ inputs.runner_image }} / quay.io/pypa/manylinux_2_28_${{ contains(inputs.runner_image, 'arm') && 'aarch64' || 'x86_64' }}
           GCC_MAJOR: ${{ inputs.gcc_major }}
           GFORTRAN_PKG: gcc-toolset-${{ inputs.gcc_major }}-gcc-gfortran
           GPP_PKG: gcc-toolset-${{ inputs.gcc_major }}-gcc-c++
           MESON_PIN: ${{ inputs.meson_version }}
-        run: |
-          set -euo pipefail
-          python3 fvs-build/tools/ci/stage_variant_native.py
+        run: python3 fvs-build/tools/ci/stage_variant_native.py
 
       - name: Resolve machine arch
         id: arch
         run: echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
 
-      - name: Upload variant artifact
+      - name: Upload staging artifact
         uses: actions/upload-artifact@v7
         with:
           # OS- and arch-prefixed name avoids collision when several reusable
           # native workflows run in the same workflow run (e.g.
           # ci-test-reusable-native, or x86_64 + aarch64 for a multi-arch image).
-          name: linux-${{ steps.arch.outputs.arch }}-variant-${{ matrix.variant }}
-          path: staging/${{ matrix.variant }}/
+          name: linux-${{ steps.arch.outputs.arch }}-staging
+          path: staging/
           retention-days: 1
           if-no-files-found: error
 
   # ---------------------------------------------------------------------------
-  # Collect-and-finalize: download every per-variant artifact, fan it into
-  # the canonical bundle layout, generate an SBOM, and upload the single final
+  # Collect-and-finalize: download the staging artifact, fan it into the
+  # canonical bundle layout, generate an SBOM, and upload the single final
   # artifact that callers (and the container workflow) consume.
   # ---------------------------------------------------------------------------
   collect-and-finalize:
     name: Collect, SBOM, and finalize
     runs-on: ${{ inputs.runner_image }}
-    needs: build-variant
+    needs: build
     outputs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
@@ -357,7 +327,7 @@ jobs:
         uses: ./.github/actions/collect-native-bundle
         with:
           fvs_native_platform: linux
-          download_pattern: linux-${{ steps.arch.outputs.arch }}-variant-*
+          staging_artifact: linux-${{ steps.arch.outputs.arch }}-staging
           artifact_name: fvs-native-linux-${{ steps.arch.outputs.arch }}-${{ github.run_id }}
           sbom_spdx_relpath: sbom/fvs-native-linux.spdx.json
           variants_input: ${{ inputs.variants }}
