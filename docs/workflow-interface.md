@@ -56,7 +56,7 @@ Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.s
 
 Both also need a `libgfortran5` from GCC 10 or newer. The floors differ because gfortran inlines `MOD()` on x86_64 but calls libm's `fmod`/`fmodf` on aarch64, and noble's glibc versions those `GLIBC_2.38`. Older systems should use the container images.
 
-The **executable** and **shared library** artifacts produced by the workflows are independent link products (following USFS FVS patterns that use`bin/makefile` `%.prg` rules). This means that executables used to run FVS from the CLI do not require the `.so` / `.dll` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). Both the exe and the DLL import the Universal C Runtime (UCRT), which ships with Windows 10 and newer. The shared library keeps the `FVS<v>` basename and do not add a `lib` prefix.
+The **executable** and **shared library** artifacts produced by the workflows are independent link products (following USFS FVS patterns that use`bin/makefile` `%.prg` rules). This means that executables used to run FVS from the CLI do not require the `.so` / `.dll` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). macOS binaries target macOS 15.0 (`MACOSX_DEPLOYMENT_TARGET`), built on the `macos-15` runner whose Homebrew GCC targets the same release. Both the exe and the DLL import the Universal C Runtime (UCRT), which ships with Windows 10 and newer. The shared library keeps the `FVS<v>` basename and do not add a `lib` prefix.
 
 ### Shared native CI helpers
 

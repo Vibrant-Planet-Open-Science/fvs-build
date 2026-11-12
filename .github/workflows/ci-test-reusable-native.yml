@@ -134,7 +134,7 @@ jobs:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: FS2026.3
       variants: ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws
-      runner_image: macos-latest
+      runner_image: macos-15
       gcc_major: "15"
       meson_version: "1.12.0"
       profile: reference
