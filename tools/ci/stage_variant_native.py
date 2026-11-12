@@ -135,7 +135,11 @@ def _stage(variant: str) -> int:
     gfortran_v, gcc_v, gpp_v = _compiler_versions(platform)
     ninja_ver = _first_line(["ninja", "--version"])
     meson_ver = _first_line(["meson", "--version"])
-    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # The executable's mtime is when it was linked: Ninja leaves unchanged
+    # outputs alone, so on a build-cache hit this stays the original link time.
+    timestamp = datetime.fromtimestamp(bin_src.stat().st_mtime, timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
 
     meson_log = build_dir / "meson-logs/meson-log.txt"
     tail_out = stage / "provenance/meson-logs/meson-log.tail.txt"
