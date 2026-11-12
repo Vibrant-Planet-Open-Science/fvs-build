@@ -163,27 +163,26 @@ else
   # Linux (l64): USFS uses -fPIC. macOS: PIC for shared-library objects
   # (departure from USFS empty PIC on osx).
   objs_pic = true
-  # The GCC runtime (libgfortran/libgcc/libquadmath), linked statically.
-  # -static-libquadmath is GCC 13+.
-  fortran_runtime_static = ['-static-libgfortran', '-static-libgcc']
-  if meson.get_compiler('fortran').has_link_argument('-static-libquadmath')
-    fortran_runtime_static += '-static-libquadmath'
-  endif
-  exe_link_args = fortran_runtime_static
   if host_sys == 'darwin'
-    # Embed the gfortran runtime in the library too, so it does not
-    # hard-depend on a Homebrew gcc at an absolute path (e.g.
+    # Embed the gfortran runtime in the artifact so it does not hard-depend on
+    # a Homebrew gcc at an absolute path (e.g.
     # /opt/homebrew/opt/gcc@14/lib/gcc/14/libgfortran.5.dylib), which is baked
     # into the Mach-O load commands by the build machine's gfortran and is
-    # absent on end-user Macs -> dlopen/OSError. macOS cannot fully
-    # static-link libSystem. Verify with `otool -L FVS<v>.so`: no
-    # /opt/homebrew/.../libgfortran line should remain.
+    # absent on end-user Macs -> dlopen/OSError. Mirrors the Windows `-static`
+    # intent; macOS cannot fully static-link libSystem, so we static-link only
+    # the GCC runtime libs (libgfortran/libgcc/libquadmath). Verify with
+    # `otool -L FVS<v>.so`: no /opt/homebrew/.../libgfortran line should
+    # remain.
+    fortran_runtime_static = [
+      '-static-libgfortran',
+      '-static-libgcc',
+      '-static-libquadmath',
+    ]
     shlib_link_args = fortran_runtime_static
+    exe_link_args = fortran_runtime_static
   else
-    # Linux: the shared library links the GCC runtime dynamically, because
-    # libgfortran.a is not built -fPIC and cannot go into a shared object;
-    # wheels vendor it with auditwheel. The executable needs only glibc.
     shlib_link_args = []
+    exe_link_args = []
   endif
 endif
 

@@ -29,7 +29,7 @@ on:
       runner_image:
         description: "GitHub-hosted macOS runner label"
         required: false
-        default: "macos-latest"
+        default: "macos-15"
         type: string
       gcc_major:
         description: "GCC major version (Homebrew gcc@N or gcc)"

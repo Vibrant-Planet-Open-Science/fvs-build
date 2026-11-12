@@ -47,16 +47,16 @@ The Meson build-directory cache key includes the compiler's `--version` line, so
 
 ### Linux runtime compatibility
 
-Linux shared libraries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1`; executables link the GCC runtime statically and need only `libc.so.6` and `libm.so.6` (plus the glibc loader `ld-linux-aarch64.so.1` on aarch64). Builds will fail when any unexpected files are detected as being needed to run the binaries. What they run on is set by the build system's glibc, not by the GCC major: the build fails if any artifact needs a `GLIBC_` symbol version newer than the arch's floor:
+Linux binaries need `libc.so.6`, `libm.so.6`, `libgfortran.so.5` and `libgcc_s.so.1` (plus the glibc loader `ld-linux-aarch64.so.1` on aarch64). Builds will fail when any unexpected files are detected as being needed to run the binaries. What they run on is set by the build system's glibc, not by the GCC major: the build fails if any artifact needs a `GLIBC_` symbol version newer than the arch's floor:
 
 | Arch | glibc floor | Runs on |
 | --- | --- | --- |
 | x86_64 | 2.35 | Ubuntu 22.04+, Debian 12+, any distribution with glibc ≥ 2.35 |
 | aarch64 | 2.38 | Ubuntu 24.04+, Debian 13+, any distribution with glibc ≥ 2.38 |
 
-Shared libraries on both arches also need a `libgfortran5` from GCC 10 or newer. The floors differ because gfortran inlines `MOD()` on x86_64 but calls libm's `fmod`/`fmodf` on aarch64, and noble's glibc versions those `GLIBC_2.38`. Older systems should use the container images.
+Both also need a `libgfortran5` from GCC 10 or newer. The floors differ because gfortran inlines `MOD()` on x86_64 but calls libm's `fmod`/`fmodf` on aarch64, and noble's glibc versions those `GLIBC_2.38`. Older systems should use the container images.
 
-The **executable** and **shared library** artifacts produced by the workflows are independent link products (following USFS FVS patterns that use`bin/makefile` `%.prg` rules). This means that executables used to run FVS from the CLI do not require the `.so` / `.dll` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI); on Linux and macOS the exe links the GCC runtime statically. macOS binaries target macOS 11.0 (`MACOSX_DEPLOYMENT_TARGET`). Both the exe and the DLL import the Universal C Runtime (UCRT), which ships with Windows 10 and newer. The shared library keeps the `FVS<v>` basename and do not add a `lib` prefix.
+The **executable** and **shared library** artifacts produced by the workflows are independent link products (following USFS FVS patterns that use`bin/makefile` `%.prg` rules). This means that executables used to run FVS from the CLI do not require the `.so` / `.dll` beside the exe. On Windows, the exe is **statically linked** (no MSYS2 `libgfortran` DLLs required for CLI). macOS binaries target macOS 15.0 (`MACOSX_DEPLOYMENT_TARGET`), built on the `macos-15` runner whose Homebrew GCC targets the same release. Both the exe and the DLL import the Universal C Runtime (UCRT), which ships with Windows 10 and newer. The shared library keeps the `FVS<v>` basename and do not add a `lib` prefix.
 
 ### Shared native CI helpers
 

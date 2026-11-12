@@ -30,7 +30,7 @@ on:
           GitHub-hosted macOS runner label.
         required: false
         type: string
-        default: "macos-latest"
+        default: "macos-15"
       gcc_major:
         description: >-
           GCC major version. Installs Homebrew `gcc@N`, or the unversioned
@@ -104,9 +104,11 @@ jobs:
       run:
         shell: bash
     env:
-      # Homebrew GCC otherwise targets the runner's macOS, and the binaries
-      # (and any wheel built from them) refuse to load on older releases.
-      MACOSX_DEPLOYMENT_TARGET: "11.0"
+      # Must match the macOS the runner's Homebrew GCC bottles were built for:
+      # the static libgfortran.a objects carry that minimum, and a lower target
+      # would claim support the runtime code was not built for. macos-15 ->
+      # 15.0. Without it, minos follows the runner's macOS.
+      MACOSX_DEPLOYMENT_TARGET: "15.0"
     strategy:
       fail-fast: false
       matrix:
