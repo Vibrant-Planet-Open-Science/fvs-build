@@ -126,7 +126,7 @@ jobs:
           source_ref: ${{ inputs.source_ref }}
 
       - name: Set up Python for Meson and parse_sourcelist.py
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python_version }}
 
