@@ -36,12 +36,20 @@ repos:
 
   # actionlint: workflow-aware static analysis for .github/workflows/.
   # Type-checks ${{ ... }} expressions including inputs / needs.outputs /
-  # secrets, validates `uses:` action versions, and shells out to
-  # shellcheck (when available) for the `run:` blocks.
+  # secrets, validates `uses:` action versions, and shellchecks the `run:`
+  # blocks. The docker hook's image bundles shellcheck, so local runs and CI
+  # use the same version (the Go hook uses whatever shellcheck is on PATH).
   - repo: https://github.com/rhysd/actionlint
     rev: v1.7.12
     hooks:
-      - id: actionlint
+      - id: actionlint-docker
+
+  # shellcheck for the CI shell scripts; the wheel bundles a pinned binary.
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        files: ^tools/ci/.*\.sh$
 
   # yamllint with the relaxed profile we use throughout the repo. Rules
   # live in .yamllint so IDE yamllint extensions auto-discover the same

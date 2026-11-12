@@ -62,6 +62,7 @@ jobs:
             tools/ci/stage_variant_native.py \
             tools/ci/provenance.py \
             tools/ci/resolve_variants.sh \
+            tools/ci/smoke_test_native.sh \
             tools/ci/meson_configure_native.sh \
             tools/ci/check_gcc_major.sh \
             tools/ci/msys2-toolchains.json \
