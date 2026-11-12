@@ -14,13 +14,21 @@ Each manifest is a newline-delimited list of paths relative to ``bin/``,
 typically ``../<dir>/<file>``.
 
 The tool resolves entries to absolute paths, categorizes them by
-extension (mirroring upstream ``bin/CMakeLists.txt``), and prints a
-delimited text schema that ``meson.build`` can consume without JSON.
+extension and directory, and prints a delimited text schema that
+``meson.build`` can consume without JSON.
+
+SQLite (``dbsqlite/sqlite3.c``, ``dbsqlite/fvsqlite3.c``), FOFEM
+(``fire/fofem/*.c``) and NVEL (``volume/NVEL/*``) are variant-independent
+and reference nothing else in FVS, so ``meson.build`` compiles them once
+per configure. Their lists are sorted so variants can be compared for
+identity. Every other source, including ``base/apisubsc.c`` (the C half
+of the FVS API, which calls Fortran), belongs to the variant.
 
 Note:
     Output sections (header ``### <name>`` then paths, in order):
-    ``fortran_sources``, ``main_source``, ``c_sources_sql``,
-    ``c_sources_fofem``, ``include_dirs``, ``mod_sources``. The CLI exits
+    ``fortran_sources``, ``main_source``, ``c_sources_variant``,
+    ``c_sources_sql``, ``c_sources_fofem``, ``nvel_sources``,
+    ``include_dirs``. The CLI exits
     with code ``1`` if the manifest is missing or contains no main source
     (see :func:`parse`).
 
@@ -36,9 +44,9 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-SQL_C_BASENAMES: frozenset[str] = frozenset(
-    {"sqlite3.c", "fvsqlite3.c", "apisubsc.c"},
-)
+SQL_C_BASENAMES: frozenset[str] = frozenset({"sqlite3.c", "fvsqlite3.c"})
+FOFEM_DIR: tuple[str, str] = ("fire", "fofem")
+NVEL_DIR: tuple[str, str] = ("volume", "NVEL")
 
 INCLUDE_EXTENSIONS: frozenset[str] = frozenset({".f77", ".inc", ".h"})
 FORTRAN_EXTENSIONS: frozenset[str] = frozenset({".f", ".for", ".f90"})
@@ -63,6 +71,11 @@ def manifest_path(source_dir: Path, variant: str) -> Path:
         ``<source_dir>/bin/FVS<variant>_sourceList.txt``.
     """
     return source_dir / "bin" / f"FVS{variant}_sourceList.txt"
+
+
+def _in_dir(path: Path, parts: tuple[str, str]) -> bool:
+    """Return whether ``path``'s parent ends with ``parts`` (e.g. fire/fofem)."""
+    return (path.parent.parent.name, path.parent.name) == parts
 
 
 def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
@@ -90,11 +103,12 @@ def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
 
     fortran_sources: list[str] = []
     main_source: str | None = None
+    c_sources_variant: list[str] = []
     c_sources_sql: list[str] = []
     c_sources_fofem: list[str] = []
+    nvel_sources: list[str] = []
     include_dirs: list[str] = []
     seen_include_dirs: set[str] = set()
-    mod_sources: list[str] = []
 
     for raw in sl_path.read_text().splitlines():
         entry = raw.strip()
@@ -123,14 +137,17 @@ def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
                 else:
                     main_source = str(path)
             else:
-                fortran_sources.append(str(path))
-                if name.lower().endswith("_mod.f"):
-                    mod_sources.append(str(path))
+                if _in_dir(path, NVEL_DIR):
+                    nvel_sources.append(str(path))
+                else:
+                    fortran_sources.append(str(path))
         elif ext in C_EXTENSIONS:
             if name in SQL_C_BASENAMES:
                 c_sources_sql.append(str(path))
-            else:
+            elif _in_dir(path, FOFEM_DIR):
                 c_sources_fofem.append(str(path))
+            else:
+                c_sources_variant.append(str(path))
         else:
             sys.stderr.write(f"warning: unrecognized extension on {path}\n")
 
@@ -144,10 +161,11 @@ def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
     return {
         "fortran_sources": fortran_sources,
         "main_source": [main_source],
-        "c_sources_sql": c_sources_sql,
-        "c_sources_fofem": c_sources_fofem,
+        "c_sources_variant": c_sources_variant,
+        "c_sources_sql": sorted(c_sources_sql),
+        "c_sources_fofem": sorted(c_sources_fofem),
+        "nvel_sources": sorted(nvel_sources),
         "include_dirs": include_dirs,
-        "mod_sources": mod_sources,
     }
 
 
@@ -164,10 +182,11 @@ def emit(sections: dict[str, list[str]], out: TextIO | None = None) -> None:
     order = (
         "fortran_sources",
         "main_source",
+        "c_sources_variant",
         "c_sources_sql",
         "c_sources_fofem",
+        "nvel_sources",
         "include_dirs",
-        "mod_sources",
     )
     for section in order:
         out.write(f"### {section}\n")

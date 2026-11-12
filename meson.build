@@ -13,7 +13,8 @@
 # Per variant: FVS<v> executable (standalone CLI) + FVS<v>.{so,dll}
 # embedder shared library (name_prefix '' — no lib prefix; matches upstream).
 # The exe and shlib are independent links from fvs_objs + main (exe only),
-# not exe-at-runtime-via-DLL.
+# not exe-at-runtime-via-DLL. SQLite, FOFEM and NVEL are compiled once per
+# configure into static archives that every variant links in whole.
 
 project(
   'fvs-build',
@@ -134,8 +135,8 @@ cc = meson.get_compiler('c')
 # libm: FOFEM C code calls exp/log/pow/sqrt; SQLite3 amalgamation can also
 # pull in libm symbols. Upstream's bin/makefile gets away with no explicit
 # -lm because it uses gfortran as the linker for the variant binary, and
-# gfortran pulls in libm transitively. Our C-only shared libraries (FVSsql,
-# FVSfofem) are linked by gcc, so libm has to be explicit on Unix.
+# gfortran pulls in libm transitively. The SQLite and FOFEM archives are C, so
+# libm has to be explicit on Unix.
 # Windows (MinGW): math is provided by the runtime; no separate libm link.
 # libgfortran still depends on libquadmath (quadmath_snprintf, etc.); with
 # `-static` DLL/exe linking gcc does not always pull it in, so link explicitly.
@@ -202,12 +203,22 @@ common_c_args = [
 section_order = [
   'fortran_sources',
   'main_source',
+  'c_sources_variant',
   'c_sources_sql',
   'c_sources_fofem',
+  'nvel_sources',
   'include_dirs',
-  'mod_sources',
 ]
 
+# Groups that are the same for every variant and compiled once per configure:
+# [archive name, parser section, directory under fvs_source_dir].
+common_groups = [
+  ['fvs_sqlite', 'c_sources_sql', 'dbsqlite'],
+  ['fvs_fofem', 'c_sources_fofem', 'fire/fofem'],
+  ['fvs_nvel', 'nvel_sources', 'volume/NVEL'],
+]
+
+variant_sections = {}
 foreach v : variants
   parser_run = run_command(
     py, parser,
@@ -236,18 +247,59 @@ foreach v : variants
     endif
   endforeach
 
-  fortran_sources = sections['fortran_sources']
-  main_source     = sections['main_source'][0]
-  c_sources_sql   = sections['c_sources_sql']
-  c_sources_fofem = sections['c_sources_fofem']
-  include_dirs    = sections['include_dirs']
+  variant_sections += {v: sections}
+endforeach
+
+# SQLite, FOFEM and NVEL reference nothing else in FVS (FVS calls into them,
+# never the reverse), and upstream lists the same files for every variant.
+# Build them once from the first variant's lists; refuse a source tree where
+# another variant lists something different, rather than silently linking
+# the first variant's copy into it.
+first = variant_sections[variants[0]]
+foreach v : variants
+  foreach group : common_groups
+    g = group[1]
+    if variant_sections[v][g] != first[g]
+      error(
+        'Source list for @0@ differs from @1@ in @2@; fvs-build compiles '.format(v, variants[0], g)
+        + 'that group once for all variants. Build these variants separately.',
+      )
+    endif
+  endforeach
+endforeach
+
+# Each group compiles with only its own directory on the include path, which
+# keeps it from silently depending on variant headers. Quoted C includes and
+# Fortran INCLUDE statements resolve from the source file's directory. NVEL
+# also provides the Fortran modules (clkcoef_mod, volinput_mod, ...) that
+# variant code USEs; Meson puts a linked target's module directory on the
+# include path of the targets that link it.
+common_libs = []
+foreach group : common_groups
+  inc = ['-I' + (src_dir / group[2])]
+  common_libs += static_library(
+    group[0],
+    first[group[1]],
+    c_args: common_c_args + inc,
+    fortran_args: common_fortran_args + inc,
+    pic: objs_pic,
+    install: false,
+  )
+endforeach
+
+foreach v : variants
+  sections = variant_sections[v]
+  fortran_sources   = sections['fortran_sources']
+  main_source       = sections['main_source'][0]
+  c_sources_variant = sections['c_sources_variant']
+  include_dirs      = sections['include_dirs']
 
   # Include flags must reach both Fortran (for INCLUDE'd .F77/.inc files
   # gathered from common/, pn/common/, volume/NVEL/, etc.) and C (for
-  # #include'd .h files in fire/fofem/ and dbsqlite/). We pass them via -I
-  # in c_args/fortran_args rather than include_directories() because the
-  # paths point outside the meson source tree (into fvs_source_dir) and
-  # include_directories() is restrictive about that.
+  # #include'd .h files). We pass them via -I in c_args/fortran_args rather
+  # than include_directories() because the paths point outside the meson
+  # source tree (into fvs_source_dir) and include_directories() is
+  # restrictive about that.
   #
   # IMPORTANT: .F77 and .inc files are not Fortran *sources* in this build;
   # they are include files brought in by Fortran INCLUDE statements. Meson's
@@ -260,28 +312,25 @@ foreach v : variants
     inc_args += '-I' + d
   endforeach
 
-  # All-but-main objects (Fortran + C) collapsed into a single static carrier
-  # (PIC on Linux and macOS; not on Windows per USFS w64). This matches the
-  # topology of upstream's bin/makefile rather than upstream's
-  # bin/CMakeLists.txt: there is exactly one shared library per variant.
-  # The CMake split into FVSsql / FVSfofem / FVS_<v> is unworkable under a
-  # strict `-Wl,--no-undefined` link policy because apisubsc.c (categorized
-  # "SQL" upstream) references Fortran-defined symbols, creating a cycle
-  # between FVSsql and FVS_<v>. Collapsing them also produces the "one .so per
-  # variant" output the PRD describes.
+  # The variant's own objects (all Fortran except NVEL, plus base/apisubsc.c,
+  # the C half of the FVS API) in one static carrier, PIC on Linux and macOS
+  # (not on Windows, per USFS w64), with the common archives merged in whole.
+  # This keeps upstream bin/makefile's topology — exactly one self-contained
+  # shared library per variant — so loaders need no sibling libraries.
   #
   # Meson auto-discovers Fortran `module`/`use` dependencies across these
-  # sources (including the *_mod.f files in volume/NVEL/) and orders
-  # compilation correctly without manual declarations
+  # sources and the linked NVEL archive, and orders compilation correctly
+  # without manual declarations.
   fvs_objs = static_library(
     'fvs_' + v + '_objs',
-    fortran_sources + c_sources_sql + c_sources_fofem,
+    fortran_sources + c_sources_variant,
     # version_flags must stay after inc_args: provenance.py's flag extractor
     # stops at the first -I, which keeps git metadata out of build-info.json.
     fortran_args: common_fortran_args + inc_args + version_flags,
     c_args: common_c_args + inc_args,
     cpp_args: common_c_args + inc_args,
     pic: objs_pic,
+    link_whole: common_libs,
     dependencies: [m_dep],
     install: false,
   )
