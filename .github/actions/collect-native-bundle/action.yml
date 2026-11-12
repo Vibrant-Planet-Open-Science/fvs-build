@@ -70,7 +70,7 @@ runs:
         path: fvs-build
         fetch-depth: 1
 
-    - uses: actions/setup-python@v6
+    - uses: actions/setup-python@v7
       if: ${{ inputs.use_setup_python == 'true' }}
       with:
         python-version: ${{ inputs.python_version }}
