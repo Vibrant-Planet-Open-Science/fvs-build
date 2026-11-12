@@ -21,4 +21,6 @@ runs:
       shell: bash
       env:
         WF_REF: ${{ github.workflow_ref }}
-      run: bash "${{ github.action_path }}/resolve.sh"
+      # $GITHUB_ACTION_PATH, not ${{ github.action_path }}: in container jobs
+      # the expression is the host path, the variable the container path.
+      run: bash "$GITHUB_ACTION_PATH/resolve.sh"

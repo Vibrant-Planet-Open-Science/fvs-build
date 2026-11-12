@@ -192,10 +192,11 @@ jobs:
         env:
           VARIANT: ${{ matrix.variant }}
           PROFILE: ${{ inputs.profile }}
-          FVS_SOURCE: ${{ github.workspace }}/fvs-source
           BUILD_DIR: _build
           OVERLAY_DIR: fvs-build
-        run: bash fvs-build/tools/ci/meson_configure_native.sh
+        # $GITHUB_WORKSPACE, not ${{ github.workspace }}: the expression is the
+        # host path, which does not exist inside the manylinux container.
+        run: FVS_SOURCE="$GITHUB_WORKSPACE/fvs-source" bash fvs-build/tools/ci/meson_configure_native.sh
 
       - name: Compile (Ninja)
         run: ninja -C _build -k 0
@@ -207,9 +208,9 @@ jobs:
       - name: Smoke-test the variant executable
         env:
           VARIANT: ${{ matrix.variant }}
-          FVS_SOURCE: ${{ github.workspace }}/fvs-source
         run: |
           set -euo pipefail
+          FVS_SOURCE="$GITHUB_WORKSPACE/fvs-source"
           BIN_REL="_build/FVS${VARIANT}"
           test -x "$BIN_REL"
           if ldd "$BIN_REL" | grep -q "FVS${VARIANT}\.so"; then
