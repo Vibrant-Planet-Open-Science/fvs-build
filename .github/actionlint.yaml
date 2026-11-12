@@ -1,0 +1,7 @@
+# actionlint v1.7.12 does not know the documented job.workflow_* context
+# properties (rhysd/actionlint#705, fix in #707). Drop this once a release
+# includes it.
+paths:
+  .github/workflows/**/*.{yml,yaml}:
+    ignore:
+      - 'property "workflow_(repository|ref|sha|file_path)" is not defined in object type'

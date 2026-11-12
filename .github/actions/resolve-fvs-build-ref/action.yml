@@ -1,18 +1,23 @@
-# Composite action: derive fvs-build repository and ref from github.workflow_ref
-# so actions/checkout matches the reusable workflow invocation (same idiom as
-# GitHub's docs for self-checkout inside workflow_call).
-name: Resolve fvs-build repo/ref from workflow_ref
+# Composite action: identify the fvs-build repo, ref and commit that define the
+# running reusable workflow. In a called workflow the github context belongs to
+# the caller (github.workflow_ref names the caller's workflow); job.workflow_*
+# names the workflow file that defines the current job, so it is correct for
+# both in-repo and external callers.
+name: Resolve fvs-build repo/ref/sha
 description: >
-  github.workflow_ref looks like owner/repo/.github/workflows/<file>@<ref>.
-  Outputs owner/repo and ref for a following actions/checkout of this overlay.
+  Outputs fvs-build's owner/repo, the ref the workflow was called at (e.g.
+  refs/tags/v0.7.1), and its commit SHA, from job.workflow_*.
 
 outputs:
   repo:
     description: fvs-build repository in owner/name form.
     value: ${{ steps.resolve.outputs.repo }}
   ref:
-    description: Git ref (branch, tag, or SHA) of the invoked workflow file.
+    description: Git ref the reusable workflow was called at (provenance).
     value: ${{ steps.resolve.outputs.ref }}
+  sha:
+    description: Commit SHA of the reusable workflow (what to check out).
+    value: ${{ steps.resolve.outputs.sha }}
 
 runs:
   using: composite
@@ -20,7 +25,20 @@ runs:
     - id: resolve
       shell: bash
       env:
-        WF_REF: ${{ github.workflow_ref }}
-      # $GITHUB_ACTION_PATH, not ${{ github.action_path }}: in container jobs
-      # the expression is the host path, the variable the container path.
-      run: bash "$GITHUB_ACTION_PATH/resolve.sh"
+        WF_REPO: ${{ job.workflow_repository }}
+        WF_REF: ${{ job.workflow_ref }}
+        WF_SHA: ${{ job.workflow_sha }}
+      run: |
+        set -euo pipefail
+        # job.workflow_* is unavailable on GitHub Enterprise Server.
+        if [ -z "$WF_REPO" ] || [ -z "$WF_REF" ] || [ -z "$WF_SHA" ]; then
+          echo "ERROR: job.workflow_repository/ref/sha are empty" >&2
+          exit 1
+        fi
+        # job.workflow_ref is <owner>/<repo>/<path>@<ref>.
+        {
+          echo "repo=${WF_REPO}"
+          echo "ref=${WF_REF##*@}"
+          echo "sha=${WF_SHA}"
+        } >> "$GITHUB_OUTPUT"
+        echo "fvs-build: ${WF_REPO} @ ${WF_REF##*@} (${WF_SHA})"

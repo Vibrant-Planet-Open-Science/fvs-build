@@ -211,4 +211,4 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
   - `tools/ci/smoke_test_native.sh` — runs each variant executable to `STOP 20` and checks its `--version` build info.
   - `tools/ci/stage_variant_native.py` — stages each variant's binaries and writes its build info via `tools/ci/provenance.py`.
   - `.github/actions/collect-native-bundle/` — assembles the bundle, manifest and SBOM.
-  - `.github/actions/resolve-fvs-build-ref/` — parses `github.workflow_ref` into the overlay repo and ref.
+  - `.github/actions/resolve-fvs-build-ref/` — reads the overlay repo, ref and commit from `job.workflow_*` (correct for callers in other repos, where `github.*` is the caller's).
