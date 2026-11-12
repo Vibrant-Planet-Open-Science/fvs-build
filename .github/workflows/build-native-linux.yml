@@ -107,7 +107,7 @@ jobs:
       # Reusable-workflow jobs do not populate the workspace by default; local
       # composite actions need .github/actions/* on disk before uses: ./...
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -290,7 +290,7 @@ jobs:
       # can resolve uses: ./.github/actions/... (the composite's own checkout
       # runs too late).
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 

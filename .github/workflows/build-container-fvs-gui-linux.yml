@@ -132,7 +132,7 @@ jobs:
     steps:
       # Reusable-workflow jobs need the workflow repo on disk before uses: ./...
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -141,7 +141,7 @@ jobs:
         uses: ./.github/actions/resolve-fvs-build-ref
 
       - name: Check out fvs-build (Dockerfile.fvs-gui + baked files)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.fb_ref.outputs.repo }}
           ref: ${{ steps.fb_ref.outputs.ref }}
@@ -179,7 +179,7 @@ jobs:
       # siblings under fvs-gui-context/ so Dockerfile.fvs-gui has stable COPY
       # paths regardless of where the packages live inside the Interface repo.
       - name: Check out ForestVegetationSimulator-Interface source
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ${{ inputs.interface_repo }}
           ref: ${{ inputs.interface_ref }}

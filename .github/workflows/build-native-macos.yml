@@ -85,7 +85,7 @@ jobs:
       MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -254,7 +254,7 @@ jobs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 

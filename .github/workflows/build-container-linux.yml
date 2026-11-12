@@ -130,7 +130,7 @@ jobs:
     steps:
       # Reusable-workflow jobs need the workflow repo on disk before uses: ./...
       - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 1
 
@@ -139,7 +139,7 @@ jobs:
         uses: ./.github/actions/resolve-fvs-build-ref
 
       - name: Check out fvs-build (Dockerfile.runtime)
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           repository: ${{ steps.fb_ref.outputs.repo }}
           ref: ${{ steps.fb_ref.outputs.ref }}
