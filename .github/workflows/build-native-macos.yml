@@ -103,6 +103,10 @@ jobs:
     defaults:
       run:
         shell: bash
+    env:
+      # Homebrew GCC otherwise targets the runner's macOS, and the binaries
+      # (and any wheel built from them) refuse to load on older releases.
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
     strategy:
       fail-fast: false
       matrix:
@@ -248,6 +252,12 @@ jobs:
             if [ -n "$leaks" ]; then
               echo "ERROR: $f has non-system runtime dependencies:" >&2
               printf '%s\n' "$leaks" | sed 's/^/  /' >&2
+              status=1
+            fi
+            minos="$(otool -l "$f" | awk '/LC_BUILD_VERSION/ {b=1} b && $1 == "minos" {print $2; exit}')"
+            echo "minos: ${minos}"
+            if [ "$minos" != "$MACOSX_DEPLOYMENT_TARGET" ]; then
+              echo "ERROR: $f targets macOS ${minos}, expected ${MACOSX_DEPLOYMENT_TARGET}" >&2
               status=1
             fi
           done
