@@ -263,8 +263,10 @@ jobs:
       - name: Verify single GCC major in artifacts
         env:
           GCC_MAJOR: ${{ inputs.gcc_major }}
-        # $VARIANTS is unquoted on purpose: one path per variant.
-        run: bash fvs-build/tools/ci/check_gcc_major.sh $(printf '_build/FVS%s.exe ' $VARIANTS) $(printf '_build/FVS%s.dll ' $VARIANTS)
+        run: |
+          files=()
+          for v in $VARIANTS; do files+=("_build/FVS$v.exe" "_build/FVS$v.dll"); done
+          bash fvs-build/tools/ci/check_gcc_major.sh "${files[@]}"
 
       - name: Stage artifacts and per-variant build-info
         env:
