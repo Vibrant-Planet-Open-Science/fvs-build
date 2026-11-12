@@ -1,0 +1,16 @@
+# TEMPORARY probe (do not merge): which context values name the caller vs the
+# called reusable workflow. Opens as a draft PR; delete the branch after.
+name: probe-context-caller
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/probe-context-*.yml
+      - .github/actions/probe-context/**
+
+permissions:
+  contents: read
+
+jobs:
+  called:
+    uses: ./.github/workflows/probe-context-called.yml

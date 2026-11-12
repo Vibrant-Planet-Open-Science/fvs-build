@@ -1,0 +1,42 @@
+# TEMPORARY probe (do not merge): the called side of probe-context-caller.yml.
+name: probe-context-called
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Print github.* vs job.* in the called workflow
+        env:
+          GH_REPOSITORY: ${{ github.repository }}
+          GH_WORKFLOW_REF: ${{ github.workflow_ref }}
+          GH_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          JOB_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+          JOB_WORKFLOW_REF: ${{ job.workflow_ref }}
+          JOB_WORKFLOW_SHA: ${{ job.workflow_sha }}
+          JOB_WORKFLOW_FILE_PATH: ${{ job.workflow_file_path }}
+        run: env | grep -E '^(GH|JOB)_' | sort
+
+      # The fix under test: check out the repo that defines this workflow.
+      - name: Check out the called workflow's repository
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          fetch-depth: 1
+
+      - name: Confirm the checkout is the workflow's commit
+        env:
+          WANT: ${{ job.workflow_sha }}
+        run: |
+          have="$(git rev-parse HEAD)"
+          echo "HEAD=${have} job.workflow_sha=${WANT}"
+          test "$have" = "$WANT"
+
+      # Does the job context reach a local composite action?
+      - uses: ./.github/actions/probe-context

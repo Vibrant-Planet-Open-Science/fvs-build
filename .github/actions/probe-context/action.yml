@@ -1,0 +1,14 @@
+# TEMPORARY probe (do not merge): is the job context visible inside a
+# composite action called from a reusable workflow?
+name: probe-context
+description: Print job.workflow_* as seen from a composite action.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        IN_COMPOSITE_JOB_WORKFLOW_REPOSITORY: ${{ job.workflow_repository }}
+        IN_COMPOSITE_JOB_WORKFLOW_REF: ${{ job.workflow_ref }}
+        IN_COMPOSITE_JOB_WORKFLOW_SHA: ${{ job.workflow_sha }}
+        IN_COMPOSITE_GH_WORKFLOW_REF: ${{ github.workflow_ref }}
+      run: env | grep -E '^IN_COMPOSITE_' | sort
