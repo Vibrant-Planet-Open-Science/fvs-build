@@ -46,7 +46,7 @@ RUN apt-get update && apt-get install -y libgfortran5 && rm -rf /var/lib/apt/lis
 OCI provenance labels (`org.opencontainers.image.*` plus custom `org.vibrantplanet.fvs.*`) record the source repo, ref, SHA, toolchain versions, and variant set baked in. You can inspect these labels with:
 
 ```bash
-docker inspect ghcr.io/vibrant-planet-open-science/usfs-fvs:FS2026.3 | jq '.[0].Config.Labels'
+docker inspect ghcr.io/vibrant-planet-open-science/usfs-fvs:2027.1.0 | jq '.[0].Config.Labels'
 ```
 
 ## Variants
