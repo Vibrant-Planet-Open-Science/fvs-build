@@ -19,7 +19,7 @@
 project(
   'fvs-build',
   ['c', 'cpp', 'fortran'],
-  version: '0.7.0',
+  version: '0.7.0',  # x-release-please-version
   meson_version: '>=1.8.0',
   default_options: [
     'c_std=c11',
