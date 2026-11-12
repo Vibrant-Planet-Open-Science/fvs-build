@@ -147,7 +147,7 @@ jobs:
           ref: ${{ steps.fb_ref.outputs.ref }}
 
       - name: Download fvs-native-linux artifact bundle
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: ${{ matrix.arch == 'arm64' && inputs.artifact_name_arm64 || inputs.artifact_name }}
           path: bundle
@@ -348,7 +348,7 @@ jobs:
       image_digest: ${{ steps.create.outputs.image_digest }}
     steps:
       - name: Download digests
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: container-fvs-gui-digest-*-${{ github.run_id }}
           path: digests
