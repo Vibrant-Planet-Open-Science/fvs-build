@@ -73,17 +73,6 @@ RUN python3 -m venv "${VIRTUAL_ENV}" \
   jupyter-server-proxy \
   jupyterhub
 
-# fvsOL/rFVS build + runtime R dependencies. devtools/roxygen2/remotes are here
-# because neither package ships NAMESPACE/man, so document() must run before
-# install().
-RUN Rscript -e 'pkgs <- c( \
-  "devtools", "roxygen2", "remotes", \
-  "shiny", "Cairo", "rhandsontable", "ggplot2", "RSQLite", "plyr", "dplyr", \
-  "colourpicker", "rgl", "leaflet", "zip", "openxlsx", "shinyFiles"); \
-  install.packages(pkgs); \
-  missing <- setdiff(pkgs, rownames(installed.packages())); \
-  if (length(missing)) { message("failed to install: ", paste(missing, collapse = ", ")); quit(status = 1) }'
-
 # rFVS::fvsLoad() globs FVS*.so here to auto-discover variants. The glob is also
 # the guard: matching nothing fails the build rather than shipping an empty image.
 COPY bundle/FVS*.so /opt/fvs/FVSbin/
@@ -93,20 +82,27 @@ COPY bundle/provenance/manifest.json         /usr/share/fvs-build/manifest.json
 COPY bundle/sbom/fvs-native-linux.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
 
 # rFVS + fvsOL sources, staged by the workflow as siblings (the fvsOL data-gen
-# scripts and devtools calls assume the sibling layout).
+# scripts assume the sibling layout).
 COPY fvs-gui-context/rFVS/  /opt/fvs/interface/rFVS/
 COPY fvs-gui-context/fvsOL/ /opt/fvs/interface/fvsOL/
 
-# Guard: sources predating upstream PR #29 use dbWriteTable(DBI::SQL("temp.X")),
-# which breaks on RSQLite >= 3.53.1 and greys out the app on stand selection --
-# an image that builds fine and fails in the UI. The release tag FS2026.2
-# predates the fix, so this stays until no supported interface_ref can.
+# rFVS and fvsOL ship NAMESPACE and man/ from Interface release 20261019;
+# older refs would install packages with no NAMESPACE.
 WORKDIR /opt/fvs/interface
-RUN if grep -rq 'DBI::SQL("temp' fvsOL/R; then \
-  echo "ERROR: interface source predates the RSQLite temp-table fix (PR #29)." >&2; \
-  echo "       Use an interface_ref at or after upstream main 92dc046." >&2; \
+RUN for p in rFVS fvsOL; do \
+  if [ ! -f "$p/NAMESPACE" ]; then \
+  echo "ERROR: $p has no NAMESPACE; use an interface_ref at or after 20261019." >&2; \
   exit 1; \
-  fi
+  fi; \
+  done
+
+# Install the R packages fvsOL declares (Depends + Imports), as r2u binaries.
+RUN Rscript -e 'd <- read.dcf("fvsOL/DESCRIPTION", c("Depends", "Imports")); \
+  pkgs <- trimws(sub("[(].*", "", unlist(strsplit(d[!is.na(d)], ",")))); \
+  pkgs <- setdiff(pkgs[nzchar(pkgs)], c("R", "rFVS", rownames(installed.packages(priority = "base")))); \
+  install.packages(pkgs); \
+  missing <- setdiff(pkgs, rownames(installed.packages())); \
+  if (length(missing)) { message("failed to install: ", paste(missing, collapse = ", ")); quit(status = 1) }'
 
 # Patches applied BEFORE the package is built so the installed copy carries
 # them. The image runs fvsOL in LOCAL mode (see the proxy config), which is the
@@ -116,7 +112,7 @@ RUN if grep -rq 'DBI::SQL("temp' fvsOL/R; then \
 COPY docker/fvs-gui/patches/ /opt/fvs/patches/
 RUN git apply --verbose /opt/fvs/patches/*.patch
 
-# Assert the patch actually took, in the shape of the DBI::SQL guard above: an
+# Assert the patch actually took, like the NAMESPACE guard above: an
 # origin-absolute stand-image URL and the mis-cased lock-file removal are both
 # invisible at build time and only surface in a live session.
 RUN if grep -rq '"/www/s' fvsOL/R; then \
@@ -134,12 +130,12 @@ RUN if grep -rq '"/www/s' fvsOL/R; then \
 # prms.RData and fvsOnlineHelpRender.RData, which fvsOL does not ship, and must
 # run with cwd = the fvsOL package dir.
 WORKDIR /opt/fvs/interface
-RUN Rscript -e 'devtools::document("rFVS"); devtools::install("rFVS", dependencies = FALSE, upgrade = FALSE)'
+RUN R CMD INSTALL rFVS
 WORKDIR /opt/fvs/interface/fvsOL
 RUN Rscript parms/mkpkeys.R \
   && Rscript inst/extdata/mkhelp.R
 WORKDIR /opt/fvs/interface
-RUN Rscript -e 'devtools::document("fvsOL"); devtools::install("fvsOL", dependencies = FALSE, upgrade = FALSE)' \
+RUN R CMD INSTALL fvsOL \
   && Rscript -e 'stopifnot(requireNamespace("fvsOL", quietly = TRUE), requireNamespace("rFVS", quietly = TRUE))'
 
 # Silence bspm's D-Bus warning on every runtime R session (no package daemon in

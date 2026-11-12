@@ -22,7 +22,7 @@
 #       with:
 #         artifact_name: ${{ needs.native.outputs.artifact_name }}
 #         artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
-#         interface_ref: FS2026.3
+#         interface_ref: "20261109"
 #         image_name: ghcr.io/<owner>/usfs-fvs-gui
 #         image_tag: FS2026.3
 #         push: true
@@ -60,13 +60,11 @@ on:
       interface_ref:
         description: >-
           Tag, branch, or SHA in interface_repo for the rFVS/fvsOL sources.
-          Must carry the RSQLite >= 3.53.1 temp-table fix (upstream main
-          92dc046, first released in FS2026.3). Refs predating that fix
-          (including the FS2026.2 release tag) fail Dockerfile.fvs-gui's
-          guard, because the GUI greys out on stand selection without it.
+          Must be release 20261019 or later: earlier refs ship rFVS/fvsOL
+          without NAMESPACE and fail Dockerfile.fvs-gui's guard.
         required: false
         type: string
-        default: "FS2026.3"
+        default: "20261109"
       image_name:
         description: >-
           Fully-qualified image name without the tag suffix, e.g.
