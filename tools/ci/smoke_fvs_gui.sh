@@ -7,7 +7,7 @@
 #   * in CI (build-container-fvs-gui-linux.yml), against the freshly-built image
 #     before the GHCR push, so a broken image is never published.
 #
-# Checks (see docs/workflow-interface.md "Smoke test"):
+# Checks (see docs/fvs-gui-container.md "Smoke test"):
 #   1. fvsOL + rFVS attach (catches Depends-not-attached, e.g. addResourcePath).
 #   2. an FVS<v>.so loads via rFVS::fvsLoad with its expected C API symbols
 #      (catches a copied .so that is not runnable in-image: glibc/libgfortran).

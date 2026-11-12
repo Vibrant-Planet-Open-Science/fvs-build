@@ -8,7 +8,7 @@ Builds and publishes the Forest Vegetation Simulator (FVS) from USDA Forest Serv
 
 Click the "Launch Binder" badge above, and you'll be taken to a cloud-hosted instance of JupyterLab running on [mybinder.org](https://mybinder.org). From there you can just click the **FVS GUI** tile from the Launcher page to fire up the FVS GUI, which is running on a virtual machine in the cloud. Be aware that Binder sessions are temporary, so download anything you want to keep before the session ends.
 
-The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`; see `docs/workflow-interface.md` for more details about how it is built and published.
+The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`; see `docs/fvs-gui-container.md` for how it is built and published.
 
 ## Run FVS on your machine using Docker
 
@@ -196,3 +196,12 @@ This is a source-list completeness bug in upstream `USDAForestService/ForestVege
 - `docker/Dockerfile.fvs-gui` — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the`FVS<v>.so`shared libraries, builds `rFVS`/`fvsOL`) from source code. Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-gui/`.
 - `binder/Dockerfile` — thin `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>` shim so mybinder.org can launch the GUI image in seconds rather than building from scratch.
 - `docs/local-builds.md` — details for running the Meson build by hand, primarily intended for developers who would like to work on the `fvs-build` project or run Meson-based builds themselves.
+- `docs/workflow-interface.md` — the reusable workflows' inputs, outputs and artifact contract.
+- `docs/fvs-gui-container.md` — maintainer notes for the FVS GUI image: build steps, the `fvsOL` Local-mode patch, smoke checks and Binder publishing.
+- Shared CI helpers used by the three native workflows:
+  - `tools/ci/expand_variants_matrix.py` — expands the `variants` CSV into the job matrix.
+  - `.github/actions/prepare-fvs-native-checkout/` — resolves the overlay repo/ref and checks out `fvs-build/` and `fvs-source/`.
+  - `tools/ci/meson_configure_native.sh` — `meson setup` with the requested `profile`.
+  - `tools/ci/stage_variant_native.py` — stages each variant's binaries and writes its build info via `tools/ci/provenance.py`.
+  - `.github/actions/collect-native-bundle/` — assembles the bundle, manifest and SBOM.
+  - `.github/actions/resolve-fvs-build-ref/` — parses `github.workflow_ref` into the overlay repo and ref.
