@@ -26,7 +26,7 @@ This runs the same JupyterLab as the Binder button above, on your own computer: 
    mkdir -p fvs-work fvs-projects && chmod 777 fvs-work fvs-projects
    ```
 
-4. Run this in the terminal. The first time, Docker downloads FVS (a few GB), which can take several minutes.
+4. Run this in the terminal. The first time, Docker downloads the image (FVS with R, Python and JupyterLab: about 1 GB to download, about 4 GB on disk), which can take several minutes.
 
    ```
    docker run --rm -p 8888:8888 -v "${PWD}/fvs-work:/home/jovyan/work" -v "${PWD}/fvs-projects:/home/jovyan/project" ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:latest
