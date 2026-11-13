@@ -6,23 +6,15 @@ name: Build Linux FVS GUI container image (reusable)
 on:
   workflow_call:
     inputs:
-      artifact_name:
+      arm64:
         description: >-
-          Name of the x86_64 fvs-native-linux artifact bundle produced by a
-          prior build-native-linux.yml job in the same workflow run (typically
-          `fvs-native-linux-x86_64-<run_id>`). Its FVS<v> executables and FVS<v>.so
-          set are used.
-        required: true
-        type: string
-      artifact_name_arm64:
-        description: >-
-          Name of the aarch64 bundle from a second build-native-linux.yml job
-          (runner_image: ubuntu-24.04-arm). When set, the image is also built
-          for linux/arm64 and the tags point at a two-arch manifest list.
-          Empty (default) builds linux/amd64 only.
+          Build linux/arm64 as well as linux/amd64, so the tags point at a
+          two-arch manifest list. Each arch needs a build-native-linux.yml job
+          earlier in the same run (arch x86_64, and aarch64 when this is true);
+          its bundle `fvs-native-linux-<arch>-<run_id>` is downloaded by name.
         required: false
-        type: string
-        default: ""
+        type: boolean
+        default: true
       interface_repo:
         description: >-
           Source repo (owner/name) providing the rFVS + fvsOL R packages.
@@ -56,13 +48,6 @@ on:
         required: false
         type: string
         default: ""
-      runner_image:
-        description: >-
-          GitHub-hosted runner image label for the amd64 leg and the
-          manifest job. The arm64 leg always runs on ubuntu-24.04-arm.
-        required: false
-        type: string
-        default: "ubuntu-24.04"
       push:
         description: >-
           Push the built image to the registry after the build succeeds.
@@ -89,20 +74,20 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.arch }} and (optionally) push by digest
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || inputs.runner_image }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     strategy:
       fail-fast: true
       matrix:
         arch: [amd64, arm64]
         exclude:
-          - arch: ${{ inputs.artifact_name_arm64 == '' && 'arm64' || 'none' }}
+          - arch: ${{ !inputs.arm64 && 'arm64' || 'none' }}
     outputs:
       image_ref: ${{ steps.refs.outputs.image_ref }}
     env:
       ARCH: ${{ matrix.arch }}
     steps:
       # In a called workflow github.* and a bare checkout are the caller's repo;
-      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
+      # job.workflow_* is this repo, which tools/ needs.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
@@ -113,7 +98,7 @@ jobs:
       - name: Download fvs-native-linux artifact bundle
         uses: actions/download-artifact@v8
         with:
-          name: ${{ matrix.arch == 'arm64' && inputs.artifact_name_arm64 || inputs.artifact_name }}
+          name: fvs-native-linux-${{ matrix.arch == 'arm64' && 'aarch64' || 'x86_64' }}-${{ github.run_id }}
           path: bundle
 
       - name: Verify bundle provides the FVS<v>.so set
@@ -121,7 +106,7 @@ jobs:
           set -euo pipefail
           for required in \
             bundle/provenance/manifest.json \
-            bundle/sbom/fvs-native-linux.spdx.json
+            bundle/sbom/fvs-native.spdx.json
           do
             if [ ! -f "$required" ]; then
               echo "ERROR: bundle missing required file: ${required}" >&2
@@ -208,15 +193,22 @@ jobs:
 
       # --load for the smoke test and SBOM scan; the push step reruns the saved
       # arguments from the builder cache, so a failed build never publishes.
+      # The gha layer cache is for pull requests only: a dispatch on main may
+      # build an arbitrary interface_repo, whose layers must never reach a
+      # release build. Releases build clean.
       - name: Build FVS GUI image (load locally)
         env:
           INTERFACE_REPO: ${{ inputs.interface_repo }}
           INTERFACE_REF: ${{ inputs.interface_ref }}
         run: |
           set -euo pipefail
+          cache=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            cache=(--cache-from "type=gha,scope=fvs-gui-${ARCH}"
+              --cache-to "type=gha,mode=max,scope=fvs-gui-${ARCH},ignore-error=true")
+          fi
           args=(
             --platform "linux/${ARCH}"
-            --cache-from "type=gha,scope=fvs-gui-${ARCH}"
             --build-arg SOURCE_REPO="${SOURCE_REPO}"
             --build-arg SOURCE_REF="${SOURCE_REF}"
             --build-arg SOURCE_SHA="${SOURCE_SHA}"
@@ -234,9 +226,7 @@ jobs:
             .
           )
           printf '%s\n' "${args[@]}" > "${RUNNER_TEMP}/buildx-args"
-          docker buildx build --load --tag "${IMAGE_REF}" \
-            --cache-to "type=gha,mode=max,scope=fvs-gui-${ARCH},ignore-error=true" \
-            "${args[@]}"
+          docker buildx build --load --tag "${IMAGE_REF}" "${cache[@]}" "${args[@]}"
 
       - name: Smoke-test the built image
         run: bash tools/ci/smoke_fvs_gui.sh "${IMAGE_REF}"
@@ -298,7 +288,7 @@ jobs:
     name: Create multi-arch manifest list
     needs: build
     if: inputs.push
-    runs-on: ${{ inputs.runner_image }}
+    runs-on: ubuntu-24.04
     outputs:
       image_digest: ${{ steps.create.outputs.image_digest }}
     steps:

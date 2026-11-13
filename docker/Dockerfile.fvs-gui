@@ -70,7 +70,7 @@ COPY bundle/FVS*.so /usr/local/lib/
 COPY --chmod=755 bundle/FVS?? /usr/local/bin/
 
 COPY bundle/provenance/manifest.json         /usr/share/fvs-build/manifest.json
-COPY bundle/sbom/fvs-native-linux.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
+COPY bundle/sbom/fvs-native.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
 
 # The fvsOL data-gen scripts assume rFVS is a sibling.
 COPY fvs-gui-context/rFVS/  /opt/fvs/interface/rFVS/

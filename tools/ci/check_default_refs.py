@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Fail unless every copy of the default FVS and Interface refs agrees.
 
-Groups: source_ref+image_tag (FVS), interface_ref (Interface); skips ``${{…}}``,
-``...`` and ``ci-`` tags.
+Groups: source_ref+image_tag (FVS), interface_ref (Interface); skips `${{…}}`,
+`...` and `ci-` tags.
 """
 
 import re

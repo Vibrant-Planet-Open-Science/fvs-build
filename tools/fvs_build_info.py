@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Print the ``-DFVS_GIT_*`` flags ``base/version.f90`` reads, one per line.
+"""Print the `-DFVS_GIT_*` flags `base/version.f90` reads, one per line.
 
-The Meson equivalent of upstream's ``bin/makefile`` git queries. Each value
-falls back to ``unknown`` when git fails, as upstream does.
+The Meson equivalent of upstream's `bin/makefile` git queries. Each value
+falls back to `unknown` when git fails, as upstream does.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ ORG_RE = re.compile(r".*[:/]([^/]+)/[^/]*?(?:\.git)?$")
 
 
 def _git(source_dir: Path, *args: str) -> str | None:
-    """Return stripped ``git -C source_dir *args`` stdout, or ``None`` on failure."""
+    """Return stripped `git -C source_dir *args` stdout, or `None` on failure."""
     try:
         proc = subprocess.run(
             ["git", "-C", str(source_dir), *args],
@@ -42,7 +42,7 @@ def _org(remote: str) -> str:
 
 
 def collect(source_dir: Path) -> dict[str, str]:
-    """Map each ``FVS_GIT_*`` suffix to its value; untracked files count as dirty."""
+    """Map each `FVS_GIT_*` suffix to its value; untracked files count as dirty."""
     remote = _git(source_dir, "remote", "get-url", "origin") or UNKNOWN
     version = (
         _git(source_dir, "describe", "--tags", "--exact-match")

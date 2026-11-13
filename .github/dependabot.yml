@@ -1,11 +1,8 @@
-# .github/actions/* is not scanned from "/". `build` is a visible
-# release-please type, so updates feed the next release.
+# `build` is a visible release-please type, so updates feed the next release.
 version: 2
 updates:
   - package-ecosystem: github-actions
-    directories:
-      - /
-      - /.github/actions/*
+    directory: /
     schedule:
       interval: weekly
     commit-message:
@@ -17,3 +14,12 @@ updates:
       actions:
         patterns:
           - "*"
+
+  # The Meson pin the native workflows install.
+  - package-ecosystem: pip
+    directory: /tools/ci
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: build
+      include: scope

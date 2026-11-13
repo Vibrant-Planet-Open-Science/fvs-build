@@ -17,32 +17,12 @@ on:
         type: string
       variants:
         description: >-
-          Comma-separated list of FVS variant codes. Defaults to the 22 US
-          variants that build cleanly on Linux; Windows may differ slightly.
+          Comma-separated list of FVS variant codes. Defaults to empty, which
+          builds all US variants. The Canadian variants (bc, on) are excluded
+          by default due to incomplete upstream source lists.
         required: false
         type: string
-        default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
-      runner_image:
-        description: >-
-          GitHub-hosted Windows runner label (MSYS2 UCRT64 toolchain).
-        required: false
-        type: string
-        default: "windows-latest"
-      gcc_major:
-        description: >-
-          GCC major version. Installs the exact MSYS2 package set listed for
-          this major in tools/ci/msys2-toolchains.json (GCC plus the matching
-          CRT, headers and winpthreads); a major with no entry fails before
-          compiling.
-        required: false
-        type: string
-        default: "15"
-      meson_version:
-        description: >-
-          Exact Meson version installed via pip (UCRT64 Python).
-        required: false
-        type: string
-        default: "1.12.0"
+        default: ""
       profile:
         description: >-
           Build profile. One of: reference, debug. reference is designed
@@ -54,7 +34,7 @@ on:
     outputs:
       artifact_name:
         description: >-
-          Name of the bundled artifact. Exactly `fvs-native-windows-<run_id>`.
+          Name of the bundled artifact. Exactly `fvs-native-windows-x86_64-<run_id>`.
         value: ${{ jobs.build.outputs.artifact_name }}
 
 permissions:
@@ -63,7 +43,8 @@ permissions:
 jobs:
   build:
     name: Build (Windows)
-    runs-on: ${{ inputs.runner_image }}
+    # The target is set by the pinned MSYS2 toolchain, not the runner image.
+    runs-on: windows-2025
     outputs:
       artifact_name: ${{ steps.bundle.outputs.artifact_name }}
     defaults:
@@ -71,21 +52,46 @@ jobs:
         shell: msys2 {0}
     env:
       MSYSTEM: UCRT64
+      GCC_MAJOR: "15"
+      # Installed as an exact set; see "Install pinned GCC toolchain".
+      MSYS2_GCC_PACKAGES: >-
+        mingw-w64-ucrt-x86_64-gcc-15.2.0-11
+        mingw-w64-ucrt-x86_64-gcc-libs-15.2.0-11
+        mingw-w64-ucrt-x86_64-gcc-fortran-15.2.0-11
+        mingw-w64-ucrt-x86_64-gcc-libgfortran-15.2.0-11
+        mingw-w64-ucrt-x86_64-crt-13.0.0.r488.g3fedac280-1
+        mingw-w64-ucrt-x86_64-headers-13.0.0.r488.g3fedac280-1
+        mingw-w64-ucrt-x86_64-winpthreads-13.0.0.r488.g3fedac280-1
+        mingw-w64-ucrt-x86_64-libwinpthread-13.0.0.r488.g3fedac280-1
     steps:
       # In a called workflow github.* and a bare checkout are the caller's repo;
-      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
+      # job.workflow_* is this repo, which tools/ needs.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          fetch-depth: 1
+          path: fvs-build
+
+      # fetch-depth: 0 because meson.build derives build-info macros from git in
+      # this tree, and `git describe --tags` needs tags and history.
+      - name: Check out FVS source tree
+        id: source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.source_repo }}
+          ref: ${{ inputs.source_ref }}
+          path: fvs-source
+          submodules: recursive
+          fetch-depth: 0
 
       - name: Set up MSYS2 (UCRT64)
         uses: msys2/setup-msys2@v2
         with:
           msystem: UCRT64
           update: true
+          # Pull requests only, like the Meson cache below.
+          cache: ${{ github.event_name == 'pull_request' }}
           # coreutils etc. come from the MSYS repo (no mingw-w64 builds). MSYS
           # git, not Git-for-Windows, is on PATH in UCRT64 shells. GCC comes
           # from the pinned set installed below.
@@ -105,30 +111,16 @@ jobs:
         id: variants
         env:
           VARIANTS_CSV: ${{ inputs.variants }}
-        run: bash tools/ci/resolve_variants.sh
-
-      - id: prepare
-        uses: ./.github/actions/prepare-fvs-native-checkout
-        with:
-          source_repo: ${{ inputs.source_repo }}
-          source_ref: ${{ inputs.source_ref }}
-          run_shell: "msys2 {0}"
+        run: bash fvs-build/tools/ci/resolve_variants.sh
 
       # MSYS2 carries one GCC at a time, and GCC, CRT, headers and winpthreads
       # must move together (USDAForestService/ForestVegetationSimulator#71), so
       # install an exact package set from the repo archive.
-      - name: Install pinned GCC toolchain (gcc_major)
+      - name: Install pinned GCC toolchain
         id: toolchain
-        env:
-          V: ${{ inputs.gcc_major }}
         run: |
           set -euo pipefail
-          mapfile -t PKGS < <(python -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get(sys.argv[2], [])))' \
-            fvs-build/tools/ci/msys2-toolchains.json "$V" | tr -d '\r')
-          if [ "${#PKGS[@]}" -eq 0 ] || [ -z "${PKGS[0]}" ]; then
-            echo "ERROR: gcc_major=${V} has no entry in tools/ci/msys2-toolchains.json" >&2
-            exit 1
-          fi
+          read -ra PKGS <<< "$MSYS2_GCC_PACKAGES"
           DL=$(mktemp -d)
           for p in "${PKGS[@]}"; do
             curl -fsSL --retry 3 -o "${DL}/${p}-any.pkg.tar.zst" \
@@ -155,15 +147,15 @@ jobs:
           } >> "$GITHUB_ENV"
           # Cache keys cannot contain commas; keep the version line's identity.
           echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
+          # CRT/headers bumps leave fc_id unchanged but must still miss the cache.
+          echo "pkgs_id=$(sha256sum <<< "$MSYS2_GCC_PACKAGES" | cut -c1-12)" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned Meson
-        env:
-          MESON_VERSION: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
           # MSYS2's mingw python is PEP 668 "externally managed". The runner is
           # ephemeral and pacman has no pinnable Meson, so override it.
-          python -m pip install --break-system-packages "meson==${MESON_VERSION}"
+          python -m pip install --break-system-packages -r fvs-build/tools/ci/requirements-build.txt
 
       # A fresh checkout stamps files with the current time, so Ninja would
       # rebuild a restored _build in full. Safe because the cache key holds the
@@ -171,20 +163,25 @@ jobs:
       - name: Pin source timestamps for the build cache
         run: find fvs-source fvs-build -name .git -prune -o -type f -exec touch -t 200001010000 {} +
 
+      # Pull requests only: their cache scope can't reach main, while a dispatch
+      # on main may build arbitrary source_repo code that could poison the
+      # cache for later (release) runs. Those always build clean.
       - name: Cache Meson build directory
+        if: github.event_name == 'pull_request'
         uses: actions/cache@v6
         with:
           path: _build
           key: >-
-            meson-win-${{ steps.variants.outputs.id }}-${{ steps.prepare.outputs.source_sha }}-${{
+            meson-win-${{ steps.variants.outputs.id }}-${{ steps.source.outputs.commit }}-${{
               inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{
+              steps.toolchain.outputs.pkgs_id }}-${{
               hashFiles(
                 'fvs-build/meson.build',
                 'fvs-build/meson_options.txt',
                 'fvs-build/tools/parse_sourcelist.py',
                 'fvs-build/tools/fvs_build_info.py',
                 'fvs-build/tools/ci/meson_configure_native.sh',
-                'fvs-build/tools/ci/msys2-toolchains.json'
+                'fvs-build/tools/ci/requirements-build.txt'
               )
             }}
 
@@ -227,8 +224,6 @@ jobs:
           exit $status
 
       - name: Verify single GCC major in artifacts
-        env:
-          GCC_MAJOR: ${{ inputs.gcc_major }}
         run: |
           files=()
           for v in $VARIANTS; do files+=("_build/FVS$v.exe" "_build/FVS$v.dll"); done
@@ -237,23 +232,16 @@ jobs:
       - name: Bundle binaries, provenance and SBOM
         id: bundle
         env:
-          FVS_NATIVE_PLATFORM: windows
-          ARTIFACT_NAME: fvs-native-windows-${{ github.run_id }}
           VARIANTS_INPUT: ${{ inputs.variants }}
           BUILD_PROFILE: ${{ inputs.profile }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
-          SOURCE_SHA: ${{ steps.prepare.outputs.source_sha }}
-          FVS_BUILD_REPO: ${{ steps.prepare.outputs.overlay_repo }}
-          FVS_BUILD_REF: ${{ steps.prepare.outputs.overlay_ref }}
-          FVS_BUILD_SHA: ${{ steps.prepare.outputs.fvs_build_sha }}
-          RUNNER_IMAGE: ${{ inputs.runner_image }}
-          GCC_MAJOR: ${{ inputs.gcc_major }}
-          MESON_PIN: ${{ inputs.meson_version }}
-        run: |
-          set -euo pipefail
-          python fvs-build/tools/ci/provenance.py bundle
-          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+          SOURCE_SHA: ${{ steps.source.outputs.commit }}
+          FVS_BUILD_REPO: ${{ job.workflow_repository }}
+          FVS_BUILD_REF: ${{ job.workflow_ref }}
+          FVS_BUILD_SHA: ${{ job.workflow_sha }}
+          RUNNER_IMAGE: windows-2025
+        run: python fvs-build/tools/ci/provenance.py bundle
 
       - name: Upload bundle
         uses: actions/upload-artifact@v7

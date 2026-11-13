@@ -17,7 +17,7 @@ on:
       artifact_name_arm64:
         description: >-
           Name of the aarch64 bundle from a second build-native-linux.yml job
-          (runner_image: ubuntu-24.04-arm). When set, the image is also built
+          (arch: aarch64). When set, the image is also built
           for linux/arm64 and the tags point at a two-arch manifest list.
           Empty (default) builds linux/amd64 only.
         required: false
@@ -98,7 +98,7 @@ jobs:
       ARCH: ${{ matrix.arch }}
     steps:
       # In a called workflow github.* and a bare checkout are the caller's repo;
-      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
+      # job.workflow_* is this repo, which tools/ needs.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
@@ -117,7 +117,7 @@ jobs:
           set -euo pipefail
           for required in \
             bundle/provenance/manifest.json \
-            bundle/sbom/fvs-native-linux.spdx.json
+            bundle/sbom/fvs-native.spdx.json
           do
             if [ ! -f "$required" ]; then
               echo "ERROR: bundle missing required file: ${required}" >&2

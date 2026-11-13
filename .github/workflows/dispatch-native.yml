@@ -1,0 +1,74 @@
+name: Dispatch native build (manual)
+
+on:
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        required: true
+        default: linux-x86_64
+        type: choice
+        options:
+          - linux-x86_64
+          - linux-aarch64
+          - macos
+          - windows
+      source_repo:
+        description: "Source repo (owner/name)"
+        required: true
+        default: "USDAForestService/ForestVegetationSimulator"
+        type: string
+      source_ref:
+        description: "Source ref (tag, branch, or SHA)"
+        required: true
+        default: "2027.1.0"
+        type: string
+      variants:
+        description: >-
+          Comma-separated list of FVS variant codes. Defaults to empty, which
+          builds all US variants. The Canadian variants (bc, on) are excluded
+          by default due to incomplete upstream source lists.
+        required: false
+        default: ""
+        type: string
+      profile:
+        description: "Build profile: reference (goldens-aligned) or debug (runtime checks)"
+        required: false
+        default: reference
+        type: choice
+        options:
+          - reference
+          - debug
+
+permissions:
+  contents: read
+
+# secrets: inherit on a job if source_repo is private.
+jobs:
+  linux:
+    if: startsWith(inputs.platform, 'linux-')
+    uses: ./.github/workflows/build-native-linux.yml
+    with:
+      source_repo: ${{ inputs.source_repo }}
+      source_ref: ${{ inputs.source_ref }}
+      variants: ${{ inputs.variants }}
+      arch: ${{ inputs.platform == 'linux-aarch64' && 'aarch64' || 'x86_64' }}
+      profile: ${{ inputs.profile }}
+
+  macos:
+    if: inputs.platform == 'macos'
+    uses: ./.github/workflows/build-native-macos.yml
+    with:
+      source_repo: ${{ inputs.source_repo }}
+      source_ref: ${{ inputs.source_ref }}
+      variants: ${{ inputs.variants }}
+      profile: ${{ inputs.profile }}
+
+  windows:
+    if: inputs.platform == 'windows'
+    uses: ./.github/workflows/build-native-windows.yml
+    with:
+      source_repo: ${{ inputs.source_repo }}
+      source_ref: ${{ inputs.source_ref }}
+      variants: ${{ inputs.variants }}
+      profile: ${{ inputs.profile }}
