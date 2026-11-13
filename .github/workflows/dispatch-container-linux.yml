@@ -48,11 +48,6 @@ on:
         required: false
         default: "ubuntu-24.04"
         type: string
-      python_version:
-        description: "actions/setup-python for the native Linux build job"
-        required: false
-        default: "3.12"
-        type: string
       gcc_major:
         description: "GCC major version for the native Linux build (manylinux_2_28 gcc-toolset: 14)"
         required: false
@@ -94,7 +89,6 @@ jobs:
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
       runner_image: ${{ inputs.runner_image }}
-      python_version: ${{ inputs.python_version }}
       gcc_major: ${{ inputs.gcc_major }}
 
   native-arm64:
@@ -106,7 +100,6 @@ jobs:
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
       runner_image: ubuntu-24.04-arm
-      python_version: ${{ inputs.python_version }}
       gcc_major: ${{ inputs.gcc_major }}
 
   container:

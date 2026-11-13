@@ -49,6 +49,15 @@ repos:
         entry: python3 tools/ci/check_default_refs.py
         language: system
         pass_filenames: false
+      # spdx-tools lives only in this hook's environment; the build job that
+      # writes the SBOM stays stdlib-only.
+      - id: test-provenance
+        name: test provenance SBOM and config
+        entry: python tools/ci/test_provenance.py
+        language: python
+        additional_dependencies: ["spdx-tools==0.8.5"]
+        files: ^tools/ci/(provenance|test_provenance)\.py$
+        pass_filenames: false
 
   # The docker hook needs only Docker, not a local hadolint binary.
   - repo: https://github.com/hadolint/hadolint

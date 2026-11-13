@@ -37,7 +37,6 @@ jobs:
 
           # Anything that can change native build output.
           changed=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
-            .github/actions/collect-native-bundle/action.yml \
             .github/actions/prepare-fvs-native-checkout/action.yml \
             .github/actions/resolve-fvs-build-ref/action.yml \
             .github/workflows/build-native-linux.yml \
@@ -46,7 +45,6 @@ jobs:
             .github/workflows/ci-test-reusable-native.yml \
             meson.build \
             meson_options.txt \
-            tools/ci/stage_variant_native.py \
             tools/ci/provenance.py \
             tools/ci/resolve_variants.sh \
             tools/ci/smoke_test_native.sh \

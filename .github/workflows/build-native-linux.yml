@@ -57,14 +57,6 @@ on:
         required: false
         type: string
         default: "reference"
-      python_version:
-        description: >-
-          Python version for Meson and the build scripts: the image's
-          /opt/python/cpXY build in the build jobs, actions/setup-python in
-          the collect job.
-        required: false
-        type: string
-        default: "3.12"
     outputs:
       artifact_name:
         description: >-
@@ -72,7 +64,7 @@ on:
           `fvs-native-linux-<arch>-<run_id>`, where <arch> is the runner's
           `uname -m` (x86_64 or aarch64). The container workflow consumes
           this name to download and unpack the bundle.
-        value: ${{ jobs.collect-and-finalize.outputs.artifact_name }}
+        value: ${{ jobs.build.outputs.artifact_name }}
 
 permissions:
   contents: read
@@ -86,6 +78,8 @@ jobs:
     runs-on: ${{ inputs.runner_image }}
     container:
       image: quay.io/pypa/manylinux_2_28_${{ contains(inputs.runner_image, 'arm') && 'aarch64' || 'x86_64' }}
+    outputs:
+      artifact_name: ${{ steps.bundle.outputs.artifact_name }}
     steps:
       # In a called workflow github.* and a bare checkout are the caller's repo;
       # job.workflow_* is this repo, which ./.github/actions and tools/ need.
@@ -113,7 +107,6 @@ jobs:
         id: toolchain
         env:
           V: ${{ inputs.gcc_major }}
-          PYV: ${{ inputs.python_version }}
           MESON_VERSION: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
@@ -122,8 +115,7 @@ jobs:
             echo "ERROR: gcc_major=${V}, but this manylinux image provides GCC ${have}" >&2
             exit 1
           fi
-          py="/opt/python/cp${PYV/./}-cp${PYV/./}/bin"
-          test -x "$py/python3" || { echo "ERROR: no Python ${PYV} in the image" >&2; exit 1; }
+          py=/opt/python/cp312-cp312/bin
           echo "$py" >> "$GITHUB_PATH"
           {
             echo "FC=gfortran"
@@ -147,7 +139,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ steps.prepare.outputs.source_sha }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/provenance.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
+          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ steps.prepare.outputs.source_sha }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
 
       - name: Configure Meson
         env:
@@ -212,11 +204,17 @@ jobs:
           for v in $VARIANTS; do files+=("_build/FVS$v" "_build/FVS$v.so"); done
           bash fvs-build/tools/ci/check_gcc_major.sh "${files[@]}"
 
-      - name: Stage artifacts and per-variant build-info
+      - name: Resolve machine arch
+        id: arch
+        run: echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
+
+      - name: Bundle binaries, provenance and SBOM
+        id: bundle
         env:
           FVS_NATIVE_PLATFORM: linux
+          ARTIFACT_NAME: fvs-native-linux-${{ steps.arch.outputs.arch }}-${{ github.run_id }}
+          VARIANTS_INPUT: ${{ inputs.variants }}
           BUILD_PROFILE: ${{ inputs.profile }}
-          MESON_BUILDTYPE: plain
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
           SOURCE_SHA: ${{ steps.prepare.outputs.source_sha }}
@@ -228,48 +226,15 @@ jobs:
           GFORTRAN_PKG: gcc-toolset-${{ inputs.gcc_major }}-gcc-gfortran
           GPP_PKG: gcc-toolset-${{ inputs.gcc_major }}-gcc-c++
           MESON_PIN: ${{ inputs.meson_version }}
-        run: python3 fvs-build/tools/ci/stage_variant_native.py
+        run: |
+          set -euo pipefail
+          python3 fvs-build/tools/ci/provenance.py bundle
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Resolve machine arch
-        id: arch
-        run: echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
-
-      - name: Upload staging artifact
+      - name: Upload bundle
         uses: actions/upload-artifact@v7
         with:
-          # OS and arch in the name: several native builds can share one run.
-          name: linux-${{ steps.arch.outputs.arch }}-staging
-          path: staging/
-          retention-days: 1
+          name: ${{ steps.bundle.outputs.artifact_name }}
+          path: ${{ steps.bundle.outputs.artifact_name }}/
+          retention-days: 30
           if-no-files-found: error
-
-  collect-and-finalize:
-    name: Collect, SBOM, and finalize
-    runs-on: ${{ inputs.runner_image }}
-    needs: build
-    outputs:
-      artifact_name: ${{ steps.collect.outputs.artifact_name }}
-    steps:
-      # In a called workflow github.* and a bare checkout are the caller's repo;
-      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
-      - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          fetch-depth: 1
-
-      - name: Resolve machine arch
-        id: arch
-        run: echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
-
-      - id: collect
-        uses: ./.github/actions/collect-native-bundle
-        with:
-          fvs_native_platform: linux
-          staging_artifact: linux-${{ steps.arch.outputs.arch }}-staging
-          artifact_name: fvs-native-linux-${{ steps.arch.outputs.arch }}-${{ github.run_id }}
-          variants_input: ${{ inputs.variants }}
-          runner_image: ${{ inputs.runner_image }}
-          meson_version: ${{ inputs.meson_version }}
-          python_version: ${{ inputs.python_version }}

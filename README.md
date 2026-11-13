@@ -231,6 +231,5 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
   - `.github/actions/prepare-fvs-native-checkout/` — resolves the overlay repo/ref and checks out `fvs-build/` and `fvs-source/`.
   - `tools/ci/meson_configure_native.sh` — `meson setup` with the requested `profile`.
   - `tools/ci/smoke_test_native.sh` — runs each variant executable to `STOP 20` and checks its `--version` build info.
-  - `tools/ci/stage_variant_native.py` — stages each variant's binaries and writes its build info via `tools/ci/provenance.py`.
-  - `.github/actions/collect-native-bundle/` — assembles the bundle, manifest and SBOM.
+  - `tools/ci/provenance.py` — `bundle` assembles the bundle (binaries, provenance, SBOM) at the end of each build job; `manifest-to-github-env` reads its manifest for the container workflows.
   - `.github/actions/resolve-fvs-build-ref/` — reads the overlay repo, ref and commit from `job.workflow_*` (correct for callers in other repos, where `github.*` is the caller's).

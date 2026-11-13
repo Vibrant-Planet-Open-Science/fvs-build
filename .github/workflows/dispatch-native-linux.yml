@@ -38,11 +38,6 @@ on:
         required: false
         default: "reference"
         type: string
-      python_version:
-        description: "actions/setup-python version (Meson / CI scripts)"
-        required: false
-        default: "3.12"
-        type: string
 
 permissions:
   contents: read
@@ -59,5 +54,4 @@ jobs:
       gcc_major: ${{ inputs.gcc_major }}
       meson_version: ${{ inputs.meson_version }}
       profile: ${{ inputs.profile }}
-      python_version: ${{ inputs.python_version }}
     # secrets: inherit  # uncomment if source_repo is private

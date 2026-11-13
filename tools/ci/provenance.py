@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
-"""GitHub Actions helpers for native bundle provenance JSON (stdlib only).
+"""Assemble a native FVS bundle, and read its manifest back (stdlib only).
 
-``FVS_NATIVE_PLATFORM`` (``linux``, ``windows`` or ``darwin``) selects
-filenames and SBOM paths. Staging prefixes carry the OS (and arch on Linux) so
-native workflows in the same run do not collide on ``variant-<v>``.
+``bundle`` runs as the last step of each native build job. It reads its inputs
+from the environment (see ``Config``), copies the executables and stripped
+shared libraries from the Meson build directory into ``$ARTIFACT_NAME/``, and
+writes ``provenance/manifest.json``, ``provenance/per-variant/FVS<v>.json``,
+``provenance/meson-log.tail.txt`` and the SPDX SBOM.
+
+``manifest-to-github-env`` exports manifest fields for the container workflows.
 """
 
 from __future__ import annotations
 
 import argparse
+import ctypes
 import hashlib
 import json
 import os
@@ -18,9 +23,88 @@ import shlex
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+_SHA = r"[0-9a-f]{40}"
+_NUM = r"[0-9]+"
+_ANY = r".+"
+
+
+@dataclass(frozen=True)
+class Config:
+    """Bundle inputs, read once from the environment."""
+
+    platform: str
+    artifact_name: str
+    variants: tuple[str, ...]
+    variants_input: str
+    profile: str
+    source_repo: str
+    source_ref: str
+    source_sha: str
+    fvs_build_repo: str
+    fvs_build_ref: str
+    fvs_build_sha: str
+    runner_image: str
+    gcc_major: str
+    gfortran_package: str
+    gpp_package: str
+    meson_pin: str
+    compilers: tuple[str, str, str]
+    run_id: str
+    run_attempt: str
+    run_url: str
+    build_dir: Path
+    source_dir: Path
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] = os.environ) -> Config:
+        """Read and check every input, reporting all bad ones at once."""
+        errors: list[str] = []
+
+        def get(name: str, pattern: str = _ANY, default: str = "") -> str:
+            val = env.get(name, default).strip()
+            if not re.fullmatch(pattern, val):
+                errors.append(f"{name}={val!r}")
+            return val
+
+        run_id = get("GITHUB_RUN_ID", _NUM)
+        cfg = cls(
+            platform=get("FVS_NATIVE_PLATFORM", "linux|windows|darwin"),
+            artifact_name=get("ARTIFACT_NAME", r"fvs-native-[A-Za-z0-9_-]+"),
+            variants=tuple(get("VARIANTS", r"[a-z0-9]+( [a-z0-9]+)*").split()),
+            variants_input=get("VARIANTS_INPUT"),
+            profile=get("BUILD_PROFILE", "reference|debug"),
+            source_repo=get("SOURCE_REPO"),
+            source_ref=get("SOURCE_REF"),
+            source_sha=get("SOURCE_SHA", _SHA),
+            fvs_build_repo=get("FVS_BUILD_REPO"),
+            fvs_build_ref=get("FVS_BUILD_REF"),
+            fvs_build_sha=get("FVS_BUILD_SHA", _SHA),
+            runner_image=get("RUNNER_IMAGE"),
+            gcc_major=get("GCC_MAJOR", _NUM),
+            gfortran_package=get("GFORTRAN_PKG"),
+            gpp_package=get("GPP_PKG"),
+            meson_pin=get("MESON_PIN"),
+            compilers=(get("FC"), get("CC"), get("CXX")),
+            run_id=run_id,
+            run_attempt=get("GITHUB_RUN_ATTEMPT", _NUM),
+            run_url=(
+                f"{get('GITHUB_SERVER_URL')}/{get('GITHUB_REPOSITORY')}"
+                f"/actions/runs/{run_id}"
+            ),
+            build_dir=Path(get("BUILD_DIR", default="_build")),
+            source_dir=Path(get("FVS_SOURCE", default="fvs-source")),
+        )
+        if errors:
+            sys.exit(
+                "error: missing or invalid environment variables: " + ", ".join(errors)
+            )
+        return cfg
 
 
 def extract_resolved_fortran_args(build_dir: Path) -> list[str]:
@@ -55,282 +139,29 @@ def extract_resolved_fortran_args(build_dir: Path) -> list[str]:
     return []
 
 
-def _require_env(name: str) -> str:
-    val = os.environ.get(name, "").strip()
-    if not val:
-        sys.stderr.write(f"error: missing or empty environment variable: {name}\n")
-        sys.exit(1)
-    return val
+def _first_line(cmd: list[str]) -> str:
+    out = subprocess.run(
+        cmd, check=True, capture_output=True, text=True, timeout=60
+    ).stdout
+    return out.splitlines()[0].strip() if out else ""
 
 
-def _native_platform() -> str:
-    """Return the validated ``FVS_NATIVE_PLATFORM`` (default ``linux``)."""
-    raw = os.environ.get("FVS_NATIVE_PLATFORM", "linux").strip().lower()
-    if raw not in ("linux", "windows", "darwin"):
-        msg = (
-            "error: FVS_NATIVE_PLATFORM must be linux, windows, or darwin; "
-            f"got {raw!r}\n"
-        )
-        sys.stderr.write(msg)
-        sys.exit(1)
-    return raw
-
-
-def _variant_artifact_staging_prefix() -> str:
-    """Directory/artifact prefix for per-variant uploads (must match workflows)."""
-    plat = _native_platform()
-    if plat == "linux":
-        return f"linux-{platform.machine()}-variant-"
-    if plat == "darwin":
-        return "macos-variant-"
-    return "windows-variant-"
-
-
-def _binary_filename(variant: str) -> str:
-    if _native_platform() == "windows":
-        return f"FVS{variant}.exe"
-    return f"FVS{variant}"
-
-
-def _shared_library_filename(variant: str) -> str:
-    plat = _native_platform()
-    if plat == "windows":
-        return f"FVS{variant}.dll"
-    return f"FVS{variant}.so"
-
-
-def _sbom_relative_path() -> str:
-    plat = _native_platform()
-    if plat == "windows":
-        return "sbom/fvs-native-windows.spdx.json"
-    if plat == "darwin":
-        return "sbom/fvs-native-macos.spdx.json"
-    return "sbom/fvs-native-linux.spdx.json"
-
-
-def _per_variant_document() -> dict[str, Any]:
-    """Build the per-variant provenance dict from the process environment."""
-    variant = _require_env("VARIANT")
+def _hashes(path: Path) -> dict[str, str]:
+    data = path.read_bytes()
     return {
-        "schema_version": 1,
-        "variant": variant,
-        "arch": platform.machine(),
-        "binary": _binary_filename(variant),
-        "shared_library": _shared_library_filename(variant),
-        "binary_sha256": _require_env("BIN_SHA"),
-        "shared_library_sha256": _require_env("LIB_SHA"),
-        "compiled_at_utc": _require_env("TIMESTAMP"),
-        "source": {
-            "repo": _require_env("SOURCE_REPO"),
-            "ref": _require_env("SOURCE_REF"),
-            "sha": _require_env("SOURCE_SHA"),
-            "nvel": {"url": _require_env("NVEL_URL"), "sha": _require_env("NVEL_SHA")},
-            "sqlite_version": _require_env("SQLITE_VERSION"),
-        },
-        "fvs_build": {
-            "repo": _require_env("FVS_BUILD_REPO"),
-            "ref": _require_env("FVS_BUILD_REF"),
-            "sha": _require_env("FVS_BUILD_SHA"),
-        },
-        "toolchain": {
-            "runner_image": _require_env("RUNNER_IMAGE"),
-            "gcc_major": _require_env("GCC_MAJOR"),
-            "gfortran_package": _require_env("GFORTRAN_PKG"),
-            "gpp_package": _require_env("GPP_PKG"),
-            "gfortran_version": _require_env("GFORTRAN_VERSION"),
-            "gcc_version": _require_env("GCC_VERSION"),
-            "gpp_version": _require_env("GPP_VERSION"),
-            "ninja_version": _require_env("NINJA_VERSION"),
-            "meson_version": _require_env("MESON_VERSION_OUT"),
-            "meson_pin": _require_env("MESON_PIN"),
-        },
-        "build": {
-            "workflow_run_id": _require_env("GITHUB_RUN_ID"),
-            "workflow_run_attempt": _require_env("GITHUB_RUN_ATTEMPT"),
-            "profile": _require_env("BUILD_PROFILE"),
-            "buildtype": _require_env("MESON_BUILDTYPE"),
-            "fortran_args": json.loads(_require_env("FORTRAN_ARGS_JSON")),
-        },
+        "SHA1": hashlib.sha1(data, usedforsecurity=False).hexdigest(),
+        "SHA256": hashlib.sha256(data).hexdigest(),
     }
+
+
+def _utc(ts: datetime) -> str:
+    return ts.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def _write_json(path: Path, data: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     text = json.dumps(data, indent=2, ensure_ascii=False) + "\n"
     path.write_text(text, encoding="utf-8")
-
-
-def cmd_write_build_info(args: argparse.Namespace) -> int:
-    """Write a single per-variant ``build-info.json`` file."""
-    _write_json(Path(args.output), _per_variant_document())
-    return 0
-
-
-def cmd_extract_fortran_args(args: argparse.Namespace) -> int:
-    """Print resolved Fortran flags as a JSON array on stdout."""
-    flags = extract_resolved_fortran_args(args.build_dir)
-    sys.stdout.write(json.dumps(flags, ensure_ascii=False) + "\n")
-    return 0
-
-
-def _load_per_variant_jsons(per_variant_dir: Path) -> list[dict[str, Any]]:
-    paths = sorted(per_variant_dir.glob("FVS*.json"))
-    if not paths:
-        sys.stderr.write(
-            f"error: no per-variant JSON under {per_variant_dir}\n",
-        )
-        sys.exit(1)
-    out: list[dict[str, Any]] = []
-    for p in paths:
-        out.append(json.loads(p.read_text(encoding="utf-8")))
-    return out
-
-
-def _bundle_manifest_document(
-    per_variant: list[dict[str, Any]],
-    *,
-    artifact_name: str,
-    variants_input: str,
-    runner_image: str,
-    meson_pin: str,
-    timestamp: str,
-    run_id: str,
-    run_attempt: str,
-    server_url: str,
-    repository: str,
-) -> dict[str, Any]:
-    first = per_variant[0]
-    return {
-        "schema_version": 1,
-        "artifact_name": artifact_name,
-        "arch": first["arch"],
-        "build": {
-            "workflow_run_id": run_id,
-            "workflow_run_attempt": run_attempt,
-            "workflow_run_url": f"{server_url}/{repository}/actions/runs/{run_id}",
-            "generated_at_utc": timestamp,
-            "variants_input": variants_input,
-            "variants_built": [pv["variant"] for pv in per_variant],
-            "profile": first["build"]["profile"],
-            "buildtype": first["build"]["buildtype"],
-        },
-        "source": first["source"],
-        "fvs_build": first["fvs_build"],
-        "toolchain": {
-            "runner_image": runner_image,
-            "gcc_major": first["toolchain"]["gcc_major"],
-            "gfortran_package": first["toolchain"]["gfortran_package"],
-            "gpp_package": first["toolchain"]["gpp_package"],
-            "meson_pin": meson_pin,
-            "gfortran_version": first["toolchain"]["gfortran_version"],
-            "gcc_version": first["toolchain"]["gcc_version"],
-            "gpp_version": first["toolchain"]["gpp_version"],
-            "ninja_version": first["toolchain"]["ninja_version"],
-            "meson_version": first["toolchain"]["meson_version"],
-        },
-        "artifacts": {
-            "binaries": [pv["binary"] for pv in per_variant],
-            "shared_libraries": [pv["shared_library"] for pv in per_variant],
-            "sbom": _sbom_relative_path(),
-        },
-    }
-
-
-def _make_executable(path: Path) -> None:
-    mode = path.stat().st_mode
-    path.chmod(mode | 0o111)
-
-
-def cmd_collect_bundle(_args: argparse.Namespace) -> int:
-    """Fan staging artifacts into the bundle directory and write manifest.json."""
-    staging_dir = Path(os.environ.get("STAGING_DIR", "staging"))
-    artifact_name = _require_env("ARTIFACT_NAME")
-    bundle = Path(artifact_name)
-
-    subdirs = (
-        "provenance/per-variant",
-        "provenance/meson-logs",
-        "sbom",
-    )
-    for sub in subdirs:
-        (bundle / sub).mkdir(parents=True, exist_ok=True)
-
-    dir_prefix = _variant_artifact_staging_prefix()
-    variant_dirs = sorted(staging_dir.glob(f"{dir_prefix}*/"))
-    if not variant_dirs:
-        found = sorted(os.listdir(staging_dir)) if staging_dir.is_dir() else "missing"
-        sys.exit(f"error: no {staging_dir}/{dir_prefix}*/ directories; found: {found}")
-
-    abs_staging = staging_dir.resolve()
-    print(
-        "collect-bundle: "
-        f"FVS_NATIVE_PLATFORM={_native_platform()!r} STAGING_DIR={abs_staging}",
-    )
-    print(
-        "collect-bundle: variant directories: "
-        + ", ".join(p.name for p in variant_dirs),
-    )
-
-    for vd in variant_dirs:
-        variant = vd.name.removeprefix(dir_prefix)
-        bin_name = _binary_filename(variant)
-        lib_name = _shared_library_filename(variant)
-        bin_path = vd / bin_name
-        lib_path = vd / lib_name
-        info_path = vd / "provenance" / "build-info.json"
-        for path in (bin_path, lib_path, info_path):
-            if not path.is_file():
-                sys.exit(
-                    f"error: collect-bundle: {path} missing; "
-                    f"{vd} has {sorted(os.listdir(vd))}",
-                )
-        shutil.copy2(bin_path, bundle / bin_name)
-        shutil.copy2(lib_path, bundle / lib_name)
-        shutil.copy2(
-            info_path,
-            bundle / "provenance" / "per-variant" / f"FVS{variant}.json",
-        )
-        tail = vd / "provenance" / "meson-logs" / "meson-log.tail.txt"
-        if tail.is_file():
-            dest = (
-                bundle
-                / "provenance"
-                / "meson-logs"
-                / f"FVS{variant}.meson-log.tail.txt"
-            )
-            shutil.copy2(tail, dest)
-
-    for exe in bundle.glob("FVS*"):
-        if exe.suffix.lower() == ".exe" or exe.suffix == "":
-            _make_executable(exe)
-
-    per_variant = _load_per_variant_jsons(bundle / "provenance" / "per-variant")
-    ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    manifest = _bundle_manifest_document(
-        per_variant,
-        artifact_name=artifact_name,
-        variants_input=_require_env("VARIANTS_INPUT"),
-        runner_image=_require_env("RUNNER_IMAGE"),
-        meson_pin=_require_env("MESON_PIN"),
-        timestamp=ts,
-        run_id=_require_env("GITHUB_RUN_ID"),
-        run_attempt=_require_env("GITHUB_RUN_ATTEMPT"),
-        server_url=_require_env("GITHUB_SERVER_URL"),
-        repository=_require_env("GITHUB_REPOSITORY"),
-    )
-    _write_json(bundle / "provenance" / "manifest.json", manifest)
-
-    print("----- bundle layout (top 80 lines) -----")
-    proc = subprocess.run(
-        ["ls", "-laR", str(bundle)],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    for line in proc.stdout.splitlines()[:80]:
-        print(line)
-
-    return 0
 
 
 def _spdx_package(
@@ -348,18 +179,20 @@ def _spdx_package(
     }
 
 
-def cmd_complete_sbom(args: argparse.Namespace) -> int:
-    """Complete syft's SPDX JSON (on stdin) and write it to the bundle's SBOM path.
+def spdx_document(
+    manifest: dict[str, Any], files: dict[str, dict[str, str]], native_platform: str
+) -> dict[str, Any]:
+    """Return the bundle's SPDX 2.3 document.
 
-    syft's SPDX writer leaves all-zero checksums on files no package owns (every
-    file here), and Meson-built binaries carry no package metadata, so the
-    components compiled into them come from the bundle manifest instead.
+    Meson-built binaries carry no package metadata a scanner could find, so the
+    components compiled into them come from the manifest.
+
+    Args:
+        manifest: The bundle's ``manifest.json`` content.
+        files: Bundled file name to ``{"SHA1": ..., "SHA256": ...}``.
+        native_platform: ``linux``, ``windows`` or ``darwin``.
     """
-    manifest = json.loads(
-        (args.root / "provenance/manifest.json").read_text(encoding="utf-8")
-    )
-    sbom = args.root / manifest["artifacts"]["sbom"]
-    doc = json.load(sys.stdin.buffer)
+    name, build = manifest["artifact_name"], manifest["build"]
     src, nvel = manifest["source"], manifest["source"]["nvel"]
     gcc = re.search(r"\) (\d+\.\d+\.\d+)", manifest["toolchain"]["gcc_version"])
     fvs_url = f"git+https://github.com/{src['repo']}@{src['sha']}"
@@ -379,32 +212,168 @@ def cmd_complete_sbom(args: argparse.Namespace) -> int:
         "https://gcc.gnu.org/",
         "GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later",
     )
-    doc.setdefault("packages", []).extend([*sources, gcc_runtime])
-    relationships = doc.setdefault("relationships", [])
-    linux = _native_platform() == "linux"
-    for entry in doc.get("files", []):
-        # syft writes "FVSak" on Linux and "\FVSak.dll" on Windows.
-        rel = entry["fileName"].replace("\\", "/").removeprefix("./").lstrip("/")
-        data = (args.root / rel).read_bytes()
-        entry["checksums"] = [
+    entries = []
+    links = []
+    for file_name, sums in files.items():
+        spdx_id = f"SPDXRef-File-{file_name}"
+        entries.append(
             {
-                "algorithm": "SHA1",
-                "checksumValue": hashlib.sha1(data, usedforsecurity=False).hexdigest(),
-            },
-            {"algorithm": "SHA256", "checksumValue": hashlib.sha256(data).hexdigest()},
-        ]
-        # Only the Linux shared libraries load the GCC runtime dynamically.
-        link = "DYNAMIC_LINK" if linux and rel.endswith(".so") else "STATIC_LINK"
-        relationships += [
-            {
-                "spdxElementId": entry["SPDXID"],
-                "relationshipType": kind,
-                "relatedSpdxElement": pkg["SPDXID"],
+                "fileName": f"./{file_name}",
+                "SPDXID": spdx_id,
+                "checksums": [
+                    {"algorithm": alg, "checksumValue": val}
+                    for alg, val in sums.items()
+                ],
+                "licenseConcluded": "NOASSERTION",
+                "copyrightText": "NOASSERTION",
             }
-            for pkg, kind in [(p, "GENERATED_FROM") for p in sources]
-            + [(gcc_runtime, link)]
+        )
+        # Only the Linux shared libraries load the GCC runtime dynamically.
+        dynamic = native_platform == "linux" and file_name.endswith(".so")
+        links += [
+            ("SPDXRef-DOCUMENT", "DESCRIBES", spdx_id),
+            *((spdx_id, "GENERATED_FROM", p["SPDXID"]) for p in sources),
+            (
+                spdx_id,
+                "DYNAMIC_LINK" if dynamic else "STATIC_LINK",
+                gcc_runtime["SPDXID"],
+            ),
         ]
-    _write_json(sbom, doc)
+    return {
+        "spdxVersion": "SPDX-2.3",
+        "dataLicense": "CC0-1.0",
+        "SPDXID": "SPDXRef-DOCUMENT",
+        "name": name,
+        "documentNamespace": (
+            f"{build['workflow_run_url']}/attempts/{build['workflow_run_attempt']}"
+            f"/{name}"
+        ),
+        "creationInfo": {
+            "created": build["generated_at_utc"],
+            "creators": [f"Tool: fvs-build-{manifest['fvs_build']['sha']}"],
+        },
+        "packages": [*sources, gcc_runtime],
+        "files": entries,
+        "relationships": [
+            {"spdxElementId": a, "relationshipType": kind, "relatedSpdxElement": b}
+            for a, kind, b in links
+        ],
+    }
+
+
+def cmd_bundle(_args: argparse.Namespace) -> int:
+    """Assemble the bundle described in the module docstring."""
+    cfg = Config.from_env()
+    out = Path(cfg.artifact_name)
+    fc, cc, cxx = cfg.compilers
+    nvel_dir = str(cfg.source_dir / "volume/NVEL")
+    sqlite_c = (cfg.source_dir / "dbsqlite/sqlite3.c").read_text(errors="replace")
+    source = {
+        "repo": cfg.source_repo,
+        "ref": cfg.source_ref,
+        "sha": cfg.source_sha,
+        "nvel": {
+            "url": _first_line(["git", "-C", nvel_dir, "remote", "get-url", "origin"]),
+            "sha": _first_line(["git", "-C", nvel_dir, "rev-parse", "HEAD"]),
+        },
+        "sqlite_version": re.search(r'#define SQLITE_VERSION\s+"([^"]+)"', sqlite_c)[1],
+    }
+    fvs_build = {
+        "repo": cfg.fvs_build_repo,
+        "ref": cfg.fvs_build_ref,
+        "sha": cfg.fvs_build_sha,
+    }
+    toolchain = {
+        "runner_image": cfg.runner_image,
+        "gcc_major": cfg.gcc_major,
+        "gfortran_package": cfg.gfortran_package,
+        "gpp_package": cfg.gpp_package,
+        "meson_pin": cfg.meson_pin,
+        "gfortran_version": _first_line([fc, "--version"]),
+        "gcc_version": _first_line([cc, "--version"]),
+        "gpp_version": _first_line([cxx, "--version"]),
+        "ninja_version": _first_line(["ninja", "--version"]),
+        "meson_version": _first_line(["meson", "--version"]),
+        "python_version": platform.python_version(),
+    }
+    build = {
+        "workflow_run_id": cfg.run_id,
+        "workflow_run_attempt": cfg.run_attempt,
+        "profile": cfg.profile,
+        "buildtype": "plain",
+        "fortran_args": extract_resolved_fortran_args(cfg.build_dir),
+    }
+    arch = platform.machine()
+
+    out.mkdir(exist_ok=True)
+    files: dict[str, dict[str, str]] = {}
+    binaries, libraries = [], []
+    for variant in cfg.variants:
+        if cfg.platform == "windows":
+            exe, lib = f"FVS{variant}.exe", f"FVS{variant}.dll"
+        else:
+            exe, lib = f"FVS{variant}", f"FVS{variant}.so"
+        shutil.copy2(cfg.build_dir / exe, out / exe)
+        shutil.copy2(cfg.build_dir / lib, out / lib)
+        # -S is --strip-debug in GNU strip (Linux, MSYS2) and Apple's strip alike.
+        subprocess.run(["strip", "-S", str(out / lib)], check=True)
+        # Stripping rewrites the file (and on macOS its ad-hoc signature): make
+        # sure the shipped library still loads.
+        ctypes.CDLL(str((out / lib).resolve()))
+        files[exe], files[lib] = _hashes(out / exe), _hashes(out / lib)
+        binaries.append(exe)
+        libraries.append(lib)
+        # copy2 keeps the link time; Ninja leaves unchanged outputs alone, so on
+        # a build cache hit this stays the original link time.
+        linked = datetime.fromtimestamp((out / exe).stat().st_mtime, timezone.utc)
+        _write_json(
+            out / f"provenance/per-variant/FVS{variant}.json",
+            {
+                "schema_version": 1,
+                "variant": variant,
+                "arch": arch,
+                "binary": exe,
+                "shared_library": lib,
+                "binary_sha256": files[exe]["SHA256"],
+                "shared_library_sha256": files[lib]["SHA256"],
+                "compiled_at_utc": _utc(linked),
+                "source": source,
+                "fvs_build": fvs_build,
+                "toolchain": toolchain,
+                "build": build,
+            },
+        )
+
+    meson_log = cfg.build_dir / "meson-logs/meson-log.txt"
+    if meson_log.is_file():
+        tail = meson_log.read_bytes()[-200_000:]
+        (out / "provenance/meson-log.tail.txt").write_bytes(tail)
+
+    os_name = "macos" if cfg.platform == "darwin" else cfg.platform
+    sbom = f"sbom/fvs-native-{os_name}.spdx.json"
+    manifest = {
+        "schema_version": 1,
+        "artifact_name": cfg.artifact_name,
+        "arch": arch,
+        "build": {
+            **build,
+            "workflow_run_url": cfg.run_url,
+            "generated_at_utc": _utc(datetime.now(timezone.utc)),
+            "variants_input": cfg.variants_input,
+            "variants_built": list(cfg.variants),
+        },
+        "source": source,
+        "fvs_build": fvs_build,
+        "toolchain": toolchain,
+        "artifacts": {
+            "binaries": binaries,
+            "shared_libraries": libraries,
+            "sbom": sbom,
+        },
+    }
+    _write_json(out / "provenance/manifest.json", manifest)
+    _write_json(out / sbom, spdx_document(manifest, files, cfg.platform))
+    print(f"bundled {len(cfg.variants)} variants into {out}/")
     return 0
 
 
@@ -450,58 +419,13 @@ def cmd_manifest_to_github_env(args: argparse.Namespace) -> int:
 
 
 def _build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(
-        description=(
-            "Native bundle provenance helpers for GitHub Actions "
-            "(Linux, Windows, macOS)."
-        ),
-    )
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = p.add_subparsers(dest="command", required=True)
 
-    p_info = sub.add_parser(
-        "write-build-info",
-        help="Write per-variant build-info.json (env-driven).",
+    p_bundle = sub.add_parser(
+        "bundle", help="Assemble the bundle from the build directory (env-driven)."
     )
-    p_info.add_argument(
-        "--output",
-        required=True,
-        type=Path,
-        help="Path to write (e.g. staging/pn/provenance/build-info.json).",
-    )
-    p_info.set_defaults(func=cmd_write_build_info)
-
-    p_flags = sub.add_parser(
-        "extract-fortran-args",
-        help=(
-            "Print resolved Fortran compile flags (JSON array) from "
-            "compile_commands.json."
-        ),
-    )
-    p_flags.add_argument(
-        "--build-dir",
-        required=True,
-        type=Path,
-        help="Meson build directory (contains compile_commands.json after compile).",
-    )
-    p_flags.set_defaults(func=cmd_extract_fortran_args)
-
-    p_coll = sub.add_parser(
-        "collect-bundle",
-        help=(
-            "Assemble bundle from staging/<os>-variant-* "
-            "(<os> from FVS_NATIVE_PLATFORM; Linux adds the arch)."
-        ),
-    )
-    p_coll.set_defaults(func=cmd_collect_bundle)
-
-    p_sbom = sub.add_parser(
-        "complete-sbom",
-        help="Complete syft's SPDX JSON from stdin and write the bundle's SBOM.",
-    )
-    p_sbom.add_argument(
-        "--root", required=True, type=Path, help="Bundle directory syft scanned."
-    )
-    p_sbom.set_defaults(func=cmd_complete_sbom)
+    p_bundle.set_defaults(func=cmd_bundle)
 
     p_env = sub.add_parser(
         "manifest-to-github-env",

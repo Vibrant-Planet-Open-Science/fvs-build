@@ -69,7 +69,6 @@ Builds the requested variants and uploads one bundle. `runner_image` picks the a
 | `gcc_major` | string | no | `14` | GCC major version (see [GCC toolchain selection](#gcc-toolchain-selection)). |
 | `meson_version` | string | no | `1.12.0` | Exact Meson version installed via pip. |
 | `profile` | string | no | `reference` | `reference` (goldens-aligned, matches upstream `bin/makefile`) or `debug` (runtime checks; not goldens-compatible). |
-| `python_version` | string | no | `3.12` | Python for Meson and the build scripts. |
 
 ### Outputs
 
@@ -86,13 +85,13 @@ fvs-native-linux-<arch>-<run_id>/
 ├── provenance/
 │   ├── manifest.json         # aggregated build provenance
 │   ├── per-variant/FVS<v>.json
-│   └── meson-logs/FVS<v>.meson-log.tail.txt
+│   └── meson-log.tail.txt    # last 200 KB of meson-log.txt
 └── sbom/fvs-native-linux.spdx.json
 ```
 
 Provenance JSON (`schema_version: 1`), written by `tools/ci/provenance.py`:
 
-- `manifest.json`: `artifact_name`; `arch` (Python's `platform.machine()`: `x86_64`/`aarch64`, `arm64` on macOS, `AMD64` on Windows); `build` (run id/attempt/URL, timestamp, variants requested and built, `profile`, `buildtype`); `source` (`repo`, `ref`, `sha`, `nvel.url` and `nvel.sha`, and `sqlite_version`) and `fvs_build` (`repo`, `ref`, `sha`); `toolchain` (runner image, GCC major and package names, compiler/Meson/Ninja versions); `artifacts` (`binaries`, `shared_libraries`, `sbom`).
+- `manifest.json`: `artifact_name`; `arch` (Python's `platform.machine()`: `x86_64`/`aarch64`, `arm64` on macOS, `AMD64` on Windows); `build` (run id/attempt/URL, timestamp, variants requested and built, `profile`, `buildtype`, `fortran_args`); `source` (`repo`, `ref`, `sha`, `nvel.url` and `nvel.sha`, and `sqlite_version`) and `fvs_build` (`repo`, `ref`, `sha`); `toolchain` (runner image, GCC major and package names, compiler/Meson/Ninja/Python versions); `artifacts` (`binaries`, `shared_libraries`, `sbom`).
 - `per-variant/FVS<v>.json`: `variant`, `arch`, `binary` and `shared_library` with their `*_sha256` (the library's of the stripped file), `compiled_at_utc`, `source`, `fvs_build`, `toolchain`, and `build.fortran_args` (the flags gfortran received, from `compile_commands.json`).
 
 ### Calling the workflow
