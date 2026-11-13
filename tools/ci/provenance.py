@@ -1,23 +1,9 @@
 #!/usr/bin/env python3
 """GitHub Actions helpers for native bundle provenance JSON (stdlib only).
 
-Platform-specific filenames and SBOM paths are selected with the environment
-variable ``FVS_NATIVE_PLATFORM``: ``linux`` (default), ``windows``, or
-``darwin``. Native workflows set this when staging artifacts and when running
-``collect-bundle``.
-
-* ``write-build-info`` — one per-variant ``build-info.json`` (schema_version 1).
-* ``extract-fortran-args`` — print resolved Fortran compile flags (JSON array)
-  parsed from ``compile_commands.json`` after Ninja has run.
-* ``collect-bundle`` — fan ``staging/<os>-variant-*`` into a **flat** bundle
-  root (``FVS<v>`` / ``FVS<v>.{so,dll}`` plus ``provenance/``, ``sbom/``).
-  Per-variant staging keeps binaries and shared libs at the variant directory
-  root (not under a ``lib/`` subdirectory). Artifact names use an ``<os>``
-  prefix (``linux-<arch>-``, ``macos-``, ``windows-``) so parallel reusable
-  native workflows in the **same** GitHub Actions run do not collide on
-  ``variant-<v>``. Linux adds ``uname -m`` because it builds on two arches.
-* ``manifest-to-github-env`` — append Docker-related variables to
-  ``$GITHUB_ENV`` from ``bundle/provenance/manifest.json``.
+``FVS_NATIVE_PLATFORM`` (``linux``, ``windows`` or ``darwin``) selects
+filenames and SBOM paths. Staging prefixes carry the OS (and arch on Linux) so
+native workflows in the same run do not collide on ``variant-<v>``.
 """
 
 from __future__ import annotations
@@ -38,9 +24,8 @@ from typing import Any
 def extract_resolved_fortran_args(build_dir: Path) -> list[str]:
     """Return project Fortran flags from the first matching compile command.
 
-    Meson's ``meson-log.txt`` does not record per-target Fortran arguments after
-    configure; ``compile_commands.json`` (emitted once Ninja runs) is the
-    authoritative record of flags actually passed to gfortran.
+    ``meson-log.txt`` lacks per-target Fortran arguments, so this reads
+    ``compile_commands.json``, which exists only once Ninja has run.
     """
     cc_path = build_dir / "compile_commands.json"
     if not cc_path.is_file():
@@ -77,7 +62,7 @@ def _require_env(name: str) -> str:
 
 
 def _native_platform() -> str:
-    """Set FVS_NATIVE_PLATFORM in CI per runner OS."""
+    """Return the validated ``FVS_NATIVE_PLATFORM`` (default ``linux``)."""
     raw = os.environ.get("FVS_NATIVE_PLATFORM", "linux").strip().lower()
     if raw not in ("linux", "windows", "darwin"):
         msg = (
@@ -425,7 +410,7 @@ def _build_parser() -> argparse.ArgumentParser:
         "collect-bundle",
         help=(
             "Assemble bundle from staging/<os>-variant-* "
-            "(env-driven; see _variant_artifact_staging_prefix)."
+            "(<os> from FVS_NATIVE_PLATFORM; Linux adds the arch)."
         ),
     )
     p_coll.set_defaults(func=cmd_collect_bundle)

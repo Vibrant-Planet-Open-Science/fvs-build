@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
 """Stage per-variant FVS binaries and shared libs, then write ``build-info.json``.
 
-Shared libraries are stripped of debug info (smaller wheels and bundles) and
-load-checked; executables are copied unchanged and keep theirs, so a crash
-seen through a library can be reproduced with the executable for file:line.
-
-Run from native build jobs after Meson has populated ``_build/``. Stages each
-variant in ``VARIANTS`` (space-separated) into ``staging/<os>-variant-<v>/``.
-Requires the same environment variables previously exported for
-``provenance.py write-build-info`` (``FVS_NATIVE_PLATFORM``,
-``SOURCE_*``, ``FVS_BUILD_*``, ``RUNNER_IMAGE``, ``GCC_MAJOR``, ``GFORTRAN_PKG``,
-``GPP_PKG``, ``GITHUB_RUN_ID``, ``GITHUB_RUN_ATTEMPT``, and on Linux/macOS
-``FC``/``CC``/``CXX``).
+Executables keep their debug info, so a crash seen through a stripped library
+can be reproduced with the executable for file:line. Reads its configuration
+from the environment variables ``provenance.py write-build-info`` needs.
 """
 
 from __future__ import annotations

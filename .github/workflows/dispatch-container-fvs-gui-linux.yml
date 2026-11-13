@@ -1,21 +1,3 @@
-# Local-dev driver for the native + FVS GUI container pipeline.
-#
-# Thin workflow_dispatch wrapper demonstrating the orchestrator pattern:
-# call build-native-linux first (produces the FVS<v>.so bundle), then call
-# build-container-fvs-gui-linux with `needs:` on the native job, passing the
-# artifact name through. The GUI image reuses the native .so (FVS is never
-# compiled in Docker; only the rFVS/fvsOL R layer is).
-#
-# Defaults assume an upstream-tracking build (USDAForestService FVS source +
-# USDAForestService Interface source + ghcr.io/<owner>/usfs-fvs-gui namespace).
-# `push` defaults to false so a manual dispatch never accidentally publishes.
-#
-# NOTE: for mybinder.org to launch the image it must be pushed (push=true) AND
-# the GHCR package must be made public.
-#
-# This is NOT a caller interface for other repos -- they should compose the
-# two reusable workflows themselves.
-
 name: Dispatch native + FVS GUI container build (manual)
 
 on:
@@ -83,18 +65,13 @@ on:
         required: false
         default: "14"
         type: string
-        # Note: python_version is not exposed here; the native Linux build
-        # job follows its own default (the image's Python 3.12).
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  # Compute the default image_name when the operator leaves it blank.
-  # workflow_dispatch input defaults cannot reference github.repository_owner
-  # at definition time, so we derive it here and hand it to the container
-  # workflow via `with:`.
+  # Input defaults cannot reference github.repository_owner, so derive it here.
   resolve-image-name:
     name: Resolve image_name default
     runs-on: ${{ inputs.runner_image }}

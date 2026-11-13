@@ -1,20 +1,4 @@
-# fvs-build: out-of-tree Meson overlay for FVS source repos.
-#
-# This project does not contain FVS source. It points at a checked-out source
-# tree via the `fvs_source_dir` option, parses the upstream-style per-variant
-# `bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits
-# native binaries (executable + shared library) per requested variant.
-#
-# Supported hosts: Linux, macOS (darwin), Windows (e.g. MinGW-w64 / MSYS2 with
-# gfortran). Flags follow USDAForestService `bin/makefile` where applicable;
-# shared libraries use `.so` on macOS as well as Linux, matching upstream
-# `bin/makefile` and R's `.Platform$dynlib.ext` (what rFVS loads).
-#
-# Per variant: FVS<v> executable (standalone CLI) + FVS<v>.{so,dll}
-# embedder shared library (name_prefix '' — no lib prefix; matches upstream).
-# The exe and shlib are independent links from fvs_objs + main (exe only),
-# not exe-at-runtime-via-DLL. SQLite, FOFEM and NVEL are compiled once per
-# configure into static archives that every variant links in whole.
+# fvs-build: out-of-tree Meson overlay for FVS source repos (see README.md).
 
 project(
   'fvs-build',
@@ -48,12 +32,9 @@ profile = get_option('profile')
 traps_opt = get_option('traps')
 extra_fortran_flags = get_option('extra_fortran_args')
 
-# Profile-default FPE trap set (upstream bin/makefile: all five conditions).
-# aarch64 (Linux and Apple Silicon) has no denormal-operand exception, and
-# libgfortran prints a runtime warning on every executable start when asked
-# for one, so it is left out there. The other four are still requested, but
-# the arm64 cores we build and run on do not trap in hardware, so they have
-# no effect either.
+# aarch64 has no denormal-operand exception and libgfortran warns on every
+# start when asked for one. The other four have no effect either: the arm64
+# cores we build and run on do not trap in hardware.
 if host_machine.cpu_family() == 'aarch64'
   profile_trap_flag = '-ffpe-trap=invalid,zero,underflow,overflow'
 else
@@ -68,21 +49,18 @@ else
   trap_flag = '-ffpe-trap=' + traps_opt
 endif
 
-# Shared Fortran args for every profile (upstream bin/makefile + fvs-build).
 fortran_base_args = [
   '-cpp',
   '-DCMPgcc',
   '-DANSI',
   '-Wall',
   '-Wno-integer-division',
-  # Upstream F77 uses patterns gfortran's flow analysis flags as uninitialized
-  # (-Wmaybe-uninitialized); not actionable for third-party sources.
+  # Upstream F77 patterns trip this; not actionable for third-party sources.
   '-Wno-maybe-uninitialized',
   '-g',
   '-fbacktrace',
-  # Downgrade gfortran 10+ argument-type mismatches from error to warning so
-  # legacy FVS calling patterns still build; mismatches remain visible in logs.
-  # Not -std=legacy, which would relax other modern-Fortran checks silently.
+  # gfortran 10+ rejects legacy FVS argument-type mismatches; this downgrades
+  # them to warnings. Not -std=legacy, which would relax other checks silently.
   '-fallow-argument-mismatch',
 ]
 
@@ -131,14 +109,9 @@ endif
 
 cc = meson.get_compiler('c')
 
-# libm: FOFEM C code calls exp/log/pow/sqrt; SQLite3 amalgamation can also
-# pull in libm symbols. Upstream's bin/makefile gets away with no explicit
-# -lm because it uses gfortran as the linker for the variant binary, and
-# gfortran pulls in libm transitively. The SQLite and FOFEM archives are C, so
-# libm has to be explicit on Unix.
-# Windows (MinGW): math is provided by the runtime; no separate libm link.
-# libgfortran still depends on libquadmath (quadmath_snprintf, etc.); with
-# `-static` DLL/exe linking gcc does not always pull it in, so link explicitly.
+# The SQLite and FOFEM C archives need libm explicitly on Unix (upstream gets it
+# transitively from gfortran). MinGW's runtime provides math, but with
+# `-static` linking gcc does not always pull in libgfortran's libquadmath.
 if host_sys == 'windows'
   m_dep = declare_dependency()
   quadmath_dep = cc.find_library('quadmath', required: true)
@@ -147,31 +120,21 @@ else
   quadmath_dep = declare_dependency()
 endif
 
-# USFS bin/makefile: WIN is -DWINDOWS on Windows, -Dunix on Linux and macOS
-# (fvsSQL.c and related).
 if host_sys == 'windows'
   os_c_args = ['-DWINDOWS']
-  # w64: upstream %.prg — static shared lib (embedders) + static exe (CLI).
-  # Exe must link_whole fvs_objs only, not link_with the DLL (duplicate
-  # Fortran runtime entry points if both are static).
+  # The exe must link_whole fvs_objs, not link_with the DLL: both are static,
+  # so that would duplicate Fortran runtime entry points.
   shlib_link_args = ['-static', '-shared', '-Wl,--export-all-symbols']
   exe_link_args = ['-static']
   objs_pic = false
 else
   os_c_args = ['-Dunix']
-  # Linux (l64): USFS uses -fPIC. macOS: PIC for shared-library objects
-  # (departure from USFS empty PIC on osx).
+  # PIC on macOS departs from upstream, which builds without it there.
   objs_pic = true
   if host_sys == 'darwin'
-    # Embed the gfortran runtime in the artifact so it does not hard-depend on
-    # a Homebrew gcc at an absolute path (e.g.
-    # /opt/homebrew/opt/gcc@14/lib/gcc/14/libgfortran.5.dylib), which is baked
-    # into the Mach-O load commands by the build machine's gfortran and is
-    # absent on end-user Macs -> dlopen/OSError. Mirrors the Windows `-static`
-    # intent; macOS cannot fully static-link libSystem, so we static-link only
-    # the GCC runtime libs (libgfortran/libgcc/libquadmath). Verify with
-    # `otool -L FVS<v>.so`: no /opt/homebrew/.../libgfortran line should
-    # remain.
+    # Without these the Mach-O load commands reference the build machine's
+    # Homebrew libgfortran by absolute path, absent on end-user Macs. libSystem
+    # cannot be static, so only the GCC runtime is.
     fortran_runtime_static = [
       '-static-libgfortran',
       '-static-libgcc',
@@ -192,10 +155,6 @@ else
   endif
 endif
 
-# Compiler flags transcribed from upstream bin/makefile. We pin them here rather
-# than pulling whatever the system compiler defaults to, so a build of fvs-build
-# against an upstream tag matches the upstream-built binary closely given the
-# same gfortran version.
 common_c_args = [
   '-DANSI',
   '-DCMPgcc',
@@ -204,8 +163,6 @@ common_c_args = [
   '-DSQLITE_OMIT_LOAD_EXTENSION',
 ]
 
-# Parses one stanza of the parser's delimited text schema. Returns a dict
-# mapping section names to lists of (string) paths.
 section_order = [
   'fortran_sources',
   'main_source',
@@ -216,8 +173,7 @@ section_order = [
   'include_dirs',
 ]
 
-# Groups that are the same for every variant and compiled once per configure:
-# [archive name, parser section, directory under fvs_source_dir].
+# [archive name, parser section, directory under fvs_source_dir]
 common_groups = [
   ['fvs_sqlite', 'c_sources_sql', 'dbsqlite'],
   ['fvs_fofem', 'c_sources_fofem', 'fire/fofem'],
@@ -256,11 +212,8 @@ foreach v : variants
   variant_sections += {v: sections}
 endforeach
 
-# SQLite, FOFEM and NVEL reference nothing else in FVS (FVS calls into them,
-# never the reverse), and upstream lists the same files for every variant.
-# Build them once from the first variant's lists; refuse a source tree where
-# another variant lists something different, rather than silently linking
-# the first variant's copy into it.
+# SQLite, FOFEM and NVEL never call into FVS and upstream lists the same files
+# for every variant, so they are built once from the first variant's lists.
 first = variant_sections[variants[0]]
 foreach v : variants
   foreach group : common_groups
@@ -274,12 +227,9 @@ foreach v : variants
   endforeach
 endforeach
 
-# Each group compiles with only its own directory on the include path, which
-# keeps it from silently depending on variant headers. Quoted C includes and
-# Fortran INCLUDE statements resolve from the source file's directory. NVEL
-# also provides the Fortran modules (clkcoef_mod, volinput_mod, ...) that
-# variant code USEs; Meson puts a linked target's module directory on the
-# include path of the targets that link it.
+# Only the group's own directory is on the include path, so it cannot silently
+# depend on variant headers. NVEL's Fortran modules reach variant code through
+# Meson's module directory for linked targets.
 common_libs = []
 foreach group : common_groups
   inc = ['-I' + (src_dir / group[2])]
@@ -300,33 +250,16 @@ foreach v : variants
   c_sources_variant = sections['c_sources_variant']
   include_dirs      = sections['include_dirs']
 
-  # Include flags must reach both Fortran (for INCLUDE'd .F77/.inc files
-  # gathered from common/, pn/common/, volume/NVEL/, etc.) and C (for
-  # #include'd .h files). We pass them via -I in c_args/fortran_args rather
-  # than include_directories() because the paths point outside the meson
-  # source tree (into fvs_source_dir) and include_directories() is
-  # restrictive about that.
-  #
-  # IMPORTANT: .F77 and .inc files are not Fortran *sources* in this build;
-  # they are include files brought in by Fortran INCLUDE statements. Meson's
-  # default Fortran extension set (.f .for .f90 .F .F90 ...) does not cover
-  # .F77, which is what we want — we only need their parent dirs on the
-  # include path. Future contributor: do NOT add .F77 files to the
-  # static_library sources list below.
+  # Raw -I rather than include_directories(), which is restrictive about paths
+  # outside the Meson source tree. .F77/.inc files are INCLUDE'd, never
+  # compiled: do not add them to the sources below.
   inc_args = []
   foreach d : include_dirs
     inc_args += '-I' + d
   endforeach
 
-  # The variant's own objects (all Fortran except NVEL, plus base/apisubsc.c,
-  # the C half of the FVS API) in one static carrier, PIC on Linux and macOS
-  # (not on Windows, per USFS w64), with the common archives merged in whole.
-  # This keeps upstream bin/makefile's topology — exactly one self-contained
-  # shared library per variant — so loaders need no sibling libraries.
-  #
-  # Meson auto-discovers Fortran `module`/`use` dependencies across these
-  # sources and the linked NVEL archive, and orders compilation correctly
-  # without manual declarations.
+  # Common archives merged in whole keep upstream's topology: one
+  # self-contained shared library per variant, with no sibling libraries.
   fvs_objs = static_library(
     'fvs_' + v + '_objs',
     fortran_sources + c_sources_variant,
@@ -341,41 +274,32 @@ foreach v : variants
     install: false,
   )
 
-  # Shared library: FVS<v>.so / .dll (embedders; no lib prefix; .so on macOS
-  # too, see the header).
   fvs_lib = shared_library(
     'FVS' + v,
     [],
     name_prefix: '',
     name_suffix: host_sys == 'windows' ? 'dll' : 'so',
     link_whole: fvs_objs,
-    # Force the gfortran driver to link this library. Its source list is empty
-    # (objects come via link_whole), so Meson would otherwise pick the C linker
-    # (clang/cc), which does not understand -static-libgfortran and would leave
-    # the absolute Homebrew libgfortran dependency in place.
+    # With no sources Meson would pick the C linker, which does not understand
+    # -static-libgfortran.
     link_language: 'fortran',
     dependencies: [m_dep, quadmath_dep],
     link_args: shlib_link_args,
     install: false,
   )
 
-  # FVS<v> executable: standalone CLI (all objects + main; upstream %.prg).
   fvs_exe = executable(
     'FVS' + v,
     [main_source],
     fortran_args: common_fortran_args + inc_args,
     link_whole: [fvs_objs],
-    # Force the gfortran driver. main_source is Fortran, but fvs_objs also
-    # carries C/C++ objects, so Meson's link-language resolution otherwise
-    # picks the C driver (gcc), which does not add libquadmath automatically.
-    # With -static-libgfortran the static libgfortran.a needs libquadmath's
-    # quadmath_snprintf/strtoflt128, and only the gfortran driver pulls it in.
+    # fvs_objs' C objects would make Meson pick the C driver, which does not
+    # add the libquadmath that static libgfortran.a needs.
     link_language: 'fortran',
     dependencies: [m_dep, quadmath_dep],
     link_args: exe_link_args,
     install: false,
   )
 
-  # Ensure embedder shared lib is built whenever the exe is (no runtime link).
   alias_target('fvs_' + v + '_artifacts', [fvs_lib, fvs_exe])
 endforeach

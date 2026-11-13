@@ -1,14 +1,6 @@
-# Runs the three reusable native build workflows from the PR head commit when
-# native-related files change. Same idea as a branch-only push trigger, but
-# scoped to pull requests into main.
-#
-# This workflow triggers on *every* PR into main so it can serve as a required
-# status check: `paths:` filters suppress the run entirely, which leaves a
-# required check permanently pending. Instead the `changes` job diffs the PR
-# against its base and the build matrix is gated on that result, and the
-# terminal `native-builds` job always reports — success (nothing to build) or
-# the aggregated matrix result. Make **`native-builds`** the required check;
-# the fanned-out reusable-workflow job names are not stable check names.
+# No `paths:` filter: a skipped run leaves a required check pending forever, so
+# the `changes` job gates the builds instead. Make `native-builds` the required
+# check; the reusable-workflow job names are not stable check names.
 
 name: Test reusable native workflows (pull request)
 
@@ -17,10 +9,6 @@ on:
     branches:
       - main
 
-# Cancel an in-progress run for a PR when a new commit is pushed to it. These
-# native builds fan out across three OSes (Linux on two arches) and many
-# variants, so superseding stale runs saves substantial runner time. Keyed by PR
-# number (falling back to ref) so distinct PRs never cancel each other.
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -37,7 +25,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # Full history so the PR base commit is present for the diff below.
           fetch-depth: 0
 
       - name: Diff monitored paths against PR base
@@ -48,8 +35,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Monitored paths: anything that can change native build output.
-          # Keep in sync with the dispatch/build workflows this exercises.
+          # Anything that can change native build output.
           changed=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
             .github/actions/collect-native-bundle/action.yml \
             .github/actions/prepare-fvs-native-checkout/action.yml \
@@ -141,8 +127,6 @@ jobs:
       meson_version: "1.12.0"
       profile: reference
 
-  # Stable terminal check. Runs on every PR into main regardless of whether the
-  # matrix ran, so it is the job to mark as a required status check.
   native-builds:
     name: Native builds
     if: always()

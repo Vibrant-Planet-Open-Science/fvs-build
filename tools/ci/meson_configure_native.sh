@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 # Configure (or reconfigure) the Meson build directory for native CI build jobs.
-#
-# Required environment variables:
-#   BUILD_DIR   — Meson build directory (default: _build)
-#   OVERLAY_DIR — path to fvs-build overlay (default: fvs-build)
-#   FVS_SOURCE  — path to checked-out FVS source tree
-#   VARIANTS    — space-separated variant codes to build
-#   PROFILE     — reference or debug (default: reference)
-#
+# VARIANTS is space-separated; OVERLAY_DIR is the fvs-build checkout.
 set -euo pipefail
 
 BUILD_DIR="${BUILD_DIR:-_build}"

@@ -1,16 +1,11 @@
 #!/usr/bin/env bash
-# Fail unless every given artifact was compiled by exactly one GCC version whose
-# major is GCC_MAJOR. Objects from a second GCC (e.g. a stale cache, or MSYS2
-# runtime packages from a newer toolchain) show up as a second "GCC: (...) X.Y.Z"
-# string; see USDAForestService/ForestVegetationSimulator#71.
-#
+# Fail unless every artifact was compiled by exactly one GCC version of major
+# GCC_MAJOR. A second GCC (stale cache, newer MSYS2 runtime packages) shows up as
+# a second "GCC: (...) X.Y.Z" ident; see USDAForestService/ForestVegetationSimulator#71.
 # Usage: GCC_MAJOR=15 check_gcc_major.sh FILE...
-# Mach-O artifacts may carry no GCC ident strings; then the version of $FC
-# (default gfortran), the compiler that built them, is checked instead.
-#
-# On Linux, glibc's own startup objects (crt1.o, Scrt1.o, libc_nonshared.a) are
-# linked into every binary and carry the ident of whatever compiler built glibc
-# (GCC 8.5 in manylinux_2_28). They are not part of the GCC toolchain, so their
+# Mach-O artifacts may carry no idents; then $FC's version is checked instead.
+# On Linux, glibc's startup objects (crt1.o, Scrt1.o, libc_nonshared.a) carry the
+# ident of the compiler that built glibc (GCC 8.5 in manylinux_2_28), so those
 # versions are ignored. Not on Windows, where the CRT is exactly what #71 is about.
 set -euo pipefail
 
