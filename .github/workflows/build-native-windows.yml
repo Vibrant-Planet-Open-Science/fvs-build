@@ -90,6 +90,8 @@ jobs:
         with:
           msystem: UCRT64
           update: true
+          # Pull requests only, like the Meson cache below.
+          cache: ${{ github.event_name == 'pull_request' }}
           # coreutils etc. come from the MSYS repo (no mingw-w64 builds). MSYS
           # git, not Git-for-Windows, is on PATH in UCRT64 shells. GCC comes
           # from the pinned set installed below.
