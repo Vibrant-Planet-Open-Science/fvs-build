@@ -99,17 +99,17 @@ Provenance JSON (`schema_version: 1`), written by `tools/ci/provenance.py`:
 ```yaml
 jobs:
   fvs-x86_64:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.1
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
+      source_ref: 0.7.1
       # variants: pn,wc,nc   # optional subset
 
   fvs-aarch64:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.1
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
+      source_ref: 0.7.1
       runner_image: ubuntu-24.04-arm
 
   use-binaries:
@@ -188,26 +188,26 @@ permissions:
 
 jobs:
   native:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.1
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
+      source_ref: 0.7.1
 
   native-arm64:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.1
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
+      source_ref: 0.7.1
       runner_image: ubuntu-24.04-arm
 
   container:
     needs: [native, native-arm64]
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-container-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-container-linux.yml@v0.7.1
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
       image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: 2027.1.0
+      image_tag: 0.7.1
       image_extra_tags: latest
       push: true
     secrets: inherit
