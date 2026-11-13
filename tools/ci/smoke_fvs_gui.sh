@@ -3,7 +3,7 @@
 # already-built image. The checks are described in docs/fvs-gui-container.md.
 #
 # Usage: tools/ci/smoke_fvs_gui.sh [IMAGE_REF]     (default: usfs-fvs-gui:local)
-# Env:   SMOKE_VARIANT=<code>  override the auto-detected variant used by the .so check.
+# Env:   SMOKE_VARIANT=<code>  override the auto-detected variant used by checks 2, 13 and 14.
 set -euo pipefail
 
 IMAGE="${1:-usfs-fvs-gui:local}"
@@ -54,11 +54,11 @@ info "2. FVS shared library loads (rFVS::fvsLoad)"
 VARIANT="${SMOKE_VARIANT:-}"
 if [ -z "$VARIANT" ]; then
   VARIANT=$(docker run --rm "$IMAGE" sh -c \
-    'ls /opt/fvs/FVSbin/FVS*.so 2>/dev/null | head -1 | sed "s#.*/FVS##; s#\.so\$##"')
+    'ls /usr/local/lib/FVS*.so 2>/dev/null | head -1 | sed "s#.*/FVS##; s#\.so\$##"')
 fi
-[ -n "$VARIANT" ] || die "no FVS<v>.so found under /opt/fvs/FVSbin"
+[ -n "$VARIANT" ] || die "no FVS<v>.so found under /usr/local/lib"
 docker run --rm -e VARIANT="$VARIANT" "$IMAGE" Rscript -e \
-  'suppressPackageStartupMessages(library(rFVS)); rFVS::fvsLoad(fvsProgram=paste0("FVS",Sys.getenv("VARIANT")), bin="/opt/fvs/FVSbin"); cat("soload-ok\n")' \
+  'suppressPackageStartupMessages(library(rFVS)); rFVS::fvsLoad(fvsProgram=paste0("FVS",Sys.getenv("VARIANT")), bin=Sys.getenv("FVS_BIN")); cat("soload-ok\n")' \
   | grep -q '^soload-ok$' || die "FVS${VARIANT}.so did not load with its expected API symbols"
 pass "FVS${VARIANT}.so loads with expected API symbols"
 
@@ -268,5 +268,40 @@ docker run --rm "$IMAGE" Rscript -e '
   cat("prjlist-ok\n")' 2>&1 | grep -q '^prjlist-ok$' \
   || die "getProjectList() errored with the open project locked: the Manage Projects tab will grey out on first click"
 pass "project list resolves with the open project locked (Manage Projects usable)"
+
+# --- 13. FVS executable on PATH ----------------------------------------------
+info "13. FVS${VARIANT} executable on PATH runs to STOP 20"
+docker run --rm -w /tmp -e VARIANT="$VARIANT" "$IMAGE" sh -c \
+  '"FVS$VARIANT" --version && { "FVS$VARIANT" </dev/null 2>&1 || true; }' \
+  | grep -q 'STOP 20' || die "FVS${VARIANT} is missing from PATH or did not reach STOP 20 on empty input"
+pass "FVS${VARIANT} runs from PATH"
+
+# --- 14. fvs2py loads a variant from FVS_BIN ----------------------------------
+info "14. fvs2py loads FVS${VARIANT}.so from \$FVS_BIN"
+docker run --rm -e VARIANT="$VARIANT" "$IMAGE" python -c \
+  'import os; from fvs2py import FVS; FVS(os.path.join(os.environ["FVS_BIN"], "FVS" + os.environ["VARIANT"] + ".so")); print("fvs2py-ok")' \
+  2>&1 | grep -q '^fvs2py-ok$' || die "fvs2py could not load FVS${VARIANT}.so from \$FVS_BIN"
+pass "fvs2py loads FVS${VARIANT}.so"
+
+# --- 15. Jupyter R and Python kernels -----------------------------------------
+info "15. Jupyter kernels: ir and python3"
+kernels="$(docker run --rm "$IMAGE" jupyter kernelspec list 2>/dev/null)"
+for k in ir python3; do
+  printf '%s\n' "$kernels" | grep -qE "^ +${k} " || die "Jupyter kernel ${k} is not registered"
+done
+pass "ir and python3 kernels registered"
+
+# --- 16. default command serves JupyterLab ------------------------------------
+info "16. docker run with no command serves JupyterLab on 8888"
+cid=$(docker run -d -p 8892:8888 "$IMAGE")
+CIDS+=("$cid")
+if ! wait_http "http://localhost:8892/api" 90; then
+  echo "--- container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
+  die "the default command did not start JupyterLab on port 8888"
+fi
+docker logs "$cid" 2>&1 | grep -q 'http://127.0.0.1:8888/lab?token=' \
+  || die "JupyterLab did not print the http://127.0.0.1:8888/lab?token=... link the README tells users to open"
+docker rm -f "$cid" >/dev/null; CIDS=()
+pass "default command serves JupyterLab and prints the login link"
 
 printf '\n\033[32mALL SMOKE TESTS PASSED\033[0m (%s)\n' "$IMAGE"

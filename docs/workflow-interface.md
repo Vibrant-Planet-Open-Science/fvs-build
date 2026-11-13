@@ -12,7 +12,7 @@ The workflows are **source-agnostic**: callers supply a source repository and re
 | `.github/workflows/build-native-macos.yml` | Native macOS (Homebrew `gcc@N`) binaries + provenance + SBOM | `workflow_call` |
 | `.github/workflows/build-native-windows.yml` | Native Windows x86_64 (MSYS2 UCRT64) binaries + provenance + SBOM | `workflow_call` |
 | `.github/workflows/build-container-linux.yml` | Multi-arch Linux runtime image packaging the native binaries | `workflow_call` |
-| `.github/workflows/build-container-fvs-gui-linux.yml` | Binder-ready FVSOnLocal (`fvsOL`) GUI image built on the native `FVS<v>.so` set | `workflow_call` |
+| `.github/workflows/build-container-fvs-gui-linux.yml` | Binder-ready FVSOnLocal (`fvsOL`) GUI image with the native executables and `FVS<v>.so` set, and Jupyter R and Python kernels | `workflow_call` |
 | `.github/workflows/dispatch-native-{linux,macos,windows}.yml` | Manual drivers for the native workflows | `workflow_dispatch` |
 | `.github/workflows/dispatch-container-linux.yml` | Manual driver: native Linux + runtime image | `workflow_dispatch` |
 | `.github/workflows/dispatch-container-fvs-gui-linux.yml` | Manual driver: native Linux + GUI image | `workflow_dispatch` |
@@ -218,7 +218,7 @@ To run it by hand: `gh workflow run dispatch-container-linux.yml -f source_repo=
 
 ## `build-container-fvs-gui-linux.yml`
 
-Builds a Binder-ready FVSOnLocal (`fvsOL`) GUI image and optionally pushes it. It reuses the `FVS<v>.so` set from `build-native-linux.yml` bundles and builds the pure-R `rFVS`/`fvsOL` layer from `ForestVegetationSimulator-Interface` on `rocker/r2u:noble`, with Jupyter and `jupyter-server-proxy` serving the app at `/fvs-gui/`. The image is smoke-tested before it is pushed. Build steps, the Local-mode patch, the smoke checks and Binder publishing are in [`fvs-gui-container.md`](fvs-gui-container.md).
+Builds a Binder-ready FVSOnLocal (`fvsOL`) GUI image and optionally pushes it. It reuses the executables and `FVS<v>.so` set from `build-native-linux.yml` bundles, adds `fvs2py` and an R kernel for notebooks, and builds the pure-R `rFVS`/`fvsOL` layer from `ForestVegetationSimulator-Interface` on `rocker/r2u:noble`, with Jupyter and `jupyter-server-proxy` serving the app at `/fvs-gui/`. The image is smoke-tested before it is pushed. Build steps, the Local-mode patch, the smoke checks and Binder publishing are in [`fvs-gui-container.md`](fvs-gui-container.md).
 
 ### Inputs
 

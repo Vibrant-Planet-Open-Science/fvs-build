@@ -43,7 +43,7 @@ repeat {
   # app object must not be reused.
   app <- fvsOL(
     prjDir = Sys.getenv("FVSOL_PRJDIR", "/home/jovyan/project"),
-    fvsBin = Sys.getenv("FVSOL_BIN", "/opt/fvs/FVSbin")
+    fvsBin = Sys.getenv("FVS_BIN", "/usr/local/lib")
   )
 
   # Explicit host/port/launch.browser override the app object's appOptions.

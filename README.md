@@ -12,7 +12,33 @@ The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-scie
 
 ## Run FVS on your machine using Docker
 
-Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs`(for binaries alone) and`ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`(for the FVS graphical interface). The images are tagged by FVS release (e.g. `2027.1.0`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
+Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs` (the FVS executables and shared libraries alone) and `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui` (the FVS graphical interface, plus the same executables and Jupyter R and Python kernels with `rFVS` and `fvs2py`). The images are tagged by FVS release (e.g. `2027.1.0`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
+
+### Use the FVS GUI and notebooks on your computer
+
+This runs the same JupyterLab as the Binder button above, on your own computer: the **FVS GUI** tile, plus notebooks that can run FVS from R or Python.
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows or Mac) or [Docker Engine](https://docs.docker.com/engine/install/) (Linux), and start it.
+2. Open a terminal: **PowerShell** on Windows, **Terminal** on Mac or Linux.
+3. **Linux only:** run this in the terminal to create the two folders where your work is saved and let FVS write to them. (On Windows and Mac, Docker creates them for you.)
+
+   ```
+   mkdir -p fvs-work fvs-projects && chmod 777 fvs-work fvs-projects
+   ```
+
+4. Run this in the terminal. The first time, Docker downloads the image (FVS with R, Python and JupyterLab: about 1 GB to download, about 4 GB on disk), which can take several minutes.
+
+   ```
+   docker run --rm -p 8888:8888 -v "${PWD}/fvs-work:/home/jovyan/work" -v "${PWD}/fvs-projects:/home/jovyan/project" ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:latest
+   ```
+
+5. Open the link it prints that starts with `http://127.0.0.1:8888/lab?token=` in your web browser.
+6. Click the **FVS GUI** tile to open the GUI. Your work is kept in two folders inside the folder the terminal started in (your home folder):
+   - `fvs-projects`: your FVS GUI projects.
+   - `fvs-work`: notebooks and other files you save in the `work` folder in JupyterLab's file list. Anything saved outside `work` is deleted when you stop.
+7. To stop, go back to the terminal and press **Ctrl+C**.
+
+### Run FVS from the command line
 
 To run a keyfile in your current working directory with the `usfs-fvs` image, you do a volume mount of your working directory into the Docker container (`-v "$PWD:/data"`) and then call the FVS variant of your choice as a command line tool (`FVSak --keywordfile=mykeyfile.key`):
 
@@ -23,15 +49,7 @@ docker run --rm \
   FVSak --keywordfile=mykeyfile.key
 ```
 
-To run the FVS GUI locally (instead of on the cloud using the Binder option), start the `usfs-fvs-gui` image with the following command, then open a web browser to <http://localhost:3838>. By mounting a local directory onto the container (e.g., `-v "$PWD/fvs-projects:/home/jovyan/project"`), you will be able to keep any project files you generate on your machine (in the `fvs-projects` folder in the example below) after you're done using the container:
-
-```bash
-mkdir -p fvs-projects
-docker run --rm -p 3838:3838 \
-  -v "$PWD/fvs-projects:/home/jovyan/project" \
-  ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:latest \
-  Rscript /opt/fvs/launch.R 3838
-```
+The `usfs-fvs-gui` image carries the same executables. With it, add `-w /data` (its working directory is the GUI user's home) and `--user "$(id -u):$(id -g)"`, since it otherwise runs as uid 1000, which may not be able to write to your directory.
 
 The `usfs-fvs` image can also be used as a builder stage in your own Dockerfiles to extract any FVS binaries you need for your own containerized project:
 
@@ -181,6 +199,10 @@ undefined reference to `dbsreference_'
 
 This is a source-list completeness bug in upstream `USDAForestService/ForestVegetationSimulator`. Until a fix lands there, omit `bc` and `on` from the `variants` option.
 
+## Acknowledgment and disclaimer
+
+FVS is developed and maintained by the USDA Forest Service, and this project builds on the source code and documentation the Forest Service publishes. fvs-build is an independent project of Vibrant Planet and is not affiliated with or endorsed by the USDA Forest Service. Any opinions, findings, conclusions, or recommendations expressed here are those of the authors and should not be construed to represent any official USDA or U.S. Government determination or policy. The use of trade or firm names is for reader information and does not imply endorsement by the U.S. Department of Agriculture of any product or service.
+
 ## Releases
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please). PRs are squash-merged, so each PR title must be a [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `build:`, `docs:`, …; `!` or a `BREAKING CHANGE:` footer for breaking changes). release-please keeps an open release PR that bumps the version, `CHANGELOG.md` and the `@vX.Y.Z` pins in `docs/workflow-interface.md`; merging it tags the release. Before 1.0, a breaking change bumps the minor version and a feature or fix bumps the patch. Dependabot keeps the GitHub Actions current with `build(deps):` PRs, which count toward the next release.
@@ -197,7 +219,7 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 - `.github/workflows/dispatch-container-linux.yml` — manually-triggered option for the native Linux + container steps in sequence.
 - `.github/workflows/dispatch-container-fvs-gui-linux.yml` — manually-triggered option for running native Linux + FVS GUI container steps in sequence.
 - `docker/Dockerfile.runtime` — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; supports standard FVS command-line invocation).
-- `docker/Dockerfile.fvs-gui` — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the`FVS<v>.so`shared libraries, builds `rFVS`/`fvsOL`) from source code. Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-gui/`.
+- `docker/Dockerfile.fvs-gui` — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the `FVS<v>` executables and `FVS<v>.so` shared libraries, installs `fvs2py` and an R kernel, builds `rFVS`/`fvsOL` from source). Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-gui/`.
 - `binder/Dockerfile` — thin `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>` shim so mybinder.org can launch the GUI image in seconds rather than building from scratch.
 - `docs/local-builds.md` — details for running the Meson build by hand, primarily intended for developers who would like to work on the `fvs-build` project or run Meson-based builds themselves.
 - `docs/workflow-interface.md` — the reusable workflows' inputs, outputs and artifact contract.
