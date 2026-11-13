@@ -276,4 +276,19 @@ docker run --rm -w /tmp -e VARIANT="$VARIANT" "$IMAGE" sh -c \
   | grep -q 'STOP 20' || die "FVS${VARIANT} is missing from PATH or did not reach STOP 20 on empty input"
 pass "FVS${VARIANT} runs from PATH"
 
+# --- 14. fvs2py loads a variant from FVS_BIN ----------------------------------
+info "14. fvs2py loads FVS${VARIANT}.so from \$FVS_BIN"
+docker run --rm -e VARIANT="$VARIANT" "$IMAGE" python -c \
+  'import os; from fvs2py import FVS; FVS(os.path.join(os.environ["FVS_BIN"], "FVS" + os.environ["VARIANT"] + ".so")); print("fvs2py-ok")' \
+  2>&1 | grep -q '^fvs2py-ok$' || die "fvs2py could not load FVS${VARIANT}.so from \$FVS_BIN"
+pass "fvs2py loads FVS${VARIANT}.so"
+
+# --- 15. Jupyter R and Python kernels -----------------------------------------
+info "15. Jupyter kernels: ir and python3"
+kernels="$(docker run --rm "$IMAGE" jupyter kernelspec list 2>/dev/null)"
+for k in ir python3; do
+  printf '%s\n' "$kernels" | grep -qE "^ +${k} " || die "Jupyter kernel ${k} is not registered"
+done
+pass "ir and python3 kernels registered"
+
 printf '\n\033[32mALL SMOKE TESTS PASSED\033[0m (%s)\n' "$IMAGE"

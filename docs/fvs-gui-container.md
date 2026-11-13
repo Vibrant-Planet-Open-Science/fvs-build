@@ -22,6 +22,7 @@ Steps 1–8 run once per arch: `amd64` on `runner_image`, plus `arm64` on `ubunt
 | --- | --- |
 | `/opt/fvs/FVSbin/FVS<v>.so` | per-variant shared library (`rFVS::fvsLoad()` globs these) |
 | `/usr/local/bin/FVS<v>` | per-variant executable, for running FVS from the command line (see README) |
+| `fvs2py` (pinned, in `/opt/venv`) and `IRkernel` | Python and R access to the `.so` set from Jupyter notebooks. `FVS_BIN=/opt/fvs/FVSbin` points both at it: `rFVS::fvsLoad("FVSpn", bin = Sys.getenv("FVS_BIN"))`, `fvs2py.FVS(os.path.join(os.environ["FVS_BIN"], "FVSpn.so"))` |
 | `/opt/fvs/launch.R` | launch shim (`docker/fvs-gui/launch.R`): neutralizes `launch.browser=TRUE`, pins host/port, and calls `shiny::runApp()` inside a **supervise loop**. `fvsOL` calls `stopApp()` on every session end, which makes `runApp()` return, and jupyter-server-proxy never respawns a cleanly-exited process. A fast-exit guard (3 consecutive exits under 5 s) fails loudly instead of spinning. See smoke check 9 |
 | `jupyter-fvsol-proxy` (pip-installed into `/opt/venv`) | registers the `fvs-gui` proxy entry via the `jupyter_serverproxy_servers` entry point (`docker/fvs-gui/jupyter-fvsol-proxy/`): `timeout: 120`, `absolute_url: False`, no `environment` (leaving `SHINY_PORT` unset selects Local mode), plus the launcher icon. See smoke checks 7 and 8 |
 | `/opt/fvs/patches/` | `fvsOL` source patches (`docker/fvs-gui/patches/`), applied before the package is built and kept in the image to record what it was patched with. See [Local mode and the `fvsOL` patch](#local-mode-and-the-fvsol-patch) |
@@ -83,6 +84,8 @@ Unlike the runtime image, the GUI image is smoke-tested before it is pushed: sev
 | 11\. `isLocal()` is `TRUE` and `getVolumes2()()` returns a non-empty volume list | `launch.R` no longer attaching `fs`, which kills every Local-mode session after the page is served |
 | 12\. `getProjectList()` returns instead of erroring with the open project locked | the Manage Projects tab greying out on first click |
 | 13\. an `FVS<v>` executable on `PATH` prints its version and reaches `STOP 20` on empty input | the executables missing from the image, or not runnable in it |
+| 14\. `fvs2py` loads an `FVS<v>.so` from `$FVS_BIN` | an `fvs2py` release whose required API routines the `.so` lacks, or `FVS_BIN` pointing elsewhere |
+| 15\. `jupyter kernelspec list` shows `ir` and `python3` | a notebook kernel missing on Binder |
 
 Run it locally against a `--load`ed image:
 
