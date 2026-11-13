@@ -95,18 +95,17 @@ Provenance JSON (`schema_version: 1`), written by `tools/ci/provenance.py`:
 
 ### Calling the workflow
 
-<!-- x-release-please-start-version -->
 ```yaml
 jobs:
   fvs-x86_64:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0  # x-release-please-version
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: 2027.1.0
       # variants: pn,wc,nc   # optional subset
 
   fvs-aarch64:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0  # x-release-please-version
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: 2027.1.0
@@ -121,7 +120,6 @@ jobs:
           name: ${{ needs.fvs-x86_64.outputs.artifact_name }}
           path: fvs-bundle
 ```
-<!-- x-release-please-end -->
 
 Pin `fvs-build` to a tag or SHA for reproducible pipelines. The workflow requests only `contents: read`; for a private `source_repo`, add `secrets: inherit` to the caller's `uses:` block.
 
@@ -180,7 +178,6 @@ Standard labels: `source` (fvs-build repo URL), `revision` (fvs-build SHA), `ver
 
 ### Composing native + container
 
-<!-- x-release-please-start-version -->
 ```yaml
 permissions:
   contents: read
@@ -188,13 +185,13 @@ permissions:
 
 jobs:
   native:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0  # x-release-please-version
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: 2027.1.0
 
   native-arm64:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@v0.7.0  # x-release-please-version
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: 2027.1.0
@@ -202,7 +199,7 @@ jobs:
 
   container:
     needs: [native, native-arm64]
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-container-linux.yml@v0.7.0
+    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-container-linux.yml@v0.7.0  # x-release-please-version
     with:
       artifact_name: ${{ needs.native.outputs.artifact_name }}
       artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
@@ -212,7 +209,6 @@ jobs:
       push: true
     secrets: inherit
 ```
-<!-- x-release-please-end -->
 
 Pushing to GHCR uses `GITHUB_TOKEN`; the caller must grant `packages: write`. For other registries the caller handles login. Drop `native-arm64` and `artifact_name_arm64` for an amd64-only image.
 
