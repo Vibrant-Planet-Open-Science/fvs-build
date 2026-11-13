@@ -1,13 +1,13 @@
 From: fvs-build <https://github.com/Vibrant-Planet-Open-Science/fvs-build>
 Subject: [PATCH] fvsOL: make Local mode work behind a reverse-proxy subpath on Linux
 
-Vendored by docker/Dockerfile.fvs-gui, which applies it with `git apply` before
+Vendored by docker/Dockerfile.fvs-workspace, which applies it with `git apply` before
 building the fvsOL package, then asserts the result. `git apply` refuses fuzzy
 application on purpose: an interface_ref bump that moves these lines fails the
 build loudly instead of silently shipping unpatched code.
 
 Rationale for each hunk, and the exit criteria for deleting this file, are in
-docs/fvs-gui-container.md; the upstream issue drafts are under docs/plans/.
+docs/fvs-workspace-container.md; the upstream issue drafts are under docs/plans/.
 
 1. "View On Maps" popup graphs (server.R:5933). With Display=graph, each stand's
    leaflet marker popup shows a per-stand PNG written to ./www/s<sid>.png and

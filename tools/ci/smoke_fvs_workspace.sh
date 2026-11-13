@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Smoke test for the FVS GUI image (docker/Dockerfile.fvs-gui), run against an
-# already-built image. The checks are described in docs/fvs-gui-container.md.
+# Smoke test for the FVS workspace image (docker/Dockerfile.fvs-workspace), run against an
+# already-built image. The checks are described in docs/fvs-workspace-container.md.
 #
-# Usage: tools/ci/smoke_fvs_gui.sh [IMAGE_REF]     (default: usfs-fvs-gui:local)
+# Usage: tools/ci/smoke_fvs_workspace.sh [IMAGE_REF]     (default: fvs-workspace:local)
 # Env:   SMOKE_VARIANT=<code>  override the auto-detected variant used by checks 2, 13 and 14.
 set -euo pipefail
 
-IMAGE="${1:-usfs-fvs-gui:local}"
+IMAGE="${1:-fvs-workspace:local}"
 APP_PORT="${SMOKE_APP_PORT:-3838}"
 JUP_PORT="${SMOKE_JUP_PORT:-8888}"
 MASK_PORT="${SMOKE_MASK_PORT:-8890}"
@@ -39,7 +39,7 @@ wait_http() {
   return 1
 }
 
-info "FVS GUI image smoke test: ${IMAGE}"
+info "FVS workspace image smoke test: ${IMAGE}"
 docker image inspect "$IMAGE" >/dev/null 2>&1 || die "image not found locally: ${IMAGE} (build it first, e.g. docker buildx build --load -t ${IMAGE} ...)"
 
 # --- 1. R packages attach ---------------------------------------------------
@@ -226,7 +226,7 @@ docker run --rm "$IMAGE" sh -c '
     echo "found mis-cased ProjectIsLocked.txt"; exit 1
   fi
   echo patched-ok' 2>&1 | grep -q '^patched-ok$' \
-  || die "the vendored fvsOL patches are missing from this image: the View On Maps popup graphs will 404 under the /fvs-gui/ proxy subpath, and leaving a project will strand a lock file that hides it from the project picker. Rebuild from a Dockerfile.fvs-gui that applies docker/fvs-gui/patches/"
+  || die "the vendored fvsOL patches are missing from this image: the View On Maps popup graphs will 404 under the /fvs-gui/ proxy subpath, and leaving a project will strand a lock file that hides it from the project picker. Rebuild from a Dockerfile.fvs-workspace that applies docker/fvs-workspace/patches/"
 pass "vendored patches present in /opt/fvs/interface/fvsOL/R"
 
 # --- 11. Local mode can construct a session ----------------------------------

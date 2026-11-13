@@ -1,7 +1,7 @@
-# Reusable workflow: Binder-ready FVSOnLocal GUI image from build-native-linux.yml
-# bundles. Interface: docs/workflow-interface.md; notes: docs/fvs-gui-container.md.
+# Reusable workflow: Binder-ready FVS workspace image from build-native-linux.yml
+# bundles. Interface: docs/workflow-interface.md; notes: docs/fvs-workspace-container.md.
 
-name: Build Linux FVS GUI container image (reusable)
+name: Build Linux FVS workspace container image (reusable)
 
 on:
   workflow_call:
@@ -26,14 +26,14 @@ on:
         description: >-
           Tag, branch, or SHA in interface_repo for the rFVS/fvsOL sources.
           Must be release 20261019 or later: earlier refs ship rFVS/fvsOL
-          without NAMESPACE and fail Dockerfile.fvs-gui's guard.
+          without NAMESPACE and fail Dockerfile.fvs-workspace's guard.
         required: false
         type: string
         default: "20261109"
       image_name:
         description: >-
           Fully-qualified image name without the tag suffix, e.g.
-          `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`.
+          `ghcr.io/vibrant-planet-open-science/fvs-workspace`.
         required: true
         type: string
       image_tag:
@@ -152,15 +152,15 @@ jobs:
             fi
             dir=$(dirname "${desc}")
             echo "Staging ${pkg} from ${dir}"
-            rm -rf "fvs-gui-context/${pkg}"
-            mkdir -p fvs-gui-context
-            cp -a "${dir}" "fvs-gui-context/${pkg}"
+            rm -rf "fvs-workspace-context/${pkg}"
+            mkdir -p fvs-workspace-context
+            cp -a "${dir}" "fvs-workspace-context/${pkg}"
           }
 
           stage rFVS
           stage fvsOL
           echo "Staged package contexts:"
-          ls -la fvs-gui-context
+          ls -la fvs-workspace-context
 
       - name: Extract provenance from bundle manifest
         id: provenance
@@ -196,7 +196,7 @@ jobs:
       # The gha layer cache is for pull requests only: a dispatch on main may
       # build an arbitrary interface_repo, whose layers must never reach a
       # release build. Releases build clean.
-      - name: Build FVS GUI image (load locally)
+      - name: Build FVS workspace image (load locally)
         env:
           INTERFACE_REPO: ${{ inputs.interface_repo }}
           INTERFACE_REF: ${{ inputs.interface_ref }}
@@ -204,8 +204,8 @@ jobs:
           set -euo pipefail
           cache=()
           if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
-            cache=(--cache-from "type=gha,scope=fvs-gui-${ARCH}"
-              --cache-to "type=gha,mode=max,scope=fvs-gui-${ARCH},ignore-error=true")
+            cache=(--cache-from "type=gha,scope=fvs-workspace-${ARCH}"
+              --cache-to "type=gha,mode=max,scope=fvs-workspace-${ARCH},ignore-error=true")
           fi
           args=(
             --platform "linux/${ARCH}"
@@ -222,14 +222,14 @@ jobs:
             --build-arg INTERFACE_REPO="${INTERFACE_REPO}"
             --build-arg INTERFACE_REF="${INTERFACE_REF}"
             --build-arg INTERFACE_SHA="${INTERFACE_SHA}"
-            -f docker/Dockerfile.fvs-gui
+            -f docker/Dockerfile.fvs-workspace
             .
           )
           printf '%s\n' "${args[@]}" > "${RUNNER_TEMP}/buildx-args"
           docker buildx build --load --tag "${IMAGE_REF}" "${cache[@]}" "${args[@]}"
 
       - name: Smoke-test the built image
-        run: bash tools/ci/smoke_fvs_gui.sh "${IMAGE_REF}"
+        run: bash tools/ci/smoke_fvs_workspace.sh "${IMAGE_REF}"
 
       - name: Log in to GHCR
         if: inputs.push && startsWith(inputs.image_name, 'ghcr.io/')
@@ -260,7 +260,7 @@ jobs:
         if: inputs.push
         uses: actions/upload-artifact@v7
         with:
-          name: container-fvs-gui-digest-${{ matrix.arch }}-${{ github.run_id }}
+          name: container-fvs-workspace-digest-${{ matrix.arch }}-${{ github.run_id }}
           path: ${{ runner.temp }}/digests/${{ matrix.arch }}
           retention-days: 1
           if-no-files-found: error
@@ -272,14 +272,14 @@ jobs:
         run: |
           set -euo pipefail
           syft scan "${IMAGE_REF}" \
-            -o "spdx-json=container-fvs-gui-sbom.spdx.json"
-          echo "Image SBOM size: $(wc -c < container-fvs-gui-sbom.spdx.json) bytes"
+            -o "spdx-json=container-fvs-workspace-sbom.spdx.json"
+          echo "Image SBOM size: $(wc -c < container-fvs-workspace-sbom.spdx.json) bytes"
 
       - name: Upload image SBOM artifact
         uses: actions/upload-artifact@v7
         with:
-          name: container-fvs-gui-sbom-${{ matrix.arch }}-${{ github.run_id }}
-          path: container-fvs-gui-sbom.spdx.json
+          name: container-fvs-workspace-sbom-${{ matrix.arch }}-${{ github.run_id }}
+          path: container-fvs-workspace-sbom.spdx.json
           retention-days: 30
           if-no-files-found: error
 
@@ -295,7 +295,7 @@ jobs:
       - name: Download digests
         uses: actions/download-artifact@v8
         with:
-          pattern: container-fvs-gui-digest-*-${{ github.run_id }}
+          pattern: container-fvs-workspace-digest-*-${{ github.run_id }}
           path: digests
           merge-multiple: true
 

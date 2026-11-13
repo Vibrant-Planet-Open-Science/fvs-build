@@ -8,11 +8,11 @@ Builds and publishes the Forest Vegetation Simulator (FVS) from USDA Forest Serv
 
 Click the "Launch Binder" badge above, and you'll be taken to a cloud-hosted instance of JupyterLab running on [mybinder.org](https://mybinder.org). From there you can just click the **FVS GUI** tile from the Launcher page to fire up the FVS GUI, which is running on a virtual machine in the cloud. Be aware that Binder sessions are temporary, so download anything you want to keep before the session ends.
 
-The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`; see `docs/fvs-gui-container.md` for how it is built and published.
+The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`; see `docs/fvs-workspace-container.md` for how it is built and published.
 
 ## Run FVS on your machine using Docker
 
-Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs` (the FVS executables and shared libraries alone) and `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui` (the FVS graphical interface, plus the same executables and Jupyter R and Python kernels with `rFVS` and `fvs2py`). The images are tagged by FVS release (e.g. `2027.1.0`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
+Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs` (the FVS executables and shared libraries alone) and `ghcr.io/vibrant-planet-open-science/fvs-workspace` (the FVS graphical interface, plus the same executables and Jupyter R and Python kernels with `rFVS` and `fvs2py`). The images are tagged by FVS release (e.g. `2027.1.0`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
 
 ### Use the FVS GUI and notebooks on your computer
 
@@ -29,7 +29,7 @@ This runs the same JupyterLab as the Binder button above, on your own computer: 
 4. Run this in the terminal. The first time, Docker downloads the image (FVS with R, Python and JupyterLab: about 1 GB to download, about 4 GB on disk), which can take several minutes.
 
    ```
-   docker run --rm -p 8888:8888 -v "${PWD}/fvs-work:/home/jovyan/work" -v "${PWD}/fvs-projects:/home/jovyan/project" ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:latest
+   docker run --rm -p 8888:8888 -v "${PWD}/fvs-work:/home/jovyan/work" -v "${PWD}/fvs-projects:/home/jovyan/project" ghcr.io/vibrant-planet-open-science/fvs-workspace:latest
    ```
 
 5. Open the link it prints that starts with `http://127.0.0.1:8888/lab?token=` in your web browser.
@@ -49,7 +49,7 @@ docker run --rm \
   FVSak --keywordfile=mykeyfile.key
 ```
 
-The `usfs-fvs-gui` image carries the same executables. With it, add `-w /data` (its working directory is the GUI user's home) and `--user "$(id -u):$(id -g)"`, since it otherwise runs as uid 1000, which may not be able to write to your directory.
+The `fvs-workspace` image carries the same executables. With it, add `-w /data` (its working directory is the GUI user's home) and `--user "$(id -u):$(id -g)"`, since it otherwise runs as uid 1000, which may not be able to write to your directory.
 
 The `usfs-fvs` image can also be used as a builder stage in your own Dockerfiles to extract any FVS binaries you need for your own containerized project:
 
@@ -100,7 +100,7 @@ All 24 FVS variants are addressable by their two-letter codes. The Docker images
 
 ## Build FVS in your repository with reusable GitHub workflows
 
-Five reusable `workflow_call` workflows can be used to build the native binaries (one workflow for each OS including Linux, MacOS, and Windows), the runtime image (binaries only in the container), and the FVS GUI image.
+Five reusable `workflow_call` workflows can be used to build the native binaries (one workflow for each OS including Linux, MacOS, and Windows), the runtime image (binaries only in the container), and the FVS workspace image (the FVS GUI, FVS executables, and the packages rFVS and fvs2py that can load FVS through shared libraries).
 
 ### Supported FVS versions
 
@@ -176,10 +176,10 @@ gh workflow run dispatch-container-linux.yml \
   -f push=true
 ```
 
-To build the FVS GUI image (dry run, no push):
+To build the FVS workspace image (dry run, no push):
 
 ```bash
-gh workflow run dispatch-container-fvs-gui-linux.yml \
+gh workflow run dispatch-container-fvs-workspace.yml \
   -f source_ref=2027.1.0 \
   -f interface_ref=20261109 \
   -f image_tag=2027.1.0
@@ -213,18 +213,18 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 - `tools/parse_sourcelist.py` — turns one source list into the categorized file lists Meson consumes to build the binaries, invoked during the Meson build for each variant.
 - `.github/workflows/build-native-linux.yml`, `.github/workflows/build-native-windows.yml`, `.github/workflows/build-native-macos.yml` — reusable `workflow_call` workflows that run the Meson build for a single OS. Each produces an artifact bundle (binaries + provenance + SBOM); see `docs/workflow-interface.md`.
 - `.github/workflows/build-container-linux.yml` — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image, with option to push the image to GHCR.
-- `.github/workflows/build-container-fvs-gui-linux.yml` — reusable `workflow_call` workflow that builds the FVSOnLocal (`fvsOL`) GUI image. It copies the native Linux binaries (`FVS<v>.so`) and builds the `rFVS`/`fvsOL` R layer on a `rocker/r2u:noble`base image with additional configuration settings that allow the image to be hosted via Binder.
+- `.github/workflows/build-container-fvs-workspace.yml` — reusable `workflow_call` workflow that builds the FVS workspace image, which serves the FVSOnLocal (`fvsOL`) GUI. It copies the native Linux binaries (`FVS<v>.so`) and builds the `rFVS`/`fvsOL` R layer on a `rocker/r2u:noble`base image with additional configuration settings that allow the image to be hosted via Binder.
 - `.github/workflows/dispatch-native.yml` — manually-triggered option for one native workflow, chosen by `platform` (`workflow_dispatch`).
 - `.github/workflows/dispatch-container-linux.yml` — manually-triggered option for the native Linux + container steps in sequence.
-- `.github/workflows/dispatch-container-fvs-gui-linux.yml` — manually-triggered option for running native Linux + FVS GUI container steps in sequence.
+- `.github/workflows/dispatch-container-fvs-workspace.yml` — manually-triggered option for running native Linux + FVS workspace container steps in sequence.
 - `docker/Dockerfile.runtime` — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; supports standard FVS command-line invocation).
-- `docker/Dockerfile.fvs-gui` — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the `FVS<v>` executables and `FVS<v>.so` shared libraries, installs `fvs2py` and an R kernel, builds `rFVS`/`fvsOL` from source). Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-gui/`.
-- `binder/Dockerfile` — thin `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>` shim so mybinder.org can launch the GUI image in seconds rather than building from scratch.
+- `docker/Dockerfile.fvs-workspace` — FVS workspace image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the `FVS<v>` executables and `FVS<v>.so` shared libraries, installs `fvs2py` and an R kernel, builds `rFVS`/`fvsOL` from source). Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-workspace/`.
+- `binder/Dockerfile` — thin `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>` shim so mybinder.org can launch the published image in seconds rather than building from scratch.
 - `docs/local-builds.md` — details for running the Meson build by hand, primarily intended for developers who would like to work on the `fvs-build` project or run Meson-based builds themselves.
 - `docs/workflow-interface.md` — the reusable workflows' inputs, outputs and artifact contract.
 - `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/release-please.yml` — release automation (see [Releases](#releases)).
 - `.github/dependabot.yml` — weekly updates for the GitHub Actions and the Meson pin.
-- `docs/fvs-gui-container.md` — maintainer notes for the FVS GUI image: build steps, the `fvsOL` Local-mode patch, smoke checks and Binder publishing.
+- `docs/fvs-workspace-container.md` — maintainer notes for the FVS workspace image: build steps, the `fvsOL` Local-mode patch, smoke checks and Binder publishing.
 - Shared CI helpers used by the three native workflows:
   - `tools/ci/resolve_variants.sh` — normalizes the `variants` input into the list each build job loops over, and holds the default list.
   - `tools/ci/requirements-build.txt` — the Meson pin.

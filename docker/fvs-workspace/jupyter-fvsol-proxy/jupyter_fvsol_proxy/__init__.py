@@ -3,7 +3,7 @@
 Registered through the `jupyter_serverproxy_servers` entry point, not a config
 file: mybinder mounts a Kubernetes ConfigMap over /etc/jupyter at runtime, which
 hides any config placed there. jupyter-server-proxy skips a raising entry point
-with only a warning (a silent 404), so Dockerfile.fvs-gui asserts this module
+with only a warning (a silent 404), so Dockerfile.fvs-workspace asserts this module
 loads at build time.
 """
 

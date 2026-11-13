@@ -1,29 +1,8 @@
-# hadolint config for docker/Dockerfile.runtime and docker/Dockerfile.fvs-gui.
-#
-# Shared between the pre-commit hadolint-docker hook
-# (.pre-commit-config.yaml, files: ^docker/Dockerfile) and any local
-# `hadolint` invocation.
-
+# Used by the pre-commit hadolint hook and any local `hadolint` run.
+# Unpinned packages float to the base image's current versions; the image SBOM
+# records what was installed.
 ignored:
-  # DL3008: "Pin versions in apt-get install".
-  #
-  # We install libgfortran5, ca-certificates and the GUI image's build
-  # tools from the ubuntu:24.04 base unpinned by design. Pinning to specific patches
-  # (e.g., 14.2.0-4ubuntu2~24.04.1 today) would couple us to a moving
-  # target and force config bumps on every Ubuntu point release
-  # without buying anything reproducibility-wise -- the OCI labels and
-  # SBOM record what was actually pulled at build time.
-  - DL3008
-
-  # DL3013: "Pin versions in pip". Dockerfile.fvs-gui installs the Binder
-  # stack (notebook>=7, jupyterlab, jupyter-server-proxy) unpinned to floating
-  # patch versions for the same reason as DL3008: the image is a demo
-  # launcher, not a reproducibility-critical release artifact, and the OCI
-  # labels / image SBOM record exactly what was pulled at build time.
-  - DL3013
-
-  # DL3059: "Multiple consecutive RUN instructions". Dockerfile.fvs-gui keeps
-  # apt / pip / R-package provisioning as separate, individually-cached and
-  # individually-readable layers on purpose; merging them into one RUN would
-  # hurt build-cache granularity and reviewability without a real size win.
-  - DL3059
+  - DL3008 # Pin versions in apt-get install (both Dockerfiles)
+  - DL3013 # Pin versions in pip (Dockerfile.fvs-workspace)
+  - DL3059 # Consecutive RUN instructions: Dockerfile.fvs-workspace keeps
+           # each provisioning step its own cached layer

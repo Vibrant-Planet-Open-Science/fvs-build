@@ -1,4 +1,4 @@
-name: Dispatch native + FVS GUI container build (manual)
+name: Dispatch native + FVS workspace container build (manual)
 
 on:
   workflow_dispatch:
@@ -34,7 +34,7 @@ on:
         default: "20261109"
         type: string
       image_name:
-        description: "Fully-qualified image name without tag (defaults to usfs-fvs-gui namespace)"
+        description: "Fully-qualified image name without tag (defaults to ghcr.io/<owner>/fvs-workspace)"
         required: false
         default: ""
         type: string
@@ -81,7 +81,7 @@ jobs:
             IMAGE_NAME="${INPUT_IMAGE_NAME}"
           else
             OWNER_LC=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-            IMAGE_NAME="ghcr.io/${OWNER_LC}/usfs-fvs-gui"
+            IMAGE_NAME="ghcr.io/${OWNER_LC}/fvs-workspace"
           fi
           echo "image_name=${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
           echo "image_name resolved to: ${IMAGE_NAME}"
@@ -104,12 +104,12 @@ jobs:
       variants: ${{ inputs.variants }}
       arch: aarch64
 
-  fvs-gui-container:
-    name: FVS GUI container build
+  fvs-workspace-container:
+    name: FVS workspace container build
     needs: [resolve-image-name, native, native-arm64]
     # Run when native-arm64 was skipped (arm64: false), not only on success.
     if: ${{ !failure() && !cancelled() }}
-    uses: ./.github/workflows/build-container-fvs-gui-linux.yml
+    uses: ./.github/workflows/build-container-fvs-workspace.yml
     with:
       arm64: ${{ inputs.arm64 }}
       interface_repo: ${{ inputs.interface_repo }}
