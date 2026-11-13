@@ -20,19 +20,19 @@ This runs the same JupyterLab as the Binder button above, on your own computer: 
 
 1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows or Mac) or [Docker Engine](https://docs.docker.com/engine/install/) (Linux), and start it.
 2. Open a terminal: **PowerShell** on Windows, **Terminal** on Mac or Linux.
-3. **Linux only:** copy this line into the terminal and press Enter. It creates the two folders where your work is saved and lets FVS write to them. (On Windows and Mac, Docker creates them for you.)
+3. **Linux only:** run this in the terminal to create the two folders where your work is saved and let FVS write to them. (On Windows and Mac, Docker creates them for you.)
 
    ```
    mkdir -p fvs-work fvs-projects && chmod 777 fvs-work fvs-projects
    ```
 
-4. Copy this whole line into the terminal and press Enter. The first time, Docker downloads FVS (a few GB), which can take several minutes.
+4. Run this in the terminal. The first time, Docker downloads FVS (a few GB), which can take several minutes.
 
    ```
    docker run --rm -p 8888:8888 -v "${PWD}/fvs-work:/home/jovyan/work" -v "${PWD}/fvs-projects:/home/jovyan/project" ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:latest
    ```
 
-5. Wait for a line that starts with `http://127.0.0.1:8888/lab?token=`. Copy that whole line into your web browser's address bar.
+5. Open the link it prints that starts with `http://127.0.0.1:8888/lab?token=` in your web browser.
 6. Click the **FVS GUI** tile to open the GUI. Your work is kept in two folders inside the folder the terminal started in (your home folder):
    - `fvs-projects`: your FVS GUI projects.
    - `fvs-work`: notebooks and other files you save in the `work` folder in JupyterLab's file list. Anything saved outside `work` is deleted when you stop.
