@@ -38,7 +38,7 @@ RUN set -eux; \
   done
 
 COPY bundle/provenance/manifest.json         /usr/share/fvs-build/manifest.json
-COPY bundle/sbom/fvs-native-linux.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
+COPY bundle/sbom/fvs-native.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
 
 RUN chmod +x /usr/local/bin/FVS* \
   && ldconfig

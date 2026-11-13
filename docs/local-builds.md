@@ -5,7 +5,7 @@ The supported way to build FVS is the reusable workflows (see the [README](../RE
 ## Prerequisites
 
 - Linux x86_64 or aarch64
-- `gfortran` and `gcc` (the workflows select a GCC major with `gcc_major`; any reasonably recent gfortran works for local experimentation)
+- `gfortran` and `gcc` (the workflows pin a GCC major per platform; any reasonably recent gfortran works for local experimentation)
 - `meson >= 1.8`, `ninja`
 - `python3` (stdlib only)
 - An FVS source tree at FS2026.3 or later (see [Supported FVS versions](../README.md#supported-fvs-versions))

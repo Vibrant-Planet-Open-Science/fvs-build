@@ -3,9 +3,10 @@
 
 ``bundle`` runs as the last step of each native build job. It reads its inputs
 from the environment (see ``Config``), copies the executables and stripped
-shared libraries from the Meson build directory into ``$ARTIFACT_NAME/``, and
-writes ``provenance/manifest.json``, ``provenance/per-variant/FVS<v>.json``,
-``provenance/meson-log.tail.txt`` and the SPDX SBOM.
+shared libraries from the Meson build directory into
+``fvs-native-<os>-<arch>-<run_id>/``, and writes ``provenance/manifest.json``,
+``provenance/per-variant/FVS<v>.json``, ``provenance/meson-log.tail.txt`` and
+the SPDX SBOM. It appends ``artifact_name=<that name>`` to ``$GITHUB_OUTPUT``.
 
 ``manifest-to-github-env`` exports manifest fields for the container workflows.
 """
@@ -32,14 +33,22 @@ from typing import Any
 _SHA = r"[0-9a-f]{40}"
 _NUM = r"[0-9]+"
 _ANY = r".+"
+_OS = {"linux": "linux", "win32": "windows", "darwin": "macos"}
+_ARCH = {
+    "x86_64": "x86_64",
+    "amd64": "x86_64",
+    "aarch64": "aarch64",
+    "arm64": "aarch64",
+}
+SBOM = "sbom/fvs-native.spdx.json"
 
 
 @dataclass(frozen=True)
 class Config:
     """Bundle inputs, read once from the environment."""
 
-    platform: str
-    artifact_name: str
+    os: str
+    arch: str
     variants: tuple[str, ...]
     variants_input: str
     profile: str
@@ -53,7 +62,6 @@ class Config:
     gcc_major: str
     gfortran_package: str
     gpp_package: str
-    meson_pin: str
     compilers: tuple[str, str, str]
     run_id: str
     run_attempt: str
@@ -61,10 +69,29 @@ class Config:
     build_dir: Path
     source_dir: Path
 
+    @property
+    def artifact_name(self) -> str:
+        """The bundle's directory and artifact name."""
+        return f"fvs-native-{self.os}-{self.arch}-{self.run_id}"
+
     @classmethod
-    def from_env(cls, env: Mapping[str, str] = os.environ) -> Config:
-        """Read and check every input, reporting all bad ones at once."""
+    def from_env(
+        cls,
+        env: Mapping[str, str] = os.environ,
+        sys_platform: str = sys.platform,
+        machine: str = platform.machine(),
+    ) -> Config:
+        """Read and check every input, reporting all bad ones at once.
+
+        ``FVS_BUILD_REF`` may be ``job.workflow_ref``
+        (``<owner>/<repo>/<path>@<ref>``); only ``<ref>`` is kept.
+        """
         errors: list[str] = []
+        os_name, arch = _OS.get(sys_platform), _ARCH.get(machine.lower())
+        if not os_name:
+            errors.append(f"sys.platform={sys_platform!r}")
+        if not arch:
+            errors.append(f"platform.machine()={machine!r}")
 
         def get(name: str, pattern: str = _ANY, default: str = "") -> str:
             val = env.get(name, default).strip()
@@ -74,22 +101,21 @@ class Config:
 
         run_id = get("GITHUB_RUN_ID", _NUM)
         cfg = cls(
-            platform=get("FVS_NATIVE_PLATFORM", "linux|windows|darwin"),
-            artifact_name=get("ARTIFACT_NAME", r"fvs-native-[A-Za-z0-9_-]+"),
+            os=os_name or "",
+            arch=arch or "",
             variants=tuple(get("VARIANTS", r"[a-z0-9]+( [a-z0-9]+)*").split()),
-            variants_input=get("VARIANTS_INPUT"),
+            variants_input=get("VARIANTS_INPUT", ".*"),
             profile=get("BUILD_PROFILE", "reference|debug"),
             source_repo=get("SOURCE_REPO"),
             source_ref=get("SOURCE_REF"),
             source_sha=get("SOURCE_SHA", _SHA),
             fvs_build_repo=get("FVS_BUILD_REPO"),
-            fvs_build_ref=get("FVS_BUILD_REF"),
+            fvs_build_ref=get("FVS_BUILD_REF").rpartition("@")[2],
             fvs_build_sha=get("FVS_BUILD_SHA", _SHA),
             runner_image=get("RUNNER_IMAGE"),
             gcc_major=get("GCC_MAJOR", _NUM),
             gfortran_package=get("GFORTRAN_PKG"),
             gpp_package=get("GPP_PKG"),
-            meson_pin=get("MESON_PIN"),
             compilers=(get("FC"), get("CC"), get("CXX")),
             run_id=run_id,
             run_attempt=get("GITHUB_RUN_ATTEMPT", _NUM),
@@ -180,7 +206,7 @@ def _spdx_package(
 
 
 def spdx_document(
-    manifest: dict[str, Any], files: dict[str, dict[str, str]], native_platform: str
+    manifest: dict[str, Any], files: dict[str, dict[str, str]], os_name: str
 ) -> dict[str, Any]:
     """Return the bundle's SPDX 2.3 document.
 
@@ -190,7 +216,7 @@ def spdx_document(
     Args:
         manifest: The bundle's ``manifest.json`` content.
         files: Bundled file name to ``{"SHA1": ..., "SHA256": ...}``.
-        native_platform: ``linux``, ``windows`` or ``darwin``.
+        os_name: ``linux``, ``windows`` or ``macos``.
     """
     name, build = manifest["artifact_name"], manifest["build"]
     src, nvel = manifest["source"], manifest["source"]["nvel"]
@@ -229,7 +255,7 @@ def spdx_document(
             }
         )
         # Only the Linux shared libraries load the GCC runtime dynamically.
-        dynamic = native_platform == "linux" and file_name.endswith(".so")
+        dynamic = os_name == "linux" and file_name.endswith(".so")
         links += [
             ("SPDXRef-DOCUMENT", "DESCRIBES", spdx_id),
             *((spdx_id, "GENERATED_FROM", p["SPDXID"]) for p in sources),
@@ -288,7 +314,11 @@ def cmd_bundle(_args: argparse.Namespace) -> int:
         "gcc_major": cfg.gcc_major,
         "gfortran_package": cfg.gfortran_package,
         "gpp_package": cfg.gpp_package,
-        "meson_pin": cfg.meson_pin,
+        "meson_pin": re.search(
+            r"^meson==(\S+)",
+            (Path(__file__).parent / "requirements-build.txt").read_text(),
+            re.M,
+        )[1],
         "gfortran_version": _first_line([fc, "--version"]),
         "gcc_version": _first_line([cc, "--version"]),
         "gpp_version": _first_line([cxx, "--version"]),
@@ -303,13 +333,11 @@ def cmd_bundle(_args: argparse.Namespace) -> int:
         "buildtype": "plain",
         "fortran_args": extract_resolved_fortran_args(cfg.build_dir),
     }
-    arch = platform.machine()
-
     out.mkdir(exist_ok=True)
     files: dict[str, dict[str, str]] = {}
     binaries, libraries = [], []
     for variant in cfg.variants:
-        if cfg.platform == "windows":
+        if cfg.os == "windows":
             exe, lib = f"FVS{variant}.exe", f"FVS{variant}.dll"
         else:
             exe, lib = f"FVS{variant}", f"FVS{variant}.so"
@@ -331,7 +359,7 @@ def cmd_bundle(_args: argparse.Namespace) -> int:
             {
                 "schema_version": 1,
                 "variant": variant,
-                "arch": arch,
+                "arch": cfg.arch,
                 "binary": exe,
                 "shared_library": lib,
                 "binary_sha256": files[exe]["SHA256"],
@@ -349,12 +377,10 @@ def cmd_bundle(_args: argparse.Namespace) -> int:
         tail = meson_log.read_bytes()[-200_000:]
         (out / "provenance/meson-log.tail.txt").write_bytes(tail)
 
-    os_name = "macos" if cfg.platform == "darwin" else cfg.platform
-    sbom = f"sbom/fvs-native-{os_name}.spdx.json"
     manifest = {
         "schema_version": 1,
         "artifact_name": cfg.artifact_name,
-        "arch": arch,
+        "arch": cfg.arch,
         "build": {
             **build,
             "workflow_run_url": cfg.run_url,
@@ -368,23 +394,21 @@ def cmd_bundle(_args: argparse.Namespace) -> int:
         "artifacts": {
             "binaries": binaries,
             "shared_libraries": libraries,
-            "sbom": sbom,
+            "sbom": SBOM,
         },
     }
     _write_json(out / "provenance/manifest.json", manifest)
-    _write_json(out / sbom, spdx_document(manifest, files, cfg.platform))
+    _write_json(out / SBOM, spdx_document(manifest, files, cfg.os))
+    if github_output := os.environ.get("GITHUB_OUTPUT"):
+        with open(github_output, "a", encoding="utf-8") as fh:
+            fh.write(f"artifact_name={cfg.artifact_name}\n")
     print(f"bundled {len(cfg.variants)} variants into {out}/")
     return 0
 
 
-def _variants_built_csv(binaries: list[str]) -> str:
-    codes = [name.removeprefix("FVS") for name in binaries]
-    return ",".join(codes)
-
-
-def cmd_manifest_to_github_env(args: argparse.Namespace) -> int:
-    """Append provenance fields to GitHub Actions environment file."""
-    manifest_path = Path(args.manifest)
+def cmd_manifest_to_github_env(_args: argparse.Namespace) -> int:
+    """Append ``bundle/provenance/manifest.json`` fields to ``$GITHUB_ENV``."""
+    manifest_path = Path("bundle/provenance/manifest.json")
     github_env = os.environ.get("GITHUB_ENV", "").strip()
     if not github_env:
         sys.stderr.write("error: GITHUB_ENV is not set\n")
@@ -405,8 +429,7 @@ def cmd_manifest_to_github_env(args: argparse.Namespace) -> int:
         f"GFORTRAN_VERSION={data['toolchain']['gfortran_version']}",
         f"MESON_VERSION={data['toolchain']['meson_version']}",
         f"BUNDLE_ARCH={data['arch']}",
-        f"VARIANTS_BUILT={_variants_built_csv(binaries)}",
-        f"VARIANTS_BINARIES={' '.join(binaries)}",
+        f"VARIANTS_BUILT={','.join(b.removeprefix('FVS') for b in binaries)}",
     ]
     ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     lines.append(f"TIMESTAMP={ts}")
@@ -430,12 +453,6 @@ def _build_parser() -> argparse.ArgumentParser:
     p_env = sub.add_parser(
         "manifest-to-github-env",
         help="Export manifest fields to $GITHUB_ENV.",
-    )
-    p_env.add_argument(
-        "--manifest",
-        type=Path,
-        default=Path("bundle/provenance/manifest.json"),
-        help="Path to top-level manifest.json.",
     )
     p_env.set_defaults(func=cmd_manifest_to_github_env)
 

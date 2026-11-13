@@ -14,9 +14,9 @@ on:
         default: "2027.1.0"
         type: string
       variants:
-        description: "Comma-separated FVS variant codes (default: 22 known-good US variants)"
+        description: "Comma-separated FVS variant codes (empty: the 22 US variants)"
         required: false
-        default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
+        default: ""
         type: string
       interface_repo:
         description: "Interface repo providing rFVS + fvsOL (owner/name); override for a fork"
@@ -55,16 +55,6 @@ on:
         required: false
         default: true
         type: boolean
-      runner_image:
-        description: "Runner image label for the amd64 jobs"
-        required: false
-        default: "ubuntu-24.04"
-        type: string
-      gcc_major:
-        description: "GCC major version for the native Linux build (manylinux_2_28 gcc-toolset: 14)"
-        required: false
-        default: "14"
-        type: string
 
 permissions:
   contents: read
@@ -74,7 +64,7 @@ jobs:
   # Input defaults cannot reference github.repository_owner, so derive it here.
   resolve-image-name:
     name: Resolve image_name default
-    runs-on: ${{ inputs.runner_image }}
+    runs-on: ubuntu-24.04
     outputs:
       image_name: ${{ steps.resolve.outputs.image_name }}
     steps:
@@ -100,8 +90,6 @@ jobs:
       source_repo: ${{ inputs.source_repo }}
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
-      runner_image: ${{ inputs.runner_image }}
-      gcc_major: ${{ inputs.gcc_major }}
 
   native-arm64:
     name: Native binary build (arm64)
@@ -111,8 +99,7 @@ jobs:
       source_repo: ${{ inputs.source_repo }}
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
-      runner_image: ubuntu-24.04-arm
-      gcc_major: ${{ inputs.gcc_major }}
+      arch: aarch64
 
   fvs-gui-container:
     name: FVS GUI container build
@@ -128,6 +115,5 @@ jobs:
       image_name: ${{ needs.resolve-image-name.outputs.image_name }}
       image_tag: ${{ inputs.image_tag }}
       image_extra_tags: ${{ inputs.image_extra_tags }}
-      runner_image: ${{ inputs.runner_image }}
       push: ${{ inputs.push }}
     secrets: inherit

@@ -14,9 +14,9 @@ on:
         default: "2027.1.0"
         type: string
       variants:
-        description: "Comma-separated FVS variant codes (default: 22 known-good US variants)"
+        description: "Comma-separated FVS variant codes (empty: the 22 US variants)"
         required: false
-        default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
+        default: ""
         type: string
       image_name:
         description: "Fully-qualified image name without tag (defaults to ghcr.io/<owner>/usfs-fvs)"
@@ -44,14 +44,9 @@ on:
         default: true
         type: boolean
       runner_image:
-        description: "Runner image label for the amd64 jobs"
+        description: "Runner image label for the amd64 container jobs"
         required: false
         default: "ubuntu-24.04"
-        type: string
-      gcc_major:
-        description: "GCC major version for the native Linux build (manylinux_2_28 gcc-toolset: 14)"
-        required: false
-        default: "14"
         type: string
 
 permissions:
@@ -88,8 +83,6 @@ jobs:
       source_repo: ${{ inputs.source_repo }}
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
-      runner_image: ${{ inputs.runner_image }}
-      gcc_major: ${{ inputs.gcc_major }}
 
   native-arm64:
     name: Native binary build (arm64)
@@ -99,8 +92,7 @@ jobs:
       source_repo: ${{ inputs.source_repo }}
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
-      runner_image: ubuntu-24.04-arm
-      gcc_major: ${{ inputs.gcc_major }}
+      arch: aarch64
 
   container:
     name: Container build

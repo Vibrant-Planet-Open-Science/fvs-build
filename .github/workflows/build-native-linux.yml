@@ -17,38 +17,19 @@ on:
         type: string
       variants:
         description: >-
-          Comma-separated list of FVS variant codes. Defaults to the 22
-          cleanly-buildable US variants. The Canadian variants (bc, on)
-          are excluded by default due to incomplete upstream source lists.
+          Comma-separated list of FVS variant codes. Empty builds the 22
+          cleanly-buildable US variants (tools/ci/resolve_variants.sh); bc
+          and on have incomplete upstream source lists.
         required: false
         type: string
-        default: "ak,bm,ca,ci,cr,cs,ec,em,ie,kt,ls,nc,ne,oc,op,pn,sn,so,tt,ut,wc,ws"
-      runner_image:
+        default: ""
+      arch:
         description: >-
-          GitHub-hosted runner image label. ubuntu-24.04 builds x86_64;
-          ubuntu-24.04-arm builds aarch64. The build itself runs in the
-          matching manylinux_2_28 container, chosen from the label: one
-          containing "arm" gets the aarch64 image.
+          x86_64 (ubuntu-24.04) or aarch64 (ubuntu-24.04-arm). The build runs
+          in the matching manylinux_2_28 container.
         required: false
         type: string
-        default: "ubuntu-24.04"
-      gcc_major:
-        description: >-
-          GCC major version. Must match the manylinux_2_28 image's
-          gcc-toolset (14); any other major fails before compiling.
-        required: false
-        type: string
-        default: "14"
-      meson_version:
-        description: >-
-          Exact Meson version to install via pip, pinned to keep
-          configure-time behavior stable across releases. meson.build
-          requires >=1.8.0: base/main.f90 uses the FVSVERSION module, and
-          only 1.8.0+ adds a link_whole target's private directory to the
-          Fortran module search path.
-        required: false
-        type: string
-        default: "1.12.0"
+        default: "x86_64"
       profile:
         description: >-
           Build profile. One of: reference, debug. reference is
@@ -61,8 +42,7 @@ on:
       artifact_name:
         description: >-
           Name of the bundled artifact uploaded by this workflow. Exactly
-          `fvs-native-linux-<arch>-<run_id>`, where <arch> is the runner's
-          `uname -m` (x86_64 or aarch64). The container workflow consumes
+          `fvs-native-linux-<arch>-<run_id>`. The container workflows consume
           this name to download and unpack the bundle.
         value: ${{ jobs.build.outputs.artifact_name }}
 
@@ -71,48 +51,54 @@ permissions:
 
 jobs:
   # One Meson build directory for all variants, so the common archives
-  # compile once. container.image cannot read the runner's arch, so the
-  # image follows the runner label.
+  # compile once.
   build:
-    name: Build (${{ inputs.runner_image }})
-    runs-on: ${{ inputs.runner_image }}
+    name: Build (${{ inputs.arch }})
+    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     container:
-      image: quay.io/pypa/manylinux_2_28_${{ contains(inputs.runner_image, 'arm') && 'aarch64' || 'x86_64' }}
+      image: quay.io/pypa/manylinux_2_28_${{ inputs.arch }}
     outputs:
       artifact_name: ${{ steps.bundle.outputs.artifact_name }}
+    env:
+      # The manylinux_2_28 gcc-toolset; a newer image fails the check below
+      # rather than silently changing compilers.
+      GCC_MAJOR: "14"
     steps:
       # In a called workflow github.* and a bare checkout are the caller's repo;
-      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
+      # job.workflow_* is this repo, which tools/ needs.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
           repository: ${{ job.workflow_repository }}
           ref: ${{ job.workflow_sha }}
-          fetch-depth: 1
+          path: fvs-build
+
+      # fetch-depth: 0 because meson.build derives build-info macros from git in
+      # this tree, and `git describe --tags` needs tags and history.
+      - name: Check out FVS source tree
+        id: source
+        uses: actions/checkout@v7
+        with:
+          repository: ${{ inputs.source_repo }}
+          ref: ${{ inputs.source_ref }}
+          path: fvs-source
+          submodules: recursive
+          fetch-depth: 0
 
       # Later steps loop over $VARIANTS.
       - name: Resolve variant list
         id: variants
         env:
           VARIANTS_CSV: ${{ inputs.variants }}
-        run: bash tools/ci/resolve_variants.sh
-
-      - id: prepare
-        uses: ./.github/actions/prepare-fvs-native-checkout
-        with:
-          source_repo: ${{ inputs.source_repo }}
-          source_ref: ${{ inputs.source_ref }}
+        run: bash fvs-build/tools/ci/resolve_variants.sh
 
       - name: Select toolchain and Python from the manylinux image
         id: toolchain
-        env:
-          V: ${{ inputs.gcc_major }}
-          MESON_VERSION: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
           have="$(gfortran -dumpversion)"
-          if [ "${have%%.*}" != "$V" ]; then
-            echo "ERROR: gcc_major=${V}, but this manylinux image provides GCC ${have}" >&2
+          if [ "${have%%.*}" != "$GCC_MAJOR" ]; then
+            echo "ERROR: expected GCC ${GCC_MAJOR}, but this manylinux image provides GCC ${have}" >&2
             exit 1
           fi
           py=/opt/python/cp312-cp312/bin
@@ -121,8 +107,10 @@ jobs:
             echo "FC=gfortran"
             echo "CC=gcc"
             echo "CXX=g++"
+            echo "GFORTRAN_PKG=gcc-toolset-${GCC_MAJOR}-gcc-gfortran"
+            echo "GPP_PKG=gcc-toolset-${GCC_MAJOR}-gcc-c++"
           } >> "$GITHUB_ENV"
-          "$py/python3" -m pip install "meson==${MESON_VERSION}" ninja
+          "$py/python3" -m pip install -r fvs-build/tools/ci/requirements-build.txt ninja
           # Cache keys cannot contain commas; keep the version line's identity.
           echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
 
@@ -139,7 +127,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ steps.prepare.outputs.source_sha }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/meson_configure_native.sh') }}
+          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ steps.source.outputs.commit }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/meson_configure_native.sh', 'fvs-build/tools/ci/requirements-build.txt') }}
 
       - name: Configure Meson
         env:
@@ -197,39 +185,24 @@ jobs:
           exit $status
 
       - name: Verify single GCC major in artifacts
-        env:
-          GCC_MAJOR: ${{ inputs.gcc_major }}
         run: |
           files=()
           for v in $VARIANTS; do files+=("_build/FVS$v" "_build/FVS$v.so"); done
           bash fvs-build/tools/ci/check_gcc_major.sh "${files[@]}"
 
-      - name: Resolve machine arch
-        id: arch
-        run: echo "arch=$(uname -m)" >> "$GITHUB_OUTPUT"
-
       - name: Bundle binaries, provenance and SBOM
         id: bundle
         env:
-          FVS_NATIVE_PLATFORM: linux
-          ARTIFACT_NAME: fvs-native-linux-${{ steps.arch.outputs.arch }}-${{ github.run_id }}
           VARIANTS_INPUT: ${{ inputs.variants }}
           BUILD_PROFILE: ${{ inputs.profile }}
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
-          SOURCE_SHA: ${{ steps.prepare.outputs.source_sha }}
-          FVS_BUILD_REPO: ${{ steps.prepare.outputs.overlay_repo }}
-          FVS_BUILD_REF: ${{ steps.prepare.outputs.overlay_ref }}
-          FVS_BUILD_SHA: ${{ steps.prepare.outputs.fvs_build_sha }}
-          RUNNER_IMAGE: ${{ inputs.runner_image }} / quay.io/pypa/manylinux_2_28_${{ contains(inputs.runner_image, 'arm') && 'aarch64' || 'x86_64' }}
-          GCC_MAJOR: ${{ inputs.gcc_major }}
-          GFORTRAN_PKG: gcc-toolset-${{ inputs.gcc_major }}-gcc-gfortran
-          GPP_PKG: gcc-toolset-${{ inputs.gcc_major }}-gcc-c++
-          MESON_PIN: ${{ inputs.meson_version }}
-        run: |
-          set -euo pipefail
-          python3 fvs-build/tools/ci/provenance.py bundle
-          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
+          SOURCE_SHA: ${{ steps.source.outputs.commit }}
+          FVS_BUILD_REPO: ${{ job.workflow_repository }}
+          FVS_BUILD_REF: ${{ job.workflow_ref }}
+          FVS_BUILD_SHA: ${{ job.workflow_sha }}
+          RUNNER_IMAGE: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }} / quay.io/pypa/manylinux_2_28_${{ inputs.arch }}
+        run: python3 fvs-build/tools/ci/provenance.py bundle
 
       - name: Upload bundle
         uses: actions/upload-artifact@v7

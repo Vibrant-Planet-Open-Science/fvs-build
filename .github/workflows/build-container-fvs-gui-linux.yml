@@ -17,7 +17,7 @@ on:
       artifact_name_arm64:
         description: >-
           Name of the aarch64 bundle from a second build-native-linux.yml job
-          (runner_image: ubuntu-24.04-arm). When set, the image is also built
+          (arch: aarch64). When set, the image is also built
           for linux/arm64 and the tags point at a two-arch manifest list.
           Empty (default) builds linux/amd64 only.
         required: false
@@ -56,13 +56,6 @@ on:
         required: false
         type: string
         default: ""
-      runner_image:
-        description: >-
-          GitHub-hosted runner image label for the amd64 leg and the
-          manifest job. The arm64 leg always runs on ubuntu-24.04-arm.
-        required: false
-        type: string
-        default: "ubuntu-24.04"
       push:
         description: >-
           Push the built image to the registry after the build succeeds.
@@ -89,7 +82,7 @@ permissions:
 jobs:
   build:
     name: Build ${{ matrix.arch }} and (optionally) push by digest
-    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || inputs.runner_image }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     strategy:
       fail-fast: true
       matrix:
@@ -102,7 +95,7 @@ jobs:
       ARCH: ${{ matrix.arch }}
     steps:
       # In a called workflow github.* and a bare checkout are the caller's repo;
-      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
+      # job.workflow_* is this repo, which tools/ needs.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
@@ -121,7 +114,7 @@ jobs:
           set -euo pipefail
           for required in \
             bundle/provenance/manifest.json \
-            bundle/sbom/fvs-native-linux.spdx.json
+            bundle/sbom/fvs-native.spdx.json
           do
             if [ ! -f "$required" ]; then
               echo "ERROR: bundle missing required file: ${required}" >&2
@@ -298,7 +291,7 @@ jobs:
     name: Create multi-arch manifest list
     needs: build
     if: inputs.push
-    runs-on: ${{ inputs.runner_image }}
+    runs-on: ubuntu-24.04
     outputs:
       image_digest: ${{ steps.create.outputs.image_digest }}
     steps:

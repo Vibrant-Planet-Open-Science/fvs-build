@@ -154,14 +154,13 @@ See `docs/workflow-interface.md` for the full input/output patterns for these an
 
 ### Manual drivers
 
-Five `workflow_dispatch` drivers allow the workflows to be triggered manually. These are primarily used for testing purposes and creating releases of the Docker containers from this repo:
+Three `workflow_dispatch` drivers allow the workflows to be triggered manually. These are primarily used for testing purposes and creating releases of the Docker containers from this repo:
 
 ```bash
 # Native binaries only
-gh workflow run dispatch-native-linux.yml \
-  -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=2027.1.0 \
-  -f profile=reference
+gh workflow run dispatch-native.yml \
+  -f platform=linux-x86_64 \
+  -f source_ref=2027.1.0
 
 # Full native + container, dry run (no push)
 gh workflow run dispatch-container-linux.yml \
@@ -215,7 +214,7 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 - `.github/workflows/build-native-linux.yml`, `.github/workflows/build-native-windows.yml`, `.github/workflows/build-native-macos.yml` — reusable `workflow_call` workflows that run the Meson build for a single OS. Each produces an artifact bundle (binaries + provenance + SBOM); see `docs/workflow-interface.md`.
 - `.github/workflows/build-container-linux.yml` — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image, with option to push the image to GHCR.
 - `.github/workflows/build-container-fvs-gui-linux.yml` — reusable `workflow_call` workflow that builds the FVSOnLocal (`fvsOL`) GUI image. It copies the native Linux binaries (`FVS<v>.so`) and builds the `rFVS`/`fvsOL` R layer on a `rocker/r2u:noble`base image with additional configuration settings that allow the image to be hosted via Binder.
-- `.github/workflows/dispatch-native-linux.yml`, `.github/workflows/dispatch-native-windows.yml`, `.github/workflows/dispatch-native-macos.yml` — manually-triggered option for each native OS workflow (`workflow_dispatch`).
+- `.github/workflows/dispatch-native.yml` — manually-triggered option for one native workflow, chosen by `platform` (`workflow_dispatch`).
 - `.github/workflows/dispatch-container-linux.yml` — manually-triggered option for the native Linux + container steps in sequence.
 - `.github/workflows/dispatch-container-fvs-gui-linux.yml` — manually-triggered option for running native Linux + FVS GUI container steps in sequence.
 - `docker/Dockerfile.runtime` — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; supports standard FVS command-line invocation).
@@ -224,12 +223,11 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 - `docs/local-builds.md` — details for running the Meson build by hand, primarily intended for developers who would like to work on the `fvs-build` project or run Meson-based builds themselves.
 - `docs/workflow-interface.md` — the reusable workflows' inputs, outputs and artifact contract.
 - `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/release-please.yml` — release automation (see [Releases](#releases)).
-- `.github/dependabot.yml` — weekly GitHub Actions updates for the workflows and composite actions.
+- `.github/dependabot.yml` — weekly updates for the GitHub Actions and the Meson pin.
 - `docs/fvs-gui-container.md` — maintainer notes for the FVS GUI image: build steps, the `fvsOL` Local-mode patch, smoke checks and Binder publishing.
 - Shared CI helpers used by the three native workflows:
-  - `tools/ci/resolve_variants.sh` — normalizes the `variants` input into the list each build job loops over.
-  - `.github/actions/prepare-fvs-native-checkout/` — resolves the overlay repo/ref and checks out `fvs-build/` and `fvs-source/`.
+  - `tools/ci/resolve_variants.sh` — normalizes the `variants` input into the list each build job loops over, and holds the default list.
+  - `tools/ci/requirements-build.txt` — the Meson pin.
   - `tools/ci/meson_configure_native.sh` — `meson setup` with the requested `profile`.
   - `tools/ci/smoke_test_native.sh` — runs each variant executable to `STOP 20` and checks its `--version` build info.
   - `tools/ci/provenance.py` — `bundle` assembles the bundle (binaries, provenance, SBOM) at the end of each build job; `manifest-to-github-env` reads its manifest for the container workflows.
-  - `.github/actions/resolve-fvs-build-ref/` — reads the overlay repo, ref and commit from `job.workflow_*` (correct for callers in other repos, where `github.*` is the caller's).

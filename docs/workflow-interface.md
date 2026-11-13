@@ -9,39 +9,39 @@ The workflows are **source-agnostic**: callers supply a source repository and re
 | File | Purpose | Trigger |
 | --- | --- | --- |
 | `.github/workflows/build-native-linux.yml` | Native Linux binaries (x86_64 or aarch64) + provenance + SBOM | `workflow_call` |
-| `.github/workflows/build-native-macos.yml` | Native macOS (Homebrew `gcc@N`) binaries + provenance + SBOM | `workflow_call` |
+| `.github/workflows/build-native-macos.yml` | Native macOS arm64 (Homebrew GCC) binaries + provenance + SBOM | `workflow_call` |
 | `.github/workflows/build-native-windows.yml` | Native Windows x86_64 (MSYS2 UCRT64) binaries + provenance + SBOM | `workflow_call` |
 | `.github/workflows/build-container-linux.yml` | Multi-arch Linux runtime image packaging the native binaries | `workflow_call` |
 | `.github/workflows/build-container-fvs-gui-linux.yml` | Binder-ready FVSOnLocal (`fvsOL`) GUI image with the native executables and `FVS<v>.so` set, and Jupyter R and Python kernels | `workflow_call` |
-| `.github/workflows/dispatch-native-{linux,macos,windows}.yml` | Manual drivers for the native workflows | `workflow_dispatch` |
+| `.github/workflows/dispatch-native.yml` | Manual driver for one native workflow, chosen by `platform` | `workflow_dispatch` |
 | `.github/workflows/dispatch-container-linux.yml` | Manual driver: native Linux + runtime image | `workflow_dispatch` |
 | `.github/workflows/dispatch-container-fvs-gui-linux.yml` | Manual driver: native Linux + GUI image | `workflow_dispatch` |
 
 ## Native bundles (Linux, Windows, macOS)
 
-The three native workflows build an executable and a shared library per variant and upload one bundle.
+The three native workflows build an executable and a shared library per variant and upload one bundle, named `fvs-native-<os>-<arch>-<run_id>`, with its SBOM at `sbom/fvs-native.spdx.json`.
 
-| OS | Workflow | Bundle name | Executable | Shared library | SBOM |
+| OS | Workflow | Runner | Bundle name | Executable | Shared library |
 | --- | --- | --- | --- | --- | --- |
-| Linux | `build-native-linux.yml` | `fvs-native-linux-<arch>-<run_id>` | `FVS<v>` | `FVS<v>.so` | `sbom/fvs-native-linux.spdx.json` |
-| Windows | `build-native-windows.yml` | `fvs-native-windows-<run_id>` | `FVS<v>.exe` | `FVS<v>.dll` | `sbom/fvs-native-windows.spdx.json` |
-| macOS | `build-native-macos.yml` | `fvs-native-macos-<run_id>` | `FVS<v>` | `FVS<v>.so` | `sbom/fvs-native-macos.spdx.json` |
+| Linux | `build-native-linux.yml` | `ubuntu-24.04` / `ubuntu-24.04-arm` | `fvs-native-linux-<arch>-<run_id>` | `FVS<v>` | `FVS<v>.so` |
+| Windows | `build-native-windows.yml` | `windows-2025` | `fvs-native-windows-x86_64-<run_id>` | `FVS<v>.exe` | `FVS<v>.dll` |
+| macOS | `build-native-macos.yml` | `macos-15` | `fvs-native-macos-aarch64-<run_id>` | `FVS<v>` | `FVS<v>.so` |
 
-On Linux, `<arch>` is `x86_64` (`ubuntu-24.04`) or `aarch64` (`ubuntu-24.04-arm`), and the build runs inside the matching `quay.io/pypa/manylinux_2_28_<arch>` container.
+On Linux, `<arch>` is `x86_64` or `aarch64` (the `arch` input), and the build runs inside the matching `quay.io/pypa/manylinux_2_28_<arch>` container.
 
 The SBOM (SPDX 2.3 JSON) lists each executable and shared library with its SHA1 and SHA256, and what each is built from, with licenses: FVS, which includes FOFEM (`CC0-1.0`); NVEL (`CC0-1.0`); SQLite (`blessing`); and the GCC runtime (`GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later`), linked statically everywhere except into the Linux shared libraries, which load it dynamically.
 
 The executable and shared library are independent link products (upstream `bin/makefile` `%.prg` rules): the executable does not need the library beside it. Shared libraries keep the `FVS<v>` basename with no `lib` prefix, and use `.so` on macOS as well as Linux (matching upstream and R's `.Platform$dynlib.ext`). On Windows both are statically linked and import only the Universal C Runtime (Windows 10+). macOS binaries target macOS 15.0 (`MACOSX_DEPLOYMENT_TARGET`), built on the `macos-15` runner, whose Homebrew GCC targets the same release.
 
-### GCC toolchain selection
+### Toolchain
 
-All three native workflows take a `gcc_major` input. A major the platform cannot provide fails before compiling, and every artifact is checked to come from exactly one GCC of that major (`tools/ci/check_gcc_major.sh`).
+Each workflow pins its GCC major (`GCC_MAJOR`). A runner that cannot provide it fails before compiling, and every artifact is checked to come from exactly one GCC of that major (`tools/ci/check_gcc_major.sh`). Meson is pinned in `tools/ci/requirements-build.txt`.
 
-| OS | Default | Source |
+| OS | GCC | Source |
 | --- | --- | --- |
-| Linux | `14` | `gcc-toolset-14` in the manylinux_2_28 image; no other major. |
-| macOS | `15` | Homebrew `gcc@N`, or the unversioned `gcc` formula when N is its current major. |
-| Windows | `15` | The exact MSYS2 package set for N in `tools/ci/msys2-toolchains.json`. |
+| Linux | `14` | `gcc-toolset-14` in the manylinux_2_28 image. |
+| macOS | `15` | Homebrew `gcc@15`, or the unversioned `gcc` formula while 15 is its current major. |
+| Windows | `15` | The exact MSYS2 package set in `tools/ci/msys2-toolchains.json`. |
 
 ### Linux runtime compatibility
 
@@ -56,7 +56,7 @@ On aarch64 both also list the glibc loader `ld-linux-aarch64.so.1`.
 
 ## `build-native-linux.yml`
 
-Builds the requested variants and uploads one bundle. `runner_image` picks the arch; there is no cross-compilation, so a caller wanting both arches calls the workflow twice. `build-native-macos.yml` and `build-native-windows.yml` take the same inputs (with `gcc_major` default `15`, and `runner_image` defaulting to `macos-15` and `windows-latest`) and produce the same bundle layout with their platform's file names.
+Builds the requested variants and uploads one bundle. `arch` picks the runner; there is no cross-compilation, so a caller wanting both arches calls the workflow twice. `build-native-macos.yml` and `build-native-windows.yml` take the same inputs except `arch`, and produce the same bundle layout with their platform's file names.
 
 ### Inputs
 
@@ -64,10 +64,8 @@ Builds the requested variants and uploads one bundle. `runner_image` picks the a
 | --- | --- | --- | --- | --- |
 | `source_repo` | string | yes | — | FVS source repo, `owner/name`. |
 | `source_ref` | string | yes | — | Tag, branch, or SHA in `source_repo`. |
-| `variants` | string | no | the 22 US variants | Comma-separated variant codes. `bc` and `on` are excluded: their upstream source lists are incomplete (see `README.md`). |
-| `runner_image` | string | no | `ubuntu-24.04` | `ubuntu-24.04` builds x86_64; `ubuntu-24.04-arm` builds aarch64. A label containing `arm` selects the aarch64 manylinux image. |
-| `gcc_major` | string | no | `14` | GCC major version (see [GCC toolchain selection](#gcc-toolchain-selection)). |
-| `meson_version` | string | no | `1.12.0` | Exact Meson version installed via pip. |
+| `variants` | string | no | `""` | Comma-separated variant codes. Empty builds the 22 US variants; `bc` and `on` are left out because their upstream source lists are incomplete (see `README.md`). |
+| `arch` | string | no | `x86_64` | `x86_64` or `aarch64` (Linux only). |
 | `profile` | string | no | `reference` | `reference` (goldens-aligned, matches upstream `bin/makefile`) or `debug` (runtime checks; not goldens-compatible). |
 
 ### Outputs
@@ -85,13 +83,13 @@ fvs-native-linux-<arch>-<run_id>/
 ├── provenance/
 │   ├── manifest.json         # aggregated build provenance
 │   ├── per-variant/FVS<v>.json
-│   └── meson-log.tail.txt    # last 200 KB of meson-log.txt
-└── sbom/fvs-native-linux.spdx.json
+│   └── meson-log.tail.txt    # last 200 KB of meson-log.txt (diagnostic, not part of the contract)
+└── sbom/fvs-native.spdx.json
 ```
 
 Provenance JSON (`schema_version: 1`), written by `tools/ci/provenance.py`:
 
-- `manifest.json`: `artifact_name`; `arch` (Python's `platform.machine()`: `x86_64`/`aarch64`, `arm64` on macOS, `AMD64` on Windows); `build` (run id/attempt/URL, timestamp, variants requested and built, `profile`, `buildtype`, `fortran_args`); `source` (`repo`, `ref`, `sha`, `nvel.url` and `nvel.sha`, and `sqlite_version`) and `fvs_build` (`repo`, `ref`, `sha`); `toolchain` (runner image, GCC major and package names, compiler/Meson/Ninja/Python versions); `artifacts` (`binaries`, `shared_libraries`, `sbom`).
+- `manifest.json`: `artifact_name`; `arch` (`x86_64` or `aarch64`); `build` (run id/attempt/URL, timestamp, variants requested and built, `profile`, `buildtype`, `fortran_args`); `source` (`repo`, `ref`, `sha`, `nvel.url` and `nvel.sha`, and `sqlite_version`) and `fvs_build` (`repo`, `ref`, `sha`); `toolchain` (runner image, GCC major and package names, compiler/Meson/Ninja/Python versions); `artifacts` (`binaries`, `shared_libraries`, `sbom`).
 - `per-variant/FVS<v>.json`: `variant`, `arch`, `binary` and `shared_library` with their `*_sha256` (the library's of the stripped file), `compiled_at_utc`, `source`, `fvs_build`, `toolchain`, and `build.fortran_args` (the flags gfortran received, from `compile_commands.json`).
 
 ### Calling the workflow
@@ -110,7 +108,7 @@ jobs:
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: 2027.1.0
-      runner_image: ubuntu-24.04-arm
+      arch: aarch64
 
   use-binaries:
     needs: fvs-x86_64
@@ -124,7 +122,7 @@ jobs:
 
 Pin `fvs-build` to a tag or SHA for reproducible pipelines. The workflow requests only `contents: read`; for a private `source_repo`, add `secrets: inherit` to the caller's `uses:` block.
 
-To run it by hand: `gh workflow run dispatch-native-linux.yml -f source_repo=USDAForestService/ForestVegetationSimulator -f source_ref=2027.1.0` (likewise `dispatch-native-macos.yml` and `dispatch-native-windows.yml`).
+To run it by hand: `gh workflow run dispatch-native.yml -f platform=linux-x86_64 -f source_ref=2027.1.0` (`platform` is `linux-x86_64`, `linux-aarch64`, `macos` or `windows`).
 
 ## `build-container-linux.yml`
 
@@ -196,7 +194,7 @@ jobs:
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: 2027.1.0
-      runner_image: ubuntu-24.04-arm
+      arch: aarch64
 
   container:
     needs: [native, native-arm64]
@@ -230,7 +228,6 @@ Builds a Binder-ready FVSOnLocal (`fvsOL`) GUI image and optionally pushes it. I
 | `image_name` | string | yes | — | Image name without tag (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`). |
 | `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `2027.1.0`). |
 | `image_extra_tags` | string | no | `""` | Comma-separated extra tags. |
-| `runner_image` | string | no | `ubuntu-24.04` | Runner for the amd64 leg and the manifest job. |
 | `push` | boolean | no | `false` | Push after the build and smoke test succeed. For Binder, the GHCR package must also be public. |
 
 ### Outputs

@@ -53,19 +53,58 @@ def test_sbom_is_valid_spdx() -> None:
     assert gcc["versionInfo"] == "14.2.1"
 
 
+GOOD_ENV = {
+    "GITHUB_RUN_ID": "7",
+    "GITHUB_RUN_ATTEMPT": "1",
+    "VARIANTS": "ak bm",
+    "BUILD_PROFILE": "reference",
+    "SOURCE_SHA": SHA,
+    "FVS_BUILD_SHA": SHA,
+    "FVS_BUILD_REF": "o/r/.github/workflows/b.yml@refs/tags/v1",
+    "GCC_MAJOR": "14",
+    "VARIANTS_INPUT": "",  # the default: resolve_variants.sh picks the list
+    **{
+        k: "x"
+        for k in (
+            "SOURCE_REPO SOURCE_REF FVS_BUILD_REPO RUNNER_IMAGE"
+            " GFORTRAN_PKG GPP_PKG FC CC CXX GITHUB_SERVER_URL GITHUB_REPOSITORY"
+        ).split()
+    },
+}
+
+
+def test_bundle_names() -> None:
+    """Every OS and arch spelling maps to fvs-native-<os>-<arch>-<run_id>."""
+    for sys_platform, machine, name in [
+        ("linux", "x86_64", "fvs-native-linux-x86_64-7"),
+        ("linux", "aarch64", "fvs-native-linux-aarch64-7"),
+        ("win32", "AMD64", "fvs-native-windows-x86_64-7"),
+        ("darwin", "arm64", "fvs-native-macos-aarch64-7"),
+    ]:
+        cfg = Config.from_env(GOOD_ENV, sys_platform, machine)
+        assert cfg.artifact_name == name, cfg.artifact_name
+        assert cfg.fvs_build_ref == "refs/tags/v1", cfg.fvs_build_ref
+
+
 def test_config_reports_every_bad_variable() -> None:
     """One error lists each missing or malformed input."""
     try:
-        Config.from_env({"FVS_NATIVE_PLATFORM": "solaris", "SOURCE_SHA": "abc"})
+        Config.from_env({"SOURCE_SHA": "abc"}, "solaris", "sparc")
     except SystemExit as exc:
         msg = str(exc)
     else:
         raise AssertionError("expected SystemExit")
-    for name in ("FVS_NATIVE_PLATFORM='solaris'", "SOURCE_SHA='abc'", "ARTIFACT_NAME"):
+    for name in (
+        "sys.platform='solaris'",
+        "'sparc'",
+        "SOURCE_SHA='abc'",
+        "FVS_BUILD_SHA",
+    ):
         assert name in msg, msg
 
 
 if __name__ == "__main__":
     test_sbom_is_valid_spdx()
+    test_bundle_names()
     test_config_reports_every_bad_variable()
     print("ok")
