@@ -108,8 +108,7 @@ jobs:
     if: ${{ !failure() && !cancelled() }}
     uses: ./.github/workflows/build-container-fvs-gui-linux.yml
     with:
-      artifact_name: ${{ needs.native.outputs.artifact_name }}
-      artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
+      arm64: ${{ inputs.arm64 }}
       interface_repo: ${{ inputs.interface_repo }}
       interface_ref: ${{ inputs.interface_ref }}
       image_name: ${{ needs.resolve-image-name.outputs.image_name }}

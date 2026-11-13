@@ -72,7 +72,7 @@ Builds the requested variants and uploads one bundle. `arch` picks the runner; t
 
 | Output | Description |
 | --- | --- |
-| `artifact_name` | `fvs-native-linux-<arch>-<run_id>`; the container workflows take it as input. |
+| `artifact_name` | `fvs-native-linux-<arch>-<run_id>`; `build-container-linux.yml` takes it as input. |
 
 ### Bundle layout
 
@@ -217,12 +217,13 @@ To run it by hand: `gh workflow run dispatch-container-linux.yml -f source_repo=
 
 Builds a Binder-ready FVSOnLocal (`fvsOL`) GUI image and optionally pushes it. It reuses the executables and `FVS<v>.so` set from `build-native-linux.yml` bundles, adds `fvs2py` and an R kernel for notebooks, and builds the pure-R `rFVS`/`fvsOL` layer from `ForestVegetationSimulator-Interface` on `rocker/r2u:noble`, with Jupyter and `jupyter-server-proxy` serving the app at `/fvs-gui/`. The image is smoke-tested before it is pushed. Build steps, the Local-mode patch, the smoke checks and Binder publishing are in [`fvs-gui-container.md`](fvs-gui-container.md).
 
+The caller runs `build-native-linux.yml` earlier in the same run, once per arch the image is built for, and lists those jobs in `needs:`. The workflow downloads each bundle by its name, `fvs-native-linux-<arch>-<run_id>`.
+
 ### Inputs
 
 | Input | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `artifact_name` | string | yes | — | x86_64 `build-native-linux.yml` bundle; only its `FVS<v>.so` set is used. |
-| `artifact_name_arm64` | string | no | `""` | aarch64 bundle; when set, the image is also built for linux/arm64. |
+| `arm64` | boolean | no | `true` | Build linux/arm64 as well as linux/amd64. |
 | `interface_repo` | string | no | `USDAForestService/ForestVegetationSimulator-Interface` | Repo providing `rFVS` and `fvsOL`. |
 | `interface_ref` | string | no | `20261109` | Ref in `interface_repo`; release `20261019` or later (earlier refs ship `rFVS`/`fvsOL` without `NAMESPACE`). |
 | `image_name` | string | yes | — | Image name without tag (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`). |

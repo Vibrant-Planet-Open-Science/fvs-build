@@ -100,8 +100,6 @@ jobs:
     if: needs.changes.outputs.gui == 'true'
     uses: ./.github/workflows/build-container-fvs-gui-linux.yml
     with:
-      artifact_name: ${{ needs.linux.outputs.artifact_name }}
-      artifact_name_arm64: ${{ needs.linux-arm64.outputs.artifact_name }}
       interface_ref: "20261109"
       image_name: usfs-fvs-gui
       image_tag: ci-${{ github.run_id }}

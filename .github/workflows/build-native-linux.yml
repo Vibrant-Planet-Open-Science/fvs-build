@@ -17,9 +17,9 @@ on:
         type: string
       variants:
         description: >-
-          Comma-separated list of FVS variant codes. Empty builds the 22
-          cleanly-buildable US variants (tools/ci/resolve_variants.sh); bc
-          and on have incomplete upstream source lists.
+          Comma-separated list of FVS variant codes. Defaults to empty, which
+          builds all US variants. The Canadian variants (bc, on) are excluded
+          by default due to incomplete upstream source lists.
         required: false
         type: string
         default: ""
@@ -101,8 +101,7 @@ jobs:
             echo "ERROR: expected GCC ${GCC_MAJOR}, but this manylinux image provides GCC ${have}" >&2
             exit 1
           fi
-          py=/opt/python/cp312-cp312/bin
-          echo "$py" >> "$GITHUB_PATH"
+          echo /opt/python/cp312-cp312/bin >> "$GITHUB_PATH"
           {
             echo "FC=gfortran"
             echo "CC=gcc"
@@ -110,9 +109,11 @@ jobs:
             echo "GFORTRAN_PKG=gcc-toolset-${GCC_MAJOR}-gcc-gfortran"
             echo "GPP_PKG=gcc-toolset-${GCC_MAJOR}-gcc-c++"
           } >> "$GITHUB_ENV"
-          "$py/python3" -m pip install -r fvs-build/tools/ci/requirements-build.txt ninja
           # Cache keys cannot contain commas; keep the version line's identity.
           echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Meson and Ninja
+        run: python3 -m pip install -r fvs-build/tools/ci/requirements-build.txt ninja
 
       # A fresh checkout stamps files with the current time, so Ninja would
       # rebuild a restored _build in full. Safe because the cache key holds the
@@ -127,7 +128,18 @@ jobs:
         uses: actions/cache@v6
         with:
           path: _build
-          key: meson-${{ runner.os }}-${{ runner.arch }}-${{ steps.variants.outputs.id }}-${{ steps.source.outputs.commit }}-${{ inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{ hashFiles('fvs-build/meson.build', 'fvs-build/meson_options.txt', 'fvs-build/tools/parse_sourcelist.py', 'fvs-build/tools/fvs_build_info.py', 'fvs-build/tools/ci/meson_configure_native.sh', 'fvs-build/tools/ci/requirements-build.txt') }}
+          key: >-
+            meson-linux-${{ inputs.arch }}-${{ steps.variants.outputs.id }}-${{ steps.source.outputs.commit }}-${{
+              inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{
+              hashFiles(
+                'fvs-build/meson.build',
+                'fvs-build/meson_options.txt',
+                'fvs-build/tools/parse_sourcelist.py',
+                'fvs-build/tools/fvs_build_info.py',
+                'fvs-build/tools/ci/meson_configure_native.sh',
+                'fvs-build/tools/ci/requirements-build.txt'
+              )
+            }}
 
       - name: Configure Meson
         env:
