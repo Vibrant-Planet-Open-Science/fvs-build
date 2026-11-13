@@ -1,4 +1,4 @@
-# Vendored rather than published: it is only installed into the GUI image's venv.
+# Vendored rather than published: it is only installed into the workspace image's venv.
 # The entry point NAME is the URL segment: `fvs-gui` here is the `/fvs-gui/` route
 # the launcher tile and `?urlpath=fvs-gui/` links open. Nothing else encodes it.
 

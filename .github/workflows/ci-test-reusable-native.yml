@@ -2,7 +2,7 @@
 # the `changes` job gates the jobs instead. `Native builds` is the required
 # check; the reusable-workflow job names are not stable check names.
 
-name: Test native builds and GUI image (pull request)
+name: Test native builds and workspace image (pull request)
 
 on:
   pull_request:
@@ -13,8 +13,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-# packages: write is never used (push: false), but the GUI workflow declares it
-# and cannot get more than its caller grants: without it, startup_failure.
+# packages: write is never used here (push: false), but
+# build-container-fvs-workspace.yml declares it, and a called workflow can't get
+# more than its caller grants: without it, the run fails with startup_failure.
 permissions:
   contents: read
   packages: write
@@ -25,15 +26,15 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       native: ${{ steps.filter.outputs.native }}
-      gui: ${{ steps.filter.outputs.gui }}
+      image: ${{ steps.filter.outputs.image }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       # native: anything that can change native build output, so all four
-      # builds run. gui: the GUI image's own files; it is built from the Linux
-      # bundles, so a native change runs it too.
+      # builds run. image: the workspace image's own files; it is built
+      # from the Linux bundles, so a native change runs it too.
       - name: Diff paths against PR base
         id: filter
         env:
@@ -44,23 +45,23 @@ jobs:
           changed() { git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- "$@"; }
           native=$(changed '.github/workflows/build-native-*' \
             .github/workflows/ci-test-reusable-native.yml meson.build meson_options.txt \
-            tools ':!tools/ci/smoke_fvs_gui.sh')
-          gui=$(changed docker/Dockerfile.fvs-gui docker/fvs-gui \
-            .github/workflows/build-container-fvs-gui-linux.yml tools/ci/smoke_fvs_gui.sh)
+            tools ':!tools/ci/smoke_fvs_workspace.sh')
+          image=$(changed docker/Dockerfile.fvs-workspace docker/fvs-workspace \
+            .github/workflows/build-container-fvs-workspace.yml tools/ci/smoke_fvs_workspace.sh)
           [ -n "$native" ] && n=true || n=false
-          [ -n "$native$gui" ] && g=true || g=false
-          { echo "native=$n"; echo "gui=$g"; } >> "$GITHUB_OUTPUT"
+          [ -n "$native$image" ] && i=true || i=false
+          { echo "native=$n"; echo "image=$i"; } >> "$GITHUB_OUTPUT"
           {
-            echo "native builds: $n, GUI image: $g"
+            echo "native builds: $n, workspace image: $i"
             echo '```'
-            printf '%s\n' "$native" "$gui" | sed '/^$/d'
+            printf '%s\n' "$native" "$image" | sed '/^$/d'
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
   linux:
     name: Linux (reusable)
     needs: changes
-    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.gui == 'true'
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.image == 'true'
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
@@ -69,7 +70,7 @@ jobs:
   linux-arm64:
     name: Linux arm64 (reusable)
     needs: changes
-    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.gui == 'true'
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.image == 'true'
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
@@ -94,14 +95,14 @@ jobs:
       source_repo: USDAForestService/ForestVegetationSimulator
       source_ref: 2027.1.0
 
-  fvs-gui:
-    name: FVS GUI image (reusable)
+  fvs-workspace:
+    name: FVS workspace image (reusable)
     needs: [changes, linux, linux-arm64]
-    if: needs.changes.outputs.gui == 'true'
-    uses: ./.github/workflows/build-container-fvs-gui-linux.yml
+    if: needs.changes.outputs.image == 'true'
+    uses: ./.github/workflows/build-container-fvs-workspace.yml
     with:
       interface_ref: "20261109"
-      image_name: usfs-fvs-gui
+      image_name: fvs-workspace
       image_tag: ci-${{ github.run_id }}
       push: false
 
@@ -110,7 +111,7 @@ jobs:
   native-builds:
     name: Native builds
     if: always()
-    needs: [changes, linux, linux-arm64, windows, macos, fvs-gui]
+    needs: [changes, linux, linux-arm64, windows, macos, fvs-workspace]
     runs-on: ubuntu-24.04
     steps:
       - name: Fail if any job failed or was cancelled

@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # Launch shim for fvsOL behind jupyter-server-proxy: `Rscript launch.R {port}`.
-# See docs/fvs-gui-container.md for Local mode, the fs attachment and the loop.
+# See docs/fvs-workspace-container.md for Local mode, the fs attachment and the loop.
 #
 # fvsOL is attached with library() rather than called as fvsOL::fvsOL: its app
 # code calls its Depends (shiny, Cairo, ...) unqualified, and `::` does not

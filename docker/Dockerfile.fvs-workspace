@@ -1,5 +1,5 @@
-# FVSOnLocal (fvsOL) GUI container image -- Binder-ready.
-# Build contract and context layout: docs/fvs-gui-container.md. Usage: README.
+# FVS workspace image: the FVSOnLocal (fvsOL) GUI, notebooks and executables -- Binder-ready.
+# Build contract and context layout: docs/fvs-workspace-container.md. Usage: README.
 #
 # Copies the FVS<v> executables and FVS<v>.so set from a native bundle
 # (build-native-linux.yml) rather than compiling FVS in this build. The only
@@ -73,8 +73,8 @@ COPY bundle/provenance/manifest.json         /usr/share/fvs-build/manifest.json
 COPY bundle/sbom/fvs-native.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
 
 # The fvsOL data-gen scripts assume rFVS is a sibling.
-COPY fvs-gui-context/rFVS/  /opt/fvs/interface/rFVS/
-COPY fvs-gui-context/fvsOL/ /opt/fvs/interface/fvsOL/
+COPY fvs-workspace-context/rFVS/  /opt/fvs/interface/rFVS/
+COPY fvs-workspace-context/fvsOL/ /opt/fvs/interface/fvsOL/
 
 # rFVS and fvsOL ship NAMESPACE and man/ from Interface release 20261019;
 # older refs would install packages with no NAMESPACE.
@@ -100,7 +100,7 @@ RUN Rscript -e 'install.packages("IRkernel"); IRkernel::installspec(user = FALSE
 
 # fvsOL runs in Local mode (working-directory chooser, backup upload, project
 # switching), which upstream breaks on Linux behind a reverse proxy.
-COPY docker/fvs-gui/patches/ /opt/fvs/patches/
+COPY docker/fvs-workspace/patches/ /opt/fvs/patches/
 RUN git apply --verbose /opt/fvs/patches/*.patch
 
 # Both defects only surface in a live session, so assert the patch took.
@@ -136,8 +136,8 @@ RUN R_SITE="$(R RHOME)/etc/Rprofile.site" \
 # /fvs-gui/ is registered by an entry point, not a Jupyter config file: mybinder
 # mounts a ConfigMap over /etc/jupyter. jupyter-server-proxy skips an entry point
 # that raises (a silent 404), so check it at build time.
-COPY docker/fvs-gui/launch.R              /opt/fvs/launch.R
-COPY docker/fvs-gui/jupyter-fvsol-proxy/  /opt/fvs/jupyter-fvsol-proxy/
+COPY docker/fvs-workspace/launch.R              /opt/fvs/launch.R
+COPY docker/fvs-workspace/jupyter-fvsol-proxy/  /opt/fvs/jupyter-fvsol-proxy/
 RUN pip install --no-cache-dir /opt/fvs/jupyter-fvsol-proxy \
   && python -c 'import os; \
 from importlib.metadata import entry_points; \
@@ -164,10 +164,10 @@ LABEL org.opencontainers.image.source="https://github.com/${FVS_BUILD_REPO}" \
   org.opencontainers.image.revision="${FVS_BUILD_SHA}" \
   org.opencontainers.image.version="${SOURCE_REF}" \
   org.opencontainers.image.created="${TIMESTAMP}" \
-  org.opencontainers.image.title="usfs-fvs-gui" \
+  org.opencontainers.image.title="fvs-workspace" \
   org.opencontainers.image.description="FVSOnLocal (fvsOL) R-Shiny GUI over FVS variant shared libraries, plus the FVS variant executables and Jupyter R and Python kernels with rFVS and fvs2py, packaged Binder-ready on rocker/r2u:noble. FVS binaries copied from a native build, not compiled in this image's build; only the rFVS/fvsOL R packages are built from source. Built by Vibrant-Planet-Open-Science/fvs-build. Independent build; not affiliated with or endorsed by the USDA Forest Service." \
   org.opencontainers.image.licenses="MIT AND CC0-1.0 AND blessing AND GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later" \
-  org.opencontainers.image.documentation="https://github.com/${FVS_BUILD_REPO}/blob/${FVS_BUILD_REF}/docs/fvs-gui-container.md"
+  org.opencontainers.image.documentation="https://github.com/${FVS_BUILD_REPO}/blob/${FVS_BUILD_REF}/docs/fvs-workspace-container.md"
 
 LABEL org.vibrantplanet.fvs.source-repo="${SOURCE_REPO}" \
   org.vibrantplanet.fvs.source-ref="${SOURCE_REF}" \

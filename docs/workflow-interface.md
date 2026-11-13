@@ -12,10 +12,10 @@ The workflows are **source-agnostic**: callers supply a source repository and re
 | `.github/workflows/build-native-macos.yml` | Native macOS arm64 (Homebrew GCC) binaries + provenance + SBOM | `workflow_call` |
 | `.github/workflows/build-native-windows.yml` | Native Windows x86_64 (MSYS2 UCRT64) binaries + provenance + SBOM | `workflow_call` |
 | `.github/workflows/build-container-linux.yml` | Multi-arch Linux runtime image packaging the native binaries | `workflow_call` |
-| `.github/workflows/build-container-fvs-gui-linux.yml` | Binder-ready FVSOnLocal (`fvsOL`) GUI image with the native executables and `FVS<v>.so` set, and Jupyter R and Python kernels | `workflow_call` |
+| `.github/workflows/build-container-fvs-workspace.yml` | Binder-ready FVS workspace image: the FVSOnLocal (`fvsOL`) GUI, the native executables, and the `rFVS` (R) and `fvs2py` (Python) packages, which load FVS through the `FVS<v>.so` set, in JupyterLab | `workflow_call` |
 | `.github/workflows/dispatch-native.yml` | Manual driver for one native workflow, chosen by `platform` | `workflow_dispatch` |
 | `.github/workflows/dispatch-container-linux.yml` | Manual driver: native Linux + runtime image | `workflow_dispatch` |
-| `.github/workflows/dispatch-container-fvs-gui-linux.yml` | Manual driver: native Linux + GUI image | `workflow_dispatch` |
+| `.github/workflows/dispatch-container-fvs-workspace.yml` | Manual driver: native Linux + workspace image | `workflow_dispatch` |
 
 ## Native bundles (Linux, Windows, macOS)
 
@@ -213,9 +213,9 @@ Pushing to GHCR uses `GITHUB_TOKEN`; the caller must grant `packages: write`. Fo
 
 To run it by hand: `gh workflow run dispatch-container-linux.yml -f source_repo=USDAForestService/ForestVegetationSimulator -f source_ref=2027.1.0 -f image_tag=2027.1.0 -f push=false` (`-f arm64=false` for amd64 only).
 
-## `build-container-fvs-gui-linux.yml`
+## `build-container-fvs-workspace.yml`
 
-Builds a Binder-ready FVSOnLocal (`fvsOL`) GUI image and optionally pushes it. It reuses the executables and `FVS<v>.so` set from `build-native-linux.yml` bundles, adds `fvs2py` and an R kernel for notebooks, and builds the pure-R `rFVS`/`fvsOL` layer from `ForestVegetationSimulator-Interface` on `rocker/r2u:noble`, with Jupyter and `jupyter-server-proxy` serving the app at `/fvs-gui/`. The image is smoke-tested before it is pushed. Build steps, the Local-mode patch, the smoke checks and Binder publishing are in [`fvs-gui-container.md`](fvs-gui-container.md).
+Builds the Binder-ready FVS workspace image and optionally pushes it. It reuses the executables and `FVS<v>.so` set from `build-native-linux.yml` bundles. For notebooks it adds Python and R kernels with `fvs2py` and `rFVS`, the packages that load FVS through those shared libraries. It builds `rFVS` and the `fvsOL` GUI from `ForestVegetationSimulator-Interface` on `rocker/r2u:noble`, with Jupyter and `jupyter-server-proxy` serving the app at `/fvs-gui/`. The image is smoke-tested before it is pushed. Build steps, the Local-mode patch, the smoke checks and Binder publishing are in [`fvs-workspace-container.md`](fvs-workspace-container.md).
 
 The caller runs `build-native-linux.yml` earlier in the same run, once per arch the image is built for, and lists those jobs in `needs:`. The workflow downloads each bundle by its name, `fvs-native-linux-<arch>-<run_id>`.
 
@@ -226,7 +226,7 @@ The caller runs `build-native-linux.yml` earlier in the same run, once per arch 
 | `arm64` | boolean | no | `true` | Build linux/arm64 as well as linux/amd64. |
 | `interface_repo` | string | no | `USDAForestService/ForestVegetationSimulator-Interface` | Repo providing `rFVS` and `fvsOL`. |
 | `interface_ref` | string | no | `20261109` | Ref in `interface_repo`; release `20261019` or later (earlier refs ship `rFVS`/`fvsOL` without `NAMESPACE`). |
-| `image_name` | string | yes | — | Image name without tag (e.g. `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`). |
+| `image_name` | string | yes | — | Image name without tag (e.g. `ghcr.io/vibrant-planet-open-science/fvs-workspace`). |
 | `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `2027.1.0`). |
 | `image_extra_tags` | string | no | `""` | Comma-separated extra tags. |
 | `push` | boolean | no | `false` | Push after the build and smoke test succeed. For Binder, the GHCR package must also be public. |
@@ -237,6 +237,6 @@ Same as `build-container-linux.yml`: `image_ref` and `image_digest`. Multi-arch 
 
 ### OCI labels
 
-The runtime image's labels (with `title` `usfs-fvs-gui`), plus `org.vibrantplanet.fvs.interface-repo`, `interface-ref` and `interface-sha` for the R layer.
+The runtime image's labels (with `title` `fvs-workspace`), plus `org.vibrantplanet.fvs.interface-repo`, `interface-ref` and `interface-sha` for the R layer.
 
-To run it by hand: `gh workflow run dispatch-container-fvs-gui-linux.yml -f source_ref=2027.1.0 -f interface_ref=20261109 -f image_tag=2027.1.0 -f push=false`.
+To run it by hand: `gh workflow run dispatch-container-fvs-workspace.yml -f source_ref=2027.1.0 -f interface_ref=20261109 -f image_tag=2027.1.0 -f push=false`.
