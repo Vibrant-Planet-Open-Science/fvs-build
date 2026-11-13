@@ -51,17 +51,11 @@ on:
         required: false
         type: string
         default: "reference"
-      python_version:
-        description: >-
-          Version string for actions/setup-python in collect-bundle.
-        required: false
-        type: string
-        default: "3.12"
     outputs:
       artifact_name:
         description: >-
           Name of the bundled artifact. Exactly `fvs-native-windows-<run_id>`.
-        value: ${{ jobs.collect-and-finalize.outputs.artifact_name }}
+        value: ${{ jobs.build.outputs.artifact_name }}
 
 permissions:
   contents: read
@@ -70,6 +64,8 @@ jobs:
   build:
     name: Build (Windows)
     runs-on: ${{ inputs.runner_image }}
+    outputs:
+      artifact_name: ${{ steps.bundle.outputs.artifact_name }}
     defaults:
       run:
         shell: msys2 {0}
@@ -187,7 +183,6 @@ jobs:
                 'fvs-build/meson_options.txt',
                 'fvs-build/tools/parse_sourcelist.py',
                 'fvs-build/tools/fvs_build_info.py',
-                'fvs-build/tools/ci/provenance.py',
                 'fvs-build/tools/ci/meson_configure_native.sh',
                 'fvs-build/tools/ci/msys2-toolchains.json'
               )
@@ -239,11 +234,13 @@ jobs:
           for v in $VARIANTS; do files+=("_build/FVS$v.exe" "_build/FVS$v.dll"); done
           bash fvs-build/tools/ci/check_gcc_major.sh "${files[@]}"
 
-      - name: Stage artifacts and per-variant build-info
+      - name: Bundle binaries, provenance and SBOM
+        id: bundle
         env:
           FVS_NATIVE_PLATFORM: windows
+          ARTIFACT_NAME: fvs-native-windows-${{ github.run_id }}
+          VARIANTS_INPUT: ${{ inputs.variants }}
           BUILD_PROFILE: ${{ inputs.profile }}
-          MESON_BUILDTYPE: plain
           SOURCE_REPO: ${{ inputs.source_repo }}
           SOURCE_REF: ${{ inputs.source_ref }}
           SOURCE_SHA: ${{ steps.prepare.outputs.source_sha }}
@@ -253,41 +250,15 @@ jobs:
           RUNNER_IMAGE: ${{ inputs.runner_image }}
           GCC_MAJOR: ${{ inputs.gcc_major }}
           MESON_PIN: ${{ inputs.meson_version }}
-        run: python fvs-build/tools/ci/stage_variant_native.py
+        run: |
+          set -euo pipefail
+          python fvs-build/tools/ci/provenance.py bundle
+          echo "artifact_name=${ARTIFACT_NAME}" >> "$GITHUB_OUTPUT"
 
-      - name: Upload staging artifact
+      - name: Upload bundle
         uses: actions/upload-artifact@v7
         with:
-          name: windows-staging
-          path: staging/
-          retention-days: 1
+          name: ${{ steps.bundle.outputs.artifact_name }}
+          path: ${{ steps.bundle.outputs.artifact_name }}/
+          retention-days: 30
           if-no-files-found: error
-
-  collect-and-finalize:
-    name: Collect, SBOM, and finalize
-    runs-on: ${{ inputs.runner_image }}
-    needs: build
-    outputs:
-      artifact_name: ${{ steps.collect.outputs.artifact_name }}
-    steps:
-      # In a called workflow github.* and a bare checkout are the caller's repo;
-      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
-      - name: Check out fvs-build (workflow repository)
-        uses: actions/checkout@v7
-        with:
-          repository: ${{ job.workflow_repository }}
-          ref: ${{ job.workflow_sha }}
-          fetch-depth: 1
-
-      - id: collect
-        uses: ./.github/actions/collect-native-bundle
-        with:
-          fvs_native_platform: windows
-          staging_artifact: windows-staging
-          artifact_name: fvs-native-windows-${{ github.run_id }}
-          variants_input: ${{ inputs.variants }}
-          runner_image: ${{ inputs.runner_image }}
-          meson_version: ${{ inputs.meson_version }}
-          python_version: ${{ inputs.python_version }}
-          use_setup_python: "true"
-          python_cmd: python

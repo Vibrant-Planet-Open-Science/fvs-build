@@ -46,7 +46,7 @@ For variant `<v>`, `meson compile` produces in `builddir/`:
 - `FVS<v>.so` (Linux and macOS) / `.dll` (Windows) — embedder shared library for PyFVS, rFVS, fvs2py (no `lib` prefix; same basename as upstream)
 - `libfvs_<v>_objs.a`, plus `libfvs_sqlite.a`, `libfvs_fofem.a`, `libfvs_nvel.a` shared by all variants — internal static archives; not deliverables
 
-These are unstripped. The workflows strip debug info from the shared libraries when staging the bundle; executables ship as built.
+These are unstripped. The workflows strip debug info from the shared libraries when bundling; executables ship as built.
 
 Toolchain and host details captured at configure time are in `builddir/meson-logs/`.
 
