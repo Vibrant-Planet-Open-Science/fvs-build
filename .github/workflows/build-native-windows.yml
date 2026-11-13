@@ -53,6 +53,16 @@ jobs:
     env:
       MSYSTEM: UCRT64
       GCC_MAJOR: "15"
+      # Installed as an exact set; see "Install pinned GCC toolchain".
+      MSYS2_GCC_PACKAGES: >-
+        mingw-w64-ucrt-x86_64-gcc-15.2.0-11
+        mingw-w64-ucrt-x86_64-gcc-libs-15.2.0-11
+        mingw-w64-ucrt-x86_64-gcc-fortran-15.2.0-11
+        mingw-w64-ucrt-x86_64-gcc-libgfortran-15.2.0-11
+        mingw-w64-ucrt-x86_64-crt-13.0.0.r488.g3fedac280-1
+        mingw-w64-ucrt-x86_64-headers-13.0.0.r488.g3fedac280-1
+        mingw-w64-ucrt-x86_64-winpthreads-13.0.0.r488.g3fedac280-1
+        mingw-w64-ucrt-x86_64-libwinpthread-13.0.0.r488.g3fedac280-1
     steps:
       # In a called workflow github.* and a bare checkout are the caller's repo;
       # job.workflow_* is this repo, which tools/ needs.
@@ -108,12 +118,7 @@ jobs:
         id: toolchain
         run: |
           set -euo pipefail
-          mapfile -t PKGS < <(python -c 'import json,sys; print("\n".join(json.load(open(sys.argv[1])).get(sys.argv[2], [])))' \
-            fvs-build/tools/ci/msys2-toolchains.json "$GCC_MAJOR" | tr -d '\r')
-          if [ "${#PKGS[@]}" -eq 0 ] || [ -z "${PKGS[0]}" ]; then
-            echo "ERROR: GCC ${GCC_MAJOR} has no entry in tools/ci/msys2-toolchains.json" >&2
-            exit 1
-          fi
+          read -ra PKGS <<< "$MSYS2_GCC_PACKAGES"
           DL=$(mktemp -d)
           for p in "${PKGS[@]}"; do
             curl -fsSL --retry 3 -o "${DL}/${p}-any.pkg.tar.zst" \
@@ -140,6 +145,8 @@ jobs:
           } >> "$GITHUB_ENV"
           # Cache keys cannot contain commas; keep the version line's identity.
           echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
+          # CRT/headers bumps leave fc_id unchanged but must still miss the cache.
+          echo "pkgs_id=$(sha256sum <<< "$MSYS2_GCC_PACKAGES" | cut -c1-12)" >> "$GITHUB_OUTPUT"
 
       - name: Install pinned Meson
         run: |
@@ -161,13 +168,13 @@ jobs:
           key: >-
             meson-win-${{ steps.variants.outputs.id }}-${{ steps.source.outputs.commit }}-${{
               inputs.profile }}-${{ steps.toolchain.outputs.fc_id }}-${{
+              steps.toolchain.outputs.pkgs_id }}-${{
               hashFiles(
                 'fvs-build/meson.build',
                 'fvs-build/meson_options.txt',
                 'fvs-build/tools/parse_sourcelist.py',
                 'fvs-build/tools/fvs_build_info.py',
                 'fvs-build/tools/ci/meson_configure_native.sh',
-                'fvs-build/tools/ci/msys2-toolchains.json',
                 'fvs-build/tools/ci/requirements-build.txt'
               )
             }}

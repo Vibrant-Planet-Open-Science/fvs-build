@@ -41,7 +41,7 @@ Each workflow pins its GCC major (`GCC_MAJOR`). A runner that cannot provide it 
 | --- | --- | --- |
 | Linux | `14` | `gcc-toolset-14` in the manylinux_2_28 image. |
 | macOS | `15` | Homebrew `gcc@15`, or the unversioned `gcc` formula while 15 is its current major. |
-| Windows | `15` | The exact MSYS2 package set in `tools/ci/msys2-toolchains.json`. |
+| Windows | `15` | The exact MSYS2 package set in `build-native-windows.yml` (`MSYS2_GCC_PACKAGES`). |
 
 ### Linux runtime compatibility
 
