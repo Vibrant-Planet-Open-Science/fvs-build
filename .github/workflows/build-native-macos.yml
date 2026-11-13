@@ -119,7 +119,11 @@ jobs:
       - name: Pin source timestamps for the build cache
         run: find fvs-source fvs-build -name .git -prune -o -type f -exec touch -t 200001010000 {} +
 
+      # Pull requests only: their cache scope can't reach main, while a dispatch
+      # on main may build arbitrary source_repo code that could poison the
+      # cache for later (release) runs. Those always build clean.
       - name: Cache Meson build directory
+        if: github.event_name == 'pull_request'
         uses: actions/cache@v6
         with:
           path: _build

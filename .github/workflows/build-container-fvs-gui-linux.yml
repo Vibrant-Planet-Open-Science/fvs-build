@@ -193,15 +193,22 @@ jobs:
 
       # --load for the smoke test and SBOM scan; the push step reruns the saved
       # arguments from the builder cache, so a failed build never publishes.
+      # The gha layer cache is for pull requests only: a dispatch on main may
+      # build an arbitrary interface_repo, whose layers must never reach a
+      # release build. Releases build clean.
       - name: Build FVS GUI image (load locally)
         env:
           INTERFACE_REPO: ${{ inputs.interface_repo }}
           INTERFACE_REF: ${{ inputs.interface_ref }}
         run: |
           set -euo pipefail
+          cache=()
+          if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+            cache=(--cache-from "type=gha,scope=fvs-gui-${ARCH}"
+              --cache-to "type=gha,mode=max,scope=fvs-gui-${ARCH},ignore-error=true")
+          fi
           args=(
             --platform "linux/${ARCH}"
-            --cache-from "type=gha,scope=fvs-gui-${ARCH}"
             --build-arg SOURCE_REPO="${SOURCE_REPO}"
             --build-arg SOURCE_REF="${SOURCE_REF}"
             --build-arg SOURCE_SHA="${SOURCE_SHA}"
@@ -219,9 +226,7 @@ jobs:
             .
           )
           printf '%s\n' "${args[@]}" > "${RUNNER_TEMP}/buildx-args"
-          docker buildx build --load --tag "${IMAGE_REF}" \
-            --cache-to "type=gha,mode=max,scope=fvs-gui-${ARCH},ignore-error=true" \
-            "${args[@]}"
+          docker buildx build --load --tag "${IMAGE_REF}" "${cache[@]}" "${args[@]}"
 
       - name: Smoke-test the built image
         run: bash tools/ci/smoke_fvs_gui.sh "${IMAGE_REF}"

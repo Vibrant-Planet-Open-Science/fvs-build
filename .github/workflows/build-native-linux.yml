@@ -124,7 +124,11 @@ jobs:
       # The compiler is in the key because `meson setup --reconfigure` keeps
       # the cached compiler and Ninja keeps objects whose command lines did
       # not change.
+      # Pull requests only: their cache scope can't reach main, while a dispatch
+      # on main may build arbitrary source_repo code that could poison the
+      # cache for later (release) runs. Those always build clean.
       - name: Cache Meson build directory
+        if: github.event_name == 'pull_request'
         uses: actions/cache@v6
         with:
           path: _build
