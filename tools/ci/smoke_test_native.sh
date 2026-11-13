@@ -1,25 +1,15 @@
 #!/usr/bin/env bash
-# Smoke-test each variant executable after the native build.
-#
-# Pipe EOF on stdin and expect the binary to start up and reach gfortran's
-# `STOP 20` (raised when FVS hits EOF before reading a keyfile). When the
-# source tree has base/version.f90, `--version` must report real build info
-# (not empty, `unknown`, or `-dirty`). Runs from a temp dir so any fort.<N>
-# spillover does not land next to the build outputs. Stops at the first
-# failing variant.
-#
-# Environment:
-#   VARIANTS   — space-separated variant codes (required)
-#   FVS_SOURCE — FVS source tree (default: $GITHUB_WORKSPACE/fvs-source)
-#   BUILD_DIR  — Meson build directory (default: _build)
+# Smoke-test each variant executable after the native build. `STOP 20` is what
+# FVS raises on EOF before reading a keyfile. Runs from a temp dir so fort.<N>
+# spillover does not land next to the build outputs. VARIANTS is space-separated.
 set -euo pipefail
 
 VARIANTS="${VARIANTS:?VARIANTS is required}"
 FVS_SOURCE="${FVS_SOURCE:-${GITHUB_WORKSPACE:?set FVS_SOURCE or GITHUB_WORKSPACE}/fvs-source}"
 BUILD_DIR="${BUILD_DIR:-_build}"
 
-# The executable must not load its own embedder library at runtime. On
-# Windows the objdump import check covers this instead.
+# The executable must not load its own embedder library at runtime (on Windows
+# the workflow's objdump import check covers this).
 case "$(uname -s)" in
   Linux) suffix='' deps='ldd' ;;
   Darwin) suffix='' deps='otool -L' ;;

@@ -1,16 +1,3 @@
-# Local-dev driver for the reusable native Linux workflow.
-#
-# This is a thin workflow_dispatch wrapper around build-native-linux.yml so
-# the reusable workflow can be exercised manually from the Actions UI (or
-# `gh workflow run`) before any external caller (fvs-engine release
-# pipeline, fvs-build's own upstream tracker, etc.) exists. Defaults match
-# the upstream tag docker_fvs last shipped, so a no-input dispatch reproduces
-# the docker_fvs-equivalent build under the new architecture.
-#
-# This workflow is NOT the caller interface; it is for local validation
-# only. Real callers invoke .github/workflows/build-native-linux.yml directly
-# via `uses: <owner>/fvs-build/.github/workflows/build-native-linux.yml@<ref>`.
-
 name: Dispatch native Linux build (manual)
 
 on:
@@ -73,5 +60,4 @@ jobs:
       meson_version: ${{ inputs.meson_version }}
       profile: ${{ inputs.profile }}
       python_version: ${{ inputs.python_version }}
-    # secrets: inherit  # uncomment if source_repo becomes private and the
-    #                   # workflow needs to authenticate the source checkout
+    # secrets: inherit  # uncomment if source_repo is private

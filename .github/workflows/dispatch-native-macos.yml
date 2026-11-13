@@ -1,11 +1,3 @@
-# Local-dev driver for the reusable native macOS workflow.
-#
-# Thin workflow_dispatch wrapper around build-native-macos.yml so the reusable
-# workflow can be exercised manually from the Actions UI or `gh workflow run`.
-# Same intent as dispatch-native-linux.yml; not the external caller interface.
-#
-# Real callers use `uses: <owner>/fvs-build/.github/workflows/build-native-macos.yml@<ref>`.
-
 name: Dispatch native macOS build (manual)
 
 on:

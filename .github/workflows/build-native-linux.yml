@@ -1,17 +1,5 @@
-# Reusable workflow: build native Linux FVS artifacts via the fvs-build
-# Meson overlay. Runs on x86_64 or aarch64: the runner_image picks the arch
-# (ubuntu-24.04 or ubuntu-24.04-arm). A caller wanting both calls it twice.
-# Builds run inside quay.io/pypa/manylinux_2_28_<arch> (gcc-toolset-14), so
-# binaries need at most GLIBC_2.28 and can be repaired into manylinux wheels.
-#
-# This workflow is source-agnostic. Callers supply a source repo URL and
-# ref; this workflow produces a single artifact bundle (per-variant
-# binaries + shared libraries + provenance manifest + SBOM) that downstream
-# callers consume.
-#
-# Container packaging is intentionally out of scope for this workflow;
-# this workflow's artifacts may be consumed by a separate container workflow
-# via its `artifact_name` output.
+# Reusable workflow: native Linux FVS bundle, built in the manylinux_2_28
+# container for the runner's arch. Interface: docs/workflow-interface.md.
 
 name: Build native Linux FVS artifacts (reusable)
 
@@ -90,23 +78,17 @@ permissions:
   contents: read
 
 jobs:
-  # ---------------------------------------------------------------------------
-  # Build: one job configures every requested variant in a single Meson build
-  # directory (so the common archives compile once), runs Meson + Ninja inside
-  # the manylinux container, checks and stages each variant, and uploads one
-  # ephemeral staging artifact for the collect job. container.image cannot
-  # read the runner's arch, so the image follows the runner label: one
-  # containing "arm" gets the aarch64 image.
-  # ---------------------------------------------------------------------------
+  # One Meson build directory for all variants, so the common archives
+  # compile once. container.image cannot read the runner's arch, so the
+  # image follows the runner label.
   build:
     name: Build (${{ inputs.runner_image }})
     runs-on: ${{ inputs.runner_image }}
     container:
       image: quay.io/pypa/manylinux_2_28_${{ contains(inputs.runner_image, 'arm') && 'aarch64' || 'x86_64' }}
     steps:
-      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
-      # disk. In a called workflow github.* and a bare checkout are the caller's
-      # repo; job.workflow_* is this workflow's own repo and commit.
+      # In a called workflow github.* and a bare checkout are the caller's repo;
+      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
@@ -121,7 +103,6 @@ jobs:
           VARIANTS_CSV: ${{ inputs.variants }}
         run: bash tools/ci/resolve_variants.sh
 
-      # Recursive FVS checkout and provenance SHAs.
       - id: prepare
         uses: ./.github/actions/prepare-fvs-native-checkout
         with:
@@ -153,20 +134,15 @@ jobs:
           # Cache keys cannot contain commas; keep the version line's identity.
           echo "fc_id=$(gfortran --version | head -n 1 | tr -c 'A-Za-z0-9.\n-' '_')" >> "$GITHUB_OUTPUT"
 
-      # Ninja rebuilds any object older than its sources, and a fresh checkout
-      # stamps every file with the current time, so a restored _build would be
-      # rebuilt in full. Pin source timestamps to a fixed past date instead.
-      # Safe because the cache key holds the source SHA (a hit means identical
-      # sources) and the build-relevant overlay files; changed compile flags
-      # still rebuild through Ninja's command-line tracking.
+      # A fresh checkout stamps files with the current time, so Ninja would
+      # rebuild a restored _build in full. Safe because the cache key holds the
+      # source SHA and overlay files; flag changes still rebuild via Ninja.
       - name: Pin source timestamps for the build cache
         run: find fvs-source fvs-build -name .git -prune -o -type f -exec touch -t 200001010000 {} +
 
-      # Cache is a light-touch optimization: a new source commit misses, so
-      # release builds compile from scratch; repeat PR runs against the same
-      # source commit hit and skip the long Fortran compile. The compiler is in
-      # the key because `meson setup --reconfigure` keeps the cached compiler
-      # and Ninja keeps objects whose command lines did not change.
+      # The compiler is in the key because `meson setup --reconfigure` keeps
+      # the cached compiler and Ninja keeps objects whose command lines did
+      # not change.
       - name: Cache Meson build directory
         uses: actions/cache@v6
         with:
@@ -190,20 +166,12 @@ jobs:
 
       - name: Verify artifacts' runtime dependencies (readelf)
         env:
-          # glibc is backward compatible, so binaries needing at most this
-          # version run on that release and every newer one: the
-          # manylinux_2_28 build environment's glibc.
           GLIBC_FLOOR: "2.28"
         run: |
           set -euo pipefail
-          # The shared library dynamic-links libgfortran.so.5 by SONAME (see
-          # meson.build: libgfortran.a is not PIC); the executable links the
-          # GCC runtime statically and needs only glibc. Unlike
-          # macOS Mach-O, ELF DT_NEEDED records sonames -- never the build
-          # machine's absolute path -- so that failure class cannot occur here.
-          # Guard instead against a build-tree or toolchain search path leaking
-          # into DT_RPATH/DT_RUNPATH, a NEEDED library the runtime images do
-          # not install, and a glibc symbol newer than GLIBC_FLOOR.
+          # The .so links libgfortran.so.5 dynamically (libgfortran.a is not
+          # PIC). ELF NEEDED records sonames, never absolute paths, so unlike
+          # macOS the leak to guard against is an RPATH/RUNPATH.
           # aarch64 shared libraries record the glibc loader as NEEDED.
           glibc='libc\.so\.6|libm\.so\.6|ld-linux-aarch64\.so\.1'
           status=0
@@ -269,19 +237,12 @@ jobs:
       - name: Upload staging artifact
         uses: actions/upload-artifact@v7
         with:
-          # OS- and arch-prefixed name avoids collision when several reusable
-          # native workflows run in the same workflow run (e.g.
-          # ci-test-reusable-native, or x86_64 + aarch64 for a multi-arch image).
+          # OS and arch in the name: several native builds can share one run.
           name: linux-${{ steps.arch.outputs.arch }}-staging
           path: staging/
           retention-days: 1
           if-no-files-found: error
 
-  # ---------------------------------------------------------------------------
-  # Collect-and-finalize: download the staging artifact, fan it into the
-  # canonical bundle layout, generate an SBOM, and upload the single final
-  # artifact that callers (and the container workflow) consume.
-  # ---------------------------------------------------------------------------
   collect-and-finalize:
     name: Collect, SBOM, and finalize
     runs-on: ${{ inputs.runner_image }}
@@ -289,9 +250,8 @@ jobs:
     outputs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
-      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
-      # disk. In a called workflow github.* and a bare checkout are the caller's
-      # repo; job.workflow_* is this workflow's own repo and commit.
+      # In a called workflow github.* and a bare checkout are the caller's repo;
+      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:

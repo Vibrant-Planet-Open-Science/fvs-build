@@ -1,12 +1,3 @@
-# Local-dev driver for the reusable native Windows workflow.
-#
-# Thin workflow_dispatch wrapper around build-native-windows.yml so the
-# reusable workflow can be exercised manually from the Actions UI or
-# `gh workflow run`. Same intent as dispatch-native-linux.yml; not the external
-# caller interface.
-#
-# Real callers use `uses: <owner>/fvs-build/.github/workflows/build-native-windows.yml@<ref>`.
-
 name: Dispatch native Windows build (manual)
 
 on:

@@ -1,19 +1,3 @@
-# Local-dev driver for the full native + container pipeline.
-#
-# This is a thin workflow_dispatch wrapper that demonstrates the
-# orchestrator pattern documented in docs/workflow-interface.md:
-# call build-native-linux first, then call build-container-linux with
-# `needs:` on the native job, passing the artifact name through.
-#
-# Defaults assume an upstream-tracking build (USDAForestService source +
-# ghcr.io/<owner>/usfs-fvs namespace). `push` defaults to false so a
-# manual dispatch never accidentally publishes; operator must explicitly
-# set push=true for production-style runs.
-#
-# This is NOT a caller interface for other repos -- they should compose
-# the two reusable workflows themselves, matching their own release ref
-# discipline.
-
 name: Dispatch native + container build (manual)
 
 on:
@@ -74,18 +58,13 @@ on:
         required: false
         default: "14"
         type: string
-        # Note: meson_version and runtime_base are not exposed here; they
-        # follow the reusable workflows' defaults (pinned Meson, runtime base).
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  # Tiny preflight job to compute the default image_name when the operator
-  # leaves it blank. workflow_dispatch input defaults cannot reference
-  # github.repository_owner at definition time, so we derive it here and
-  # hand it to the container workflow via `with:`.
+  # Input defaults cannot reference github.repository_owner, so derive it here.
   resolve-image-name:
     name: Resolve image_name default
     runs-on: ${{ inputs.runner_image }}

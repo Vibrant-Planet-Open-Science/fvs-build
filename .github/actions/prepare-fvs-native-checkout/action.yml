@@ -1,9 +1,5 @@
-# Composite: resolve fvs-build repo/ref/commit, check out overlay + FVS
-# source, record SHAs for provenance.
-#
-# Call after the workflow repository is checked out (so ./.github/actions exists).
-# On Windows build jobs, install MSYS2 *before* this action so find/git
-# behave like the rest of the job. Pass run_shell: "msys2 {0}" on Windows.
+# Call after the workflow repository is checked out. On Windows, install MSYS2
+# first and pass run_shell: "msys2 {0}" so git behaves like the rest of the job.
 name: Prepare fvs-build + FVS checkouts for native matrix
 description: >
   Resolve overlay repo/ref, clone fvs-build and FVS into fvs-build/ and

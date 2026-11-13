@@ -1,10 +1,3 @@
-# Build-time options for the fvs-build Meson overlay.
-#
-# The overlay does not contain FVS source itself; it consumes a checked-out
-# upstream USDAForestService/ForestVegetationSimulator tree (or any source
-# repo that mirrors the upstream layout, e.g., fvs-engine post-modernization)
-# specified via fvs_source_dir.
-
 option(
   'fvs_source_dir',
   type: 'string',
@@ -24,7 +17,7 @@ option(
   type: 'combo',
   choices: ['reference', 'debug'],
   value: 'reference',
-  description: 'Build profile. reference: goldens-aligned flags matching upstream bin/makefile (unoptimized). debug: paranoid runtime checks for fvs-regression Phase 2 (not goldens-compatible).',
+  description: 'Build profile. reference: goldens-aligned flags matching upstream bin/makefile (unoptimized). debug: paranoid runtime checks (not goldens-compatible).',
 )
 
 option(

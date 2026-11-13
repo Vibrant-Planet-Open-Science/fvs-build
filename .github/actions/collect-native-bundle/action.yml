@@ -1,5 +1,3 @@
-# Composite: download the build job's staging artifact, fan into the canonical bundle
-# (tools/ci/provenance.py collect-bundle), SPDX scan with syft, upload bundle.
 name: Collect native FVS bundle
 description: >
   Download the build job's staging artifact, run collect-bundle, SPDX scan with syft,

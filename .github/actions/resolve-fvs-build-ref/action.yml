@@ -1,8 +1,5 @@
-# Composite action: identify the fvs-build repo, ref and commit that define the
-# running reusable workflow. In a called workflow the github context belongs to
-# the caller (github.workflow_ref names the caller's workflow); job.workflow_*
-# names the workflow file that defines the current job, so it is correct for
-# both in-repo and external callers.
+# In a called workflow github.* belongs to the caller; job.workflow_* names the
+# workflow that defines the current job, so it is right for any caller.
 name: Resolve fvs-build repo/ref/sha
 description: >
   Outputs fvs-build's owner/repo, the ref the workflow was called at (e.g.

@@ -1,8 +1,5 @@
-# Reusable workflow: build native macOS FVS artifacts (Homebrew GCC / gfortran)
-# via the fvs-build Meson overlay.
-#
-# Same structure as build-native-linux.yml / build-native-windows.yml; bundle
-# uses extensionless executables and `FVS<v>.so` embedder libraries.
+# Reusable workflow: native macOS FVS bundle (Homebrew GCC).
+# Interface: docs/workflow-interface.md.
 
 name: Build native macOS FVS artifacts (reusable)
 
@@ -78,15 +75,13 @@ jobs:
       run:
         shell: bash
     env:
-      # Must match the macOS the runner's Homebrew GCC bottles were built for:
-      # the static libgfortran.a objects carry that minimum, and a lower target
-      # would claim support the runtime code was not built for. macos-15 ->
-      # 15.0. Without it, minos follows the runner's macOS.
+      # Must match the macOS the runner's Homebrew GCC bottles target: the
+      # static libgfortran.a objects carry that minimum. Unset, minos follows
+      # the runner's macOS.
       MACOSX_DEPLOYMENT_TARGET: "15.0"
     steps:
-      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
-      # disk. In a called workflow github.* and a bare checkout are the caller's
-      # repo; job.workflow_* is this workflow's own repo and commit.
+      # In a called workflow github.* and a bare checkout are the caller's repo;
+      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
@@ -142,12 +137,9 @@ jobs:
           set -euo pipefail
           python3 -m pip install "meson==${MESON_VERSION}"
 
-      # Ninja rebuilds any object older than its sources, and a fresh checkout
-      # stamps every file with the current time, so a restored _build would be
-      # rebuilt in full. Pin source timestamps to a fixed past date instead.
-      # Safe because the cache key holds the source SHA (a hit means identical
-      # sources) and the build-relevant overlay files; changed compile flags
-      # still rebuild through Ninja's command-line tracking.
+      # A fresh checkout stamps files with the current time, so Ninja would
+      # rebuild a restored _build in full. Safe because the cache key holds the
+      # source SHA and overlay files; flag changes still rebuild via Ninja.
       - name: Pin source timestamps for the build cache
         run: find fvs-source fvs-build -name .git -prune -o -type f -exec touch -t 200001010000 {} +
 
@@ -185,12 +177,9 @@ jobs:
       - name: Verify artifacts are self-contained (otool)
         run: |
           set -euo pipefail
-          # Both the standalone exe and the fvs2py-loaded embedder library must
-          # depend only on base-system libraries. A leaked Homebrew gcc runtime
-          # (e.g. /opt/homebrew/opt/gcc@14/lib/gcc/14/libgfortran.5.dylib) or an
-          # unresolved @rpath entry is absent on end-user Macs and fails at
-          # dlopen/ctypes with OSError. With -static-libgfortran/-libgcc/
-          # -libquadmath only /usr/lib and /System deps should remain.
+          # A leaked Homebrew GCC runtime path or unresolved @rpath entry is
+          # absent on end-user Macs and fails at dlopen; with the static GCC
+          # runtime only /usr/lib and /System deps should remain.
           status=0
           files=()
           for v in $VARIANTS; do files+=("_build/FVS$v" "_build/FVS$v.so"); done
@@ -199,9 +188,8 @@ jobs:
             echo "----- otool -L $f -----"
             otool -L "$f"
             base="$(basename "$f")"
-            # Drop the header line, drop the lib's own install-id (matched by
-            # basename so an @rpath/-prefixed id is handled too), then flag any
-            # remaining dependency path outside the system prefixes.
+            # Skip the lib's own install-id, matched by basename so an
+            # @rpath/-prefixed id is handled too.
             leaks="$(otool -L "$f" | tail -n +2 | awk '{print $1}' \
               | awk -v b="$base" '{ n=$0; sub(/.*\//,"",n); if (n != b) print }' \
               | grep -Ev '^(/usr/lib/|/System/)' || true)"
@@ -258,9 +246,8 @@ jobs:
     outputs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
-      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
-      # disk. In a called workflow github.* and a bare checkout are the caller's
-      # repo; job.workflow_* is this workflow's own repo and commit.
+      # In a called workflow github.* and a bare checkout are the caller's repo;
+      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:

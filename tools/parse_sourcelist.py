@@ -1,40 +1,12 @@
 #!/usr/bin/env python3
-"""Parse an upstream FVS source list and emit Meson-friendly output.
+"""Categorize one ``bin/FVS<variant>_sourceList.txt`` for ``meson.build``.
 
-Upstream ``USDAForestService/ForestVegetationSimulator`` releases drive
-their build from per-variant manifests at
-``bin/FVS<variant>_sourceList.txt``, including Canadian variants ``bc``
-and ``on`` whose lists live under ``bin/`` (paths under ``canada/`` use
-``../canada/<v>/...`` from ``bin/``). A separate
-``canada/bin/FVSon_sourceList.txt`` exists upstream but is a shorter
-subset for an internal Canada build; this tool always reads the
-canonical ``bin/`` manifest.
-
-Each manifest is a newline-delimited list of paths relative to ``bin/``,
-typically ``../<dir>/<file>``.
-
-The tool resolves entries to absolute paths, categorizes them by
-extension and directory, and prints a delimited text schema that
-``meson.build`` can consume without JSON.
-
-SQLite (``dbsqlite/sqlite3.c``, ``dbsqlite/fvsqlite3.c``), FOFEM
-(``fire/fofem/*.c``) and NVEL (``volume/NVEL/*``) are variant-independent
-and reference nothing else in FVS, so ``meson.build`` compiles them once
-per configure. Their lists are sorted so variants can be compared for
-identity. Every other source, including ``base/apisubsc.c`` (the C half
-of the FVS API, which calls Fortran), belongs to the variant.
-
-Note:
-    Output sections (header ``### <name>`` then paths, in order):
-    ``fortran_sources``, ``main_source``, ``c_sources_variant``,
-    ``c_sources_sql``, ``c_sources_fofem``, ``nvel_sources``,
-    ``include_dirs``. The CLI exits
-    with code ``1`` if the manifest is missing or contains no main source
-    (see :func:`parse`).
-
-Warning:
-    Missing files are reported on stderr but still listed so Meson can
-    fail with a concrete path.
+Prints ``### <section>`` headers each followed by absolute paths. Upstream's
+``canada/bin/FVSon_sourceList.txt`` is a shorter internal subset; the
+canonical list for every variant, including ``bc`` and ``on``, is under
+``bin/``. The common-archive lists are sorted so variants can be compared.
+Missing files are warned about but still listed, so Meson fails on a
+concrete path.
 """
 
 from __future__ import annotations
@@ -57,19 +29,7 @@ MAIN_BASENAMES: frozenset[str] = frozenset({"main.f", "main.f90"})
 
 
 def manifest_path(source_dir: Path, variant: str) -> Path:
-    """Return ``bin/FVS<variant>_sourceList.txt`` under ``source_dir``.
-
-    Canonical source lists live under ``bin/`` for every variant,
-    including ``bc`` and ``on``.
-
-    Args:
-        source_dir: Root of a checked-out ForestVegetationSimulator
-            tree.
-        variant: Two-letter variant code (e.g. ``"pn"``, ``"bc"``).
-
-    Returns:
-        ``<source_dir>/bin/FVS<variant>_sourceList.txt``.
-    """
+    """Return ``bin/FVS<variant>_sourceList.txt`` under ``source_dir``."""
     return source_dir / "bin" / f"FVS{variant}_sourceList.txt"
 
 
@@ -79,21 +39,11 @@ def _in_dir(path: Path, parts: tuple[str, str]) -> bool:
 
 
 def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
-    """Parse the manifest for ``variant`` into categorized path lists.
-
-    Args:
-        source_dir: Root of a checked-out ForestVegetationSimulator
-            tree.
-        variant: Two-letter variant code.
-
-    Returns:
-        Mapping from section name to absolute paths, suitable for
-        :func:`emit`.
+    """Map each section name to absolute paths for ``variant``.
 
     Raises:
         FileNotFoundError: If the manifest file is missing.
-        ValueError: If no entry in :data:`MAIN_BASENAMES` is present after
-            parsing.
+        ValueError: If the manifest has no main source.
     """
     sl_path = manifest_path(source_dir, variant)
     if not sl_path.is_file():
@@ -170,13 +120,7 @@ def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
 
 
 def emit(sections: dict[str, list[str]], out: TextIO | None = None) -> None:
-    """Write the ``###``-delimited schema consumed by ``meson.build``.
-
-    Args:
-        sections: Categorized absolute paths, as returned by
-            :func:`parse`.
-        out: Text stream to write to; defaults to ``sys.stdout``.
-    """
+    """Write ``sections`` as the ``###``-delimited schema ``meson.build`` reads."""
     if out is None:
         out = sys.stdout
     order = (
@@ -195,22 +139,7 @@ def emit(sections: dict[str, list[str]], out: TextIO | None = None) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """CLI entrypoint for :mod:`argparse`.
-
-    Args:
-        argv: Argument vector (excluding the program name). When
-            ``None``, :class:`argparse.ArgumentParser` uses
-            ``sys.argv[1:]``.
-
-    Returns:
-        ``0`` on success, ``1`` if ``--source-dir`` is not a directory or
-        :func:`parse` raises :exc:`FileNotFoundError` / :exc:`ValueError`.
-
-    Raises:
-        SystemExit: If the user passes invalid flags (handled inside
-            :meth:`argparse.ArgumentParser.parse_args`, exit code
-            ``2``).
-    """
+    """CLI entry point. Returns a process exit code."""
     parser = argparse.ArgumentParser(
         description=(
             "Parse a USFS FVS source list and emit a delimited text schema "

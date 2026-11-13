@@ -1,35 +1,5 @@
-# Reusable workflow: build the Linux runtime container image from a
-# fvs-native-linux artifact bundle and (optionally) push to GHCR.
-#
-# This workflow does NOT compile inside Docker. It consumes the binary
-# artifact produced by build-native-linux.yml and copies it into a
-# runtime-only Ubuntu 24.04 image. Each arch builds on its own runner (no
-# QEMU); with push: true each per-arch image is pushed by digest and a
-# manifest job joins them into one multi-arch list behind every tag. Binaries
-# are already smoke-tested on the native build runner (STOP 20 per variant);
-# this job packages them into the container image (raw bundle artifact + image).
-#
-# Caller pattern (orchestrator, see dispatch-container-linux.yml):
-#
-#   jobs:
-#     native:
-#       uses: <owner>/fvs-build/.github/workflows/build-native-linux.yml@<ref>
-#       with:
-#         source_repo: ...
-#         source_ref: ...
-#     container:
-#       needs: native
-#       uses: <owner>/fvs-build/.github/workflows/build-container-linux.yml@<ref>
-#       with:
-#         artifact_name: ${{ needs.native.outputs.artifact_name }}
-#         artifact_name_arm64: ${{ needs.native-arm64.outputs.artifact_name }}
-#         image_name: ghcr.io/<owner>/usfs-fvs
-#         image_tag: ${{ inputs.source_ref }}
-#         push: true
-#       secrets: inherit
-#       permissions:
-#         contents: read
-#         packages: write
+# Reusable workflow: package build-native-linux.yml bundles into the runtime
+# image, one runner per arch (no QEMU). Interface: docs/workflow-interface.md.
 
 name: Build Linux runtime container image (reusable)
 
@@ -76,9 +46,8 @@ on:
         default: ""
       runtime_base:
         description: >-
-          Base image for the runtime container. Pinned to ubuntu:24.04
-          (same Ubuntu version as the ubuntu-24.04 build runner means the
-          binary's glibc baseline matches the runtime).
+          Base image for the runtime container. Needs glibc 2.28 or newer
+          (the binaries are built in manylinux_2_28).
         required: false
         type: string
         default: "ubuntu:24.04"
@@ -128,9 +97,8 @@ jobs:
     env:
       ARCH: ${{ matrix.arch }}
     steps:
-      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
-      # disk. In a called workflow github.* and a bare checkout are the caller's
-      # repo; job.workflow_* is this workflow's own repo and commit.
+      # In a called workflow github.* and a bare checkout are the caller's repo;
+      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
@@ -173,10 +141,7 @@ jobs:
           echo "shared libraries:"
           printf '%s\n' "${libs[@]}"
 
-      # Pull provenance fields out of the bundle's manifest.json so we can
-      # surface them as Docker --build-arg values and OCI labels. Keeping
-      # them in env via $GITHUB_ENV avoids re-running Python in every later
-      # step that needs them.
+      # Exports the manifest's provenance fields to $GITHUB_ENV for later steps.
       - name: Extract provenance from bundle manifest
         id: provenance
         run: |
@@ -206,10 +171,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      # Build with --load so the image lands in the local docker daemon for
-      # the SBOM scan. The push step re-runs the same build from the builder
-      # cache, so a failed build never reaches the registry. The arguments
-      # are saved so both builds use the same ones.
+      # --load for the SBOM scan; the push step reruns the saved arguments from
+      # the builder cache, so a failed build never reaches the registry.
       - name: Build runtime image (load locally)
         run: |
           set -euo pipefail
@@ -232,9 +195,6 @@ jobs:
           printf '%s\n' "${args[@]}" > "${RUNNER_TEMP}/buildx-args"
           docker buildx build --load --tag "${IMAGE_REF}" "${args[@]}"
 
-      # GHCR login is conditional on push=true AND a ghcr.io image ref.
-      # Non-GHCR registries need their own auth and are out of scope for
-      # this dispatch workflow; callers can fork if they need other registries.
       - name: Log in to GHCR
         if: inputs.push && startsWith(inputs.image_name, 'ghcr.io/')
         uses: docker/login-action@v4
@@ -287,8 +247,7 @@ jobs:
           retention-days: 30
           if-no-files-found: error
 
-  # Join the per-arch digests into one manifest list and give it every
-  # user-facing tag. An amd64-only call produces a one-entry list.
+  # An amd64-only call still produces a (one-entry) manifest list.
   manifest:
     name: Create multi-arch manifest list
     needs: build

@@ -1,68 +1,9 @@
 #!/usr/bin/env bash
-# Smoke test for the FVSOnLocal (fvsOL) GUI image (docker/Dockerfile.fvs-gui).
-#
-# Runs against an ALREADY-BUILT image (local `docker buildx --load` result or a
-# pulled ref); it does NOT build the image. The same script is used two ways:
-#   * locally, before committing/pushing:  tools/ci/smoke_fvs_gui.sh usfs-fvs-gui:local
-#   * in CI (build-container-fvs-gui-linux.yml), against the freshly-built image
-#     before the GHCR push, so a broken image is never published.
-#
-# Checks (see docs/fvs-gui-container.md "Smoke test"):
-#   1. fvsOL + rFVS attach (catches Depends-not-attached, e.g. addResourcePath).
-#   2. an FVS<v>.so loads via rFVS::fvsLoad with its expected C API symbols
-#      (catches a copied .so that is not runnable in-image: glibc/libgfortran).
-#   3. the temp-table write pattern fvsOL depends on still works against the
-#      installed RSQLite + the default input DB opens. This is a FORWARD canary:
-#      r2u installs RSQLite unpinned, and RSQLite once already broke the call
-#      style fvsOL used (DBI::SQL("temp.X") -> "Named parameters not used in
-#      query", fixed upstream by PR #29). If a future release breaks the
-#      temporary=TRUE style too, fvsOL greys out on stand selection -- a path
-#      checks 4 and 5 do NOT reach, since the app boots and serves fine either
-#      way. Sources predating PR #29 are a separate concern, caught at build
-#      time by Dockerfile.fvs-gui's guard, not here.
-#   4. the app boots headless via launch.R and serves an HTTP 200 Shiny page.
-#   5. jupyter-server-proxy serves the app at the /fvs-gui/ subpath, under a
-#      base_url prefix like the one JupyterHub assigns (proxy config +
-#      absolute_url=False prefix handling).
-#   6. jupyterhub-singleuser exists. BinderHub never runs `jupyter lab` or
-#      `jupyter notebook` -- JupyterHub spawns jupyterhub-singleuser. Check 5
-#      passes without it, so nothing else here catches its absence; when it is
-#      missing the single-user server never starts and every /user/<id>/ path
-#      404s on Binder while the image looks perfectly healthy locally.
-#   7. the proxy registration still applies with /etc/jupyter masked, and the
-#      launcher icon is served. mybinder mounts a Kubernetes ConfigMap there,
-#      replacing the whole directory from the image; a registration that lives
-#      in a config file under /etc/jupyter vanishes on Binder and /fvs-gui/ 404s
-#      while checks 1-6 all still pass.
-#   8. the jupyter_serverproxy_servers entry point is registered and loads, and
-#      it does NOT set SHINY_PORT (which would flip fvsOL back to Online mode
-#      and leave three Manage Projects controls inert). jupyter-server-proxy
-#      warn()s and skips an entry point that raises, so a broken one is a SILENT
-#      404 -- no startup error, no failed check anywhere else. This is the cheap
-#      static guard for both.
-#   9. launch.R's supervise loop relaunches the app after stopApp(). fvsOL calls
-#      stopApp() from onSessionEnded on EVERY ordinary session end (closed tab,
-#      reload, uncaught observer error), which makes runApp() return; and
-#      jupyter-server-proxy never respawns a process that exits cleanly. Without
-#      the loop, closing the tab bricks the session until the Jupyter server
-#      itself restarts.
-#  10. the patches (docker/fvs-gui/patches/) are present in the STAGED sources
-#      baked into the image, so a published image can be audited after the fact
-#      rather than only while it is being built.
-#  11. Local mode reaches a working session: isLocal() is TRUE and
-#      getVolumes2()() returns a non-empty volume list. getVolumes2() calls
-#      fs::dir_exists unqualified and fvsOL does not declare fs, so without
-#      launch.R attaching it the session dies at construction with `could not
-#      find function "dir_exists"` -- and nothing else here reaches that: the
-#      app boots and serves either way, and only a real browser session fails.
-#  12. getProjectList() returns instead of erroring with the open project locked
-#      -- i.e. the Manage Projects tab does not grey out on first click. Its
-#      observer (server.R:8721) calls straight into getProjectList(), and checks
-#      4, 5 and 7 all boot the app happily without reaching that path.
+# Smoke test for the FVS GUI image (docker/Dockerfile.fvs-gui), run against an
+# already-built image. The checks are described in docs/fvs-gui-container.md.
 #
 # Usage: tools/ci/smoke_fvs_gui.sh [IMAGE_REF]     (default: usfs-fvs-gui:local)
-# Env:   SMOKE_VARIANT=<code>  override the variant used in check 2 (default:
-#                              auto-detected from /opt/fvs/FVSbin).
+# Env:   SMOKE_VARIANT=<code>  override the auto-detected variant used by the .so check.
 set -euo pipefail
 
 IMAGE="${1:-usfs-fvs-gui:local}"
@@ -86,12 +27,8 @@ info() { printf '\n== %s\n' "$1"; }
 pass() { printf '   \033[32mPASS\033[0m %s\n' "$1"; }
 die()  { printf '   \033[31mFAIL\033[0m %s\n' "$1" >&2; exit 1; }
 
-# Poll an URL until it returns success or the timeout (seconds) elapses. While
-# the app is still starting, docker-proxy accepts the connection but the app
-# isn't listening yet, so attempts fail with "Recv failure: Connection reset by
-# peer" (or "Connection refused"). That's expected poll noise -- suppress it
-# here (no -S, stderr muted); the real fetch after the wait keeps -S for
-# diagnostics.
+# Poll until success or timeout (seconds). Connection resets while the app starts
+# are expected noise, so errors are muted here; the real fetch keeps -S.
 wait_http() {
   local url="$1" timeout="${2:-120}" waited=0
   while [ "$waited" -lt "$timeout" ]; do
@@ -130,9 +67,8 @@ info "3. RSQLite temp-table write pattern + default FVS_Data.db"
 docker run --rm "$IMAGE" Rscript -e '
   suppressPackageStartupMessages({library(DBI); library(RSQLite)})
   con <- dbConnect(SQLite(), ":memory:")
-  # the call style fvsOL uses for its scratch tables; if a future RSQLite
-  # breaks this the way 3.53.1 broke the previous style, the GUI dies on
-  # stand selection while still booting cleanly
+  # the call style fvsOL uses for its scratch tables; if RSQLite breaks it,
+  # the GUI dies on stand selection while still booting cleanly
   dbWriteTable(con, "Grps", data.frame(Stand_ID="", Grp=""), temporary=TRUE, overwrite=TRUE)
   stopifnot(dbExistsTable(con, "Grps"))
   db <- system.file("extdata", "FVS_Data.db.default", package="fvsOL")
@@ -158,9 +94,7 @@ docker rm -f "$cid" >/dev/null; CIDS=()
 pass "launch.R serves a Shiny page on :${APP_PORT}"
 
 # --- 5. jupyter-server-proxy path -------------------------------------------
-# Served under a base_url prefix, because that is what JupyterHub does: it
-# assigns /user/<id>/ and the proxy must build asset URLs relative to it. A bare
-# / prefix would not exercise that.
+# Under a JupyterHub-style /user/<id>/ base_url so prefix handling is exercised.
 BASE_URL="/user/smoke/"
 info "5. jupyter-server-proxy serves ${BASE_URL}fvs-gui/"
 cid=$(docker run -d -p "${JUP_PORT}:${JUP_PORT}" "$IMAGE" \
@@ -183,9 +117,6 @@ docker rm -f "$cid" >/dev/null; CIDS=()
 pass "jupyter-server-proxy serves fvsOL at ${BASE_URL}fvs-gui/"
 
 # --- 6. Binder entrypoint present -------------------------------------------
-# Checks 4 and 5 both start the server themselves, so neither notices that the
-# binary BinderHub actually spawns is missing. Without this the image passes
-# every other check and still 404s on every Binder path.
 info "6. jupyterhub-singleuser on PATH (the binary BinderHub spawns)"
 docker run --rm "$IMAGE" sh -c 'command -v jupyterhub-singleuser >/dev/null && echo hub-ok' \
   | grep -q '^hub-ok$' \
@@ -193,12 +124,7 @@ docker run --rm "$IMAGE" sh -c 'command -v jupyterhub-singleuser >/dev/null && e
 pass "jupyterhub-singleuser present"
 
 # --- 7. proxy registration survives a masked /etc/jupyter --------------------
-# mybinder.org mounts a Kubernetes ConfigMap at /etc/jupyter, which replaces the
-# whole directory from the image. Mounting an empty dir there reproduces that
-# faithfully: if the "fvs-gui" server were registered by a config file under
-# /etc/jupyter, ServerProxy would come up with no named servers and /fvs-gui/
-# would 302 to the slash-less path and 404 -- exactly the Binder failure, while
-# every other check here still passes.
+# An empty dir over /etc/jupyter reproduces mybinder's ConfigMap mount.
 info "7. ${BASE_URL}fvs-gui/ still served with /etc/jupyter masked (Binder ConfigMap)"
 maskdir=$(mktemp -d); TMPDIRS+=("$maskdir")
 cid=$(docker run -d -p "${MASK_PORT}:${MASK_PORT}" -v "${maskdir}:/etc/jupyter:ro" "$IMAGE" \
@@ -217,9 +143,7 @@ if [ "$code" != "200" ]; then
 fi
 grep -qi 'shiny' "$html" || { head -c 800 "$html" >&2; die "masked-config response is not a Shiny page"; }
 
-# The launcher tile and the route come from the same registration, so a served
-# icon is direct evidence the entry point loaded -- and it catches a package
-# that installed without its icons/ data files.
+# A served icon also catches a package installed without its icons/ data files.
 ctype=$(curl -s -o /dev/null -w '%{content_type}' --max-time 30 \
   "http://localhost:${MASK_PORT}${BASE_URL}server-proxy/icon/fvs-gui")
 case "$ctype" in
@@ -230,17 +154,8 @@ docker rm -f "$cid" >/dev/null; CIDS=()
 pass "proxy registration survives a masked /etc/jupyter, icon served"
 
 # --- 8. entry point is registered and loads ----------------------------------
-# get_entrypoint_server_processes() wraps entry_point.load() in a try/except that
-# warn()s and continues, so a broken entry point produces a silent 404 rather
-# than a startup failure. Construct ServerProcess exactly as it does, which also
+# Construct ServerProcess the way jupyter-server-proxy does, which also
 # validates the returned traits.
-#
-# SHINY_PORT must stay UNSET: fvsOL's isLocal() is Sys.getenv('SHINY_PORT')=="",
-# so setting it flips the app to Online mode, where "Change Working Directory",
-# "Upload project backup zip file" and "Open selected project" all render and do
-# nothing (their server handlers are isLocal()-gated while the UI object's
-# branches were frozen TRUE at package install). That regression is invisible to
-# every other check -- the app boots and serves identically in both modes.
 info "8. jupyter_serverproxy_servers entry point registered, loadable, Local mode"
 docker run --rm "$IMAGE" python -c 'import os; \
 from importlib.metadata import entry_points; \
@@ -259,20 +174,10 @@ print("entrypoint-ok")' | grep -q '^entrypoint-ok$' \
 pass "fvs-gui entry point registered, valid, and Local mode (SHINY_PORT unset)"
 
 # --- 9. supervise loop relaunches the app after stopApp() --------------------
-# fvsOL's session$onSessionEnded calls stopApp() on every ordinary session end,
-# which makes runApp() return; jupyter-server-proxy then never respawns it
-# (ensure_process only clears state["proc"] on a failed START), so the app is
-# gone until the Jupyter server restarts. launch.R wraps runApp in a supervise
-# loop to survive that.
-#
-# Driving this through a real Shiny session would mean hand-rolling a websocket
-# client against Shiny's wire protocol -- fragile, and it would break on any
-# Shiny upgrade. Instead a wrapper schedules a `later` callback on the very
-# event loop runApp services, which calls stopApp() when a sentinel file
-# appears. That exercises the exact code path (runApp returns -> loop relaunches)
-# with no timing race: the sentinel is only created once the app is confirmed
-# serving. The callback does not reschedule itself after firing, so exactly one
-# restart happens.
+# Rather than drive a real Shiny session over its websocket protocol, a wrapper
+# schedules a one-shot `later` callback on runApp's event loop that calls
+# stopApp() once a sentinel file appears; the sentinel is created only after the
+# app is serving, so there is no timing race.
 info "9. launch.R relaunches fvsOL after stopApp() (closed tab / observer error)"
 wrap=$(mktemp); TMPFILES+=("$wrap"); chmod 644 "$wrap"
 cat > "$wrap" <<'RWRAP'
@@ -310,10 +215,6 @@ docker rm -f "$cid" >/dev/null; CIDS=()
 pass "supervise loop relaunches fvsOL after stopApp()"
 
 # --- 10. the patches landed in the shipped sources -------------------
-# Dockerfile.fvs-gui applies docker/fvs-gui/patches/ and asserts the result at
-# BUILD time, which protects the build but says nothing about an image someone
-# already pulled. Re-grep the source code baked into the image so a published
-# ref can be audited on its own.
 info "10. vendored fvsOL patches present in the image's staged sources"
 docker run --rm "$IMAGE" sh -c '
   set -e
@@ -329,16 +230,8 @@ docker run --rm "$IMAGE" sh -c '
 pass "vendored patches present in /opt/fvs/interface/fvsOL/R"
 
 # --- 11. Local mode can construct a session ----------------------------------
-# The image runs with SHINY_PORT unset, so isLocal() is TRUE and server.R:421
-# calls getVolumes2()() while building the server function. getVolumes2()
-# (change_project_dir.R) uses fs::dir_exists / fs::dir_ls UNQUALIFIED, and fvsOL
-# neither Depends on nor Imports fs -- so unless something attaches fs, every
-# session dies at construction with `could not find function "dir_exists"`.
-# launch.R is what attaches it.
-#
-# So the attachment must come from launch.R, not from this check: parse the
-# installed shim and evaluate only its library()/require() calls, then make the
-# call a session would.
+# Evaluate only the installed launch.R's library()/require() calls, so the fs
+# attachment must come from the shim rather than from this check.
 info "11. Local mode: isLocal() TRUE and getVolumes2() usable (fs attached by launch.R)"
 docker run --rm "$IMAGE" Rscript -e '
   attaches <- Filter(function(e) is.call(e) && is.name(e[[1]]) &&
@@ -355,11 +248,8 @@ docker run --rm "$IMAGE" Rscript -e '
 pass "Local mode constructs from launch.R's attachments: volume list non-empty"
 
 # --- 12. Manage Projects does not grey out ------------------------------------
-# The Manage Projects observer (server.R:8721) calls straight into
-# getProjectList(), so an error there greys out the app on the tab's first click.
-# This reproduces a live session's on-disk state exactly -- the projectId.txt
-# fvsOL writes at first start plus the lock file it holds for the life of the
-# session (server.R:224) -- and asserts the call returns.
+# Reproduces a live session's on-disk state: the projectId.txt fvsOL writes at
+# first start plus the lock file it holds for the life of the session.
 info "12. Manage Projects project list survives a locked open project"
 docker run --rm "$IMAGE" Rscript -e '
   suppressPackageStartupMessages({library(fs); library(fvsOL)})

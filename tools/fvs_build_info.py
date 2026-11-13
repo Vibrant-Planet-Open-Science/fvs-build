@@ -1,22 +1,8 @@
 #!/usr/bin/env python3
-"""Derive FVS build-provenance macros from a source tree's git metadata.
+"""Print the ``-DFVS_GIT_*`` flags ``base/version.f90`` reads, one per line.
 
-Upstream ``USDAForestService/ForestVegetationSimulator`` exposes build
-provenance through ``base/version.f90``, which defines ``MODULE FVSVERSION``
-from six ``#ifndef``-guarded preprocessor macros. Upstream's own
-``bin/makefile`` and ``bin/CMakeLists.txt`` each derive the values from git
-and inject them with ``-D``; this tool is the Meson overlay's equivalent.
-
-Every macro falls back to ``unknown`` when git is unavailable, the directory
-is not a repository, or the query fails, mirroring upstream. A ``-dirty``
-suffix on ``FVS_GIT_VERSION`` and ``FVS_GIT_HASH`` marks an uncommitted
-working tree; such a build should not ship as a deliverable.
-
-Output is one compiler flag per line, ready for ``meson.build`` to append to
-``fortran_args`` verbatim::
-
-    -DFVS_GIT_VERSION="FS2026.2"
-    -DFVS_GIT_ORG="USDAForestService"
+The Meson equivalent of upstream's ``bin/makefile`` git queries. Each value
+falls back to ``unknown`` when git fails, as upstream does.
 """
 
 from __future__ import annotations
@@ -29,22 +15,12 @@ from pathlib import Path
 
 UNKNOWN = "unknown"
 
-# Owner segment of a clone URL, for both SSH (git@host:owner/repo.git) and
-# HTTPS (https://host/owner/repo) forms. Mirrors the sed expression in
-# bin/makefile and the string(REGEX REPLACE) in bin/CMakeLists.txt.
+# Owner of an SSH or HTTPS clone URL; mirrors upstream bin/makefile's sed.
 ORG_RE = re.compile(r".*[:/]([^/]+)/[^/]*?(?:\.git)?$")
 
 
 def _git(source_dir: Path, *args: str) -> str | None:
-    """Run one git query against ``source_dir``.
-
-    Args:
-        source_dir: Root of the FVS source checkout.
-        *args: Arguments following ``git -C <source_dir>``.
-
-    Returns:
-        Stripped stdout, or ``None`` if git is missing or exits non-zero.
-    """
+    """Return stripped ``git -C source_dir *args`` stdout, or ``None`` on failure."""
     try:
         proc = subprocess.run(
             ["git", "-C", str(source_dir), *args],
@@ -66,17 +42,7 @@ def _org(remote: str) -> str:
 
 
 def collect(source_dir: Path) -> dict[str, str]:
-    """Return the six ``FVS_GIT_*`` values for a source tree.
-
-    A tree with uncommitted changes -- including untracked files -- gets
-    ``-dirty`` appended to both version and hash.
-
-    Args:
-        source_dir: Root of the FVS source checkout.
-
-    Returns:
-        Mapping of macro suffix (e.g. ``"VERSION"``) to value.
-    """
+    """Map each ``FVS_GIT_*`` suffix to its value; untracked files count as dirty."""
     remote = _git(source_dir, "remote", "get-url", "origin") or UNKNOWN
     version = (
         _git(source_dir, "describe", "--tags", "--exact-match")

@@ -1,9 +1,5 @@
-# Reusable workflow: build native Windows x86_64 FVS artifacts (MSYS2 UCRT64)
-# via the fvs-build Meson overlay.
-#
-# Same contract as build-native-linux.yml (one build job, bundle layout,
-# provenance) with Windows paths (.exe / .dll). Downstream container packaging
-# is Linux-only; this workflow is for native Windows delivery and validation.
+# Reusable workflow: native Windows x86_64 FVS bundle (MSYS2 UCRT64).
+# Interface: docs/workflow-interface.md.
 
 name: Build native Windows x86_64 FVS artifacts (reusable)
 
@@ -80,9 +76,8 @@ jobs:
     env:
       MSYSTEM: UCRT64
     steps:
-      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
-      # disk. In a called workflow github.* and a bare checkout are the caller's
-      # repo; job.workflow_* is this workflow's own repo and commit.
+      # In a called workflow github.* and a bare checkout are the caller's repo;
+      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
@@ -95,9 +90,9 @@ jobs:
         with:
           msystem: UCRT64
           update: true
-          # GNU coreutils are not packaged as mingw-w64-ucrt-x86_64-coreutils; use MSYS repo tools on PATH.
-          # MSYS `git` is on PATH in UCRT64 shells; Git-for-Windows is not (needed for rev-parse SHAs).
-          # GCC is not listed here: it comes from the pinned set installed below.
+          # coreutils etc. come from the MSYS repo (no mingw-w64 builds). MSYS
+          # git, not Git-for-Windows, is on PATH in UCRT64 shells. GCC comes
+          # from the pinned set installed below.
           install: >-
             mingw-w64-ucrt-x86_64-ninja
             mingw-w64-ucrt-x86_64-python
@@ -125,8 +120,7 @@ jobs:
 
       # MSYS2 carries one GCC at a time, and GCC, CRT, headers and winpthreads
       # must move together (USDAForestService/ForestVegetationSimulator#71), so
-      # install an exact package set from the repo archive rather than the
-      # current release. pacman -U resolves the remaining dependencies.
+      # install an exact package set from the repo archive.
       - name: Install pinned GCC toolchain (gcc_major)
         id: toolchain
         env:
@@ -171,19 +165,13 @@ jobs:
           MESON_VERSION: ${{ inputs.meson_version }}
         run: |
           set -euo pipefail
-          # MSYS2's mingw python is PEP 668 "externally managed" (marker added
-          # with the Python 3.14 packages), so pip refuses to install into it
-          # without an override. The runner is ephemeral and Meson is not
-          # packaged at a pinnable version in pacman, so overriding is fine;
-          # pacman-managed pip is left alone (no self-upgrade).
+          # MSYS2's mingw python is PEP 668 "externally managed". The runner is
+          # ephemeral and pacman has no pinnable Meson, so override it.
           python -m pip install --break-system-packages "meson==${MESON_VERSION}"
 
-      # Ninja rebuilds any object older than its sources, and a fresh checkout
-      # stamps every file with the current time, so a restored _build would be
-      # rebuilt in full. Pin source timestamps to a fixed past date instead.
-      # Safe because the cache key holds the source SHA (a hit means identical
-      # sources) and the build-relevant overlay files; changed compile flags
-      # still rebuild through Ninja's command-line tracking.
+      # A fresh checkout stamps files with the current time, so Ninja would
+      # rebuild a restored _build in full. Safe because the cache key holds the
+      # source SHA and overlay files; flag changes still rebuild via Ninja.
       - name: Pin source timestamps for the build cache
         run: find fvs-source fvs-build -name .git -prune -o -type f -exec touch -t 200001010000 {} +
 
@@ -222,11 +210,9 @@ jobs:
       - name: Verify artifacts are self-contained (objdump)
         run: |
           set -euo pipefail
-          # -static build: neither the standalone exe nor the embedder DLL may
-          # import a MinGW/MSYS2 runtime DLL (absent on end-user Windows) and
-          # the exe must not import the embedder DLL. Denylist the runtime DLLs
-          # rather than allowlist the (large, unstable) Windows system set.
-          # msvcrt.dll means a MINGW64 object slipped into this UCRT64 build.
+          # Denylist the MinGW runtime DLLs rather than allowlist the (large,
+          # unstable) Windows system set. msvcrt.dll means a MINGW64 object
+          # slipped into this UCRT64 build.
           runtime='libgfortran|libgcc_s|libquadmath|libwinpthread|libstdc\+\+|libssp|msvcrt\.dll'
           status=0
           check() {
@@ -284,9 +270,8 @@ jobs:
     outputs:
       artifact_name: ${{ steps.collect.outputs.artifact_name }}
     steps:
-      # Local actions (uses: ./.github/actions/...) and tools/ need this repo on
-      # disk. In a called workflow github.* and a bare checkout are the caller's
-      # repo; job.workflow_* is this workflow's own repo and commit.
+      # In a called workflow github.* and a bare checkout are the caller's repo;
+      # job.workflow_* is this repo, which ./.github/actions and tools/ need.
       - name: Check out fvs-build (workflow repository)
         uses: actions/checkout@v7
         with:
