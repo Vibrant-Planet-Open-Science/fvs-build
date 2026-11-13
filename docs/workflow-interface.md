@@ -29,6 +29,8 @@ The three native workflows build an executable and a shared library per variant 
 
 On Linux, `<arch>` is `x86_64` (`ubuntu-24.04`) or `aarch64` (`ubuntu-24.04-arm`), and the build runs inside the matching `quay.io/pypa/manylinux_2_28_<arch>` container.
 
+The SBOM (SPDX 2.3 JSON) lists each executable and shared library with its SHA1 and SHA256, and what each is built from, with licenses: FVS, which includes FOFEM (`CC0-1.0`); NVEL (`CC0-1.0`); SQLite (`blessing`); and the GCC runtime (`GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later`), linked statically everywhere except into the Linux shared libraries, which load it dynamically.
+
 The executable and shared library are independent link products (upstream `bin/makefile` `%.prg` rules): the executable does not need the library beside it. Shared libraries keep the `FVS<v>` basename with no `lib` prefix, and use `.so` on macOS as well as Linux (matching upstream and R's `.Platform$dynlib.ext`). On Windows both are statically linked and import only the Universal C Runtime (Windows 10+). macOS binaries target macOS 15.0 (`MACOSX_DEPLOYMENT_TARGET`), built on the `macos-15` runner, whose Homebrew GCC targets the same release.
 
 ### GCC toolchain selection
@@ -90,7 +92,7 @@ fvs-native-linux-<arch>-<run_id>/
 
 Provenance JSON (`schema_version: 1`), written by `tools/ci/provenance.py`:
 
-- `manifest.json`: `artifact_name`; `arch` (Python's `platform.machine()`: `x86_64`/`aarch64`, `arm64` on macOS, `AMD64` on Windows); `build` (run id/attempt/URL, timestamp, variants requested and built, `profile`, `buildtype`); `source` and `fvs_build` (`repo`, `ref`, `sha`); `toolchain` (runner image, GCC major and package names, compiler/Meson/Ninja versions); `artifacts` (`binaries`, `shared_libraries`, `sbom`).
+- `manifest.json`: `artifact_name`; `arch` (Python's `platform.machine()`: `x86_64`/`aarch64`, `arm64` on macOS, `AMD64` on Windows); `build` (run id/attempt/URL, timestamp, variants requested and built, `profile`, `buildtype`); `source` (`repo`, `ref`, `sha`, `nvel.url` and `nvel.sha`, and `sqlite_version`) and `fvs_build` (`repo`, `ref`, `sha`); `toolchain` (runner image, GCC major and package names, compiler/Meson/Ninja versions); `artifacts` (`binaries`, `shared_libraries`, `sbom`).
 - `per-variant/FVS<v>.json`: `variant`, `arch`, `binary` and `shared_library` with their `*_sha256` (the library's of the stripped file), `compiled_at_utc`, `source`, `fvs_build`, `toolchain`, and `build.fortran_args` (the flags gfortran received, from `compile_commands.json`).
 
 ### Calling the workflow
@@ -172,7 +174,7 @@ docker run --rm -v "$PWD:/data" <image_ref> FVSak --keywordfile=mykey.key
 
 ### OCI labels
 
-Standard labels: `source` (fvs-build repo URL), `revision` (fvs-build SHA), `version` (FVS source ref), `created`, `title` (`usfs-fvs`), `description`, `licenses` (`MIT AND CC0-1.0`: CC0 for the public-domain FVS sources, MIT for fvs-build), `documentation` (this file at the build's ref).
+Standard labels: `source` (fvs-build repo URL), `revision` (fvs-build SHA), `version` (FVS source ref), `created`, `title` (`usfs-fvs`), `description`, `licenses` (`MIT AND CC0-1.0 AND blessing AND GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later`: FVS and NVEL, SQLite, the GCC runtime linked into the executables, and fvs-build; Ubuntu's packages are in the image SBOM), `documentation` (this file at the build's ref).
 
 `org.vibrantplanet.fvs.*` labels: `source-repo`, `source-ref`, `source-sha`, `fvs-build-repo`, `fvs-build-ref`, `fvs-build-sha`, `variants`, `gfortran-version`, `meson-version`. Inspect with `docker inspect <image_ref> | jq '.[0].Config.Labels'`.
 

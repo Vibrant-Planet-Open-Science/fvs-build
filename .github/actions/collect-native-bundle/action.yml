@@ -20,11 +20,6 @@ inputs:
       Bundle directory name and upload-artifact name (callers typically pass
       fvs-native-linux-<arch>-<run_id> using github.run_id in the workflow YAML).
     required: true
-  sbom_spdx_relpath:
-    description: >
-      Path relative to bundle root for SPDX JSON (must match provenance.py /
-      collect-bundle layout), e.g. sbom/fvs-native-linux.spdx.json.
-    required: true
   variants_input:
     description: Comma-separated variant list (same as workflow inputs.variants).
     required: true
@@ -99,13 +94,12 @@ runs:
     - name: Generate SPDX SBOM of bundled binaries
       shell: bash
       env:
+        FVS_NATIVE_PLATFORM: ${{ inputs.fvs_native_platform }}
         BUNDLE: ${{ steps.bundle.outputs.artifact_name }}
-        SBOM_REL: ${{ inputs.sbom_spdx_relpath }}
       run: |
         set -euo pipefail
-        syft scan "dir:${BUNDLE}" \
-          -o "spdx-json=${BUNDLE}/${SBOM_REL}"
-        echo "SBOM size: $(wc -c < "${BUNDLE}/${SBOM_REL}") bytes"
+        syft scan "dir:${BUNDLE}" -o spdx-json \
+          | ${{ inputs.python_cmd }} fvs-build/tools/ci/provenance.py complete-sbom --root "${BUNDLE}"
 
     - name: Upload bundled artifact
       uses: actions/upload-artifact@v7
