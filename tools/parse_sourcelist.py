@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Categorize one ``bin/FVS<variant>_sourceList.txt`` for ``meson.build``.
+"""Categorize one `bin/FVS<variant>_sourceList.txt` for `meson.build`.
 
-Prints ``### <section>`` headers each followed by absolute paths. Upstream's
-``canada/bin/FVSon_sourceList.txt`` is a shorter internal subset; the
-canonical list for every variant, including ``bc`` and ``on``, is under
-``bin/``. The common-archive lists are sorted so variants can be compared.
+Prints `### <section>` headers each followed by absolute paths. Upstream's
+`canada/bin/FVSon_sourceList.txt` is a shorter internal subset; the
+canonical list for every variant, including `bc` and `on`, is under
+`bin/`. The common-archive lists are sorted so variants can be compared.
 Missing files are warned about but still listed, so Meson fails on a
 concrete path.
 """
@@ -29,17 +29,17 @@ MAIN_BASENAMES: frozenset[str] = frozenset({"main.f", "main.f90"})
 
 
 def manifest_path(source_dir: Path, variant: str) -> Path:
-    """Return ``bin/FVS<variant>_sourceList.txt`` under ``source_dir``."""
+    """Return `bin/FVS<variant>_sourceList.txt` under `source_dir`."""
     return source_dir / "bin" / f"FVS{variant}_sourceList.txt"
 
 
 def _in_dir(path: Path, parts: tuple[str, str]) -> bool:
-    """Return whether ``path``'s parent ends with ``parts`` (e.g. fire/fofem)."""
+    """Return whether `path`'s parent ends with `parts` (e.g. fire/fofem)."""
     return (path.parent.parent.name, path.parent.name) == parts
 
 
 def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
-    """Map each section name to absolute paths for ``variant``.
+    """Map each section name to absolute paths for `variant`.
 
     Raises:
         FileNotFoundError: If the manifest file is missing.
@@ -120,7 +120,7 @@ def parse(source_dir: Path, variant: str) -> dict[str, list[str]]:
 
 
 def emit(sections: dict[str, list[str]], out: TextIO | None = None) -> None:
-    """Write ``sections`` as the ``###``-delimited schema ``meson.build`` reads."""
+    """Write `sections` as the `###`-delimited schema `meson.build` reads."""
     if out is None:
         out = sys.stdout
     order = (

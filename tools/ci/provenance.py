@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Assemble a native FVS bundle, and read its manifest back (stdlib only).
 
-``bundle`` runs as the last step of each native build job. It reads its inputs
-from the environment (see ``Config``), copies the executables and stripped
+`bundle` runs as the last step of each native build job. It reads its inputs
+from the environment (see `Config`), copies the executables and stripped
 shared libraries from the Meson build directory into
-``fvs-native-<os>-<arch>-<run_id>/``, and writes ``provenance/manifest.json``,
-``provenance/per-variant/FVS<v>.json``, ``provenance/meson-log.tail.txt`` and
-the SPDX SBOM. It appends ``artifact_name=<that name>`` to ``$GITHUB_OUTPUT``.
+`fvs-native-<os>-<arch>-<run_id>/`, and writes `provenance/manifest.json`,
+`provenance/per-variant/FVS<v>.json`, `provenance/meson-log.tail.txt` and
+the SPDX SBOM. It appends `artifact_name=<that name>` to `$GITHUB_OUTPUT`.
 
-``manifest-to-github-env`` exports manifest fields for the container workflows.
+`manifest-to-github-env` exports manifest fields for the container workflows.
 """
 
 from __future__ import annotations
@@ -83,8 +83,8 @@ class Config:
     ) -> Config:
         """Read and check every input, reporting all bad ones at once.
 
-        ``FVS_BUILD_REF`` may be ``job.workflow_ref``
-        (``<owner>/<repo>/<path>@<ref>``); only ``<ref>`` is kept.
+        `FVS_BUILD_REF` may be `job.workflow_ref`
+        (`<owner>/<repo>/<path>@<ref>`); only `<ref>` is kept.
         """
         errors: list[str] = []
         os_name, arch = _OS.get(sys_platform), _ARCH.get(machine.lower())
@@ -136,8 +136,8 @@ class Config:
 def extract_resolved_fortran_args(build_dir: Path) -> list[str]:
     """Return project Fortran flags from the first matching compile command.
 
-    ``meson-log.txt`` lacks per-target Fortran arguments, so this reads
-    ``compile_commands.json``, which exists only once Ninja has run.
+    `meson-log.txt` lacks per-target Fortran arguments, so this reads
+    `compile_commands.json`, which exists only once Ninja has run.
     """
     cc_path = build_dir / "compile_commands.json"
     if not cc_path.is_file():
@@ -214,9 +214,9 @@ def spdx_document(
     components compiled into them come from the manifest.
 
     Args:
-        manifest: The bundle's ``manifest.json`` content.
-        files: Bundled file name to ``{"SHA1": ..., "SHA256": ...}``.
-        os_name: ``linux``, ``windows`` or ``macos``.
+        manifest: The bundle's `manifest.json` content.
+        files: Bundled file name to `{"SHA1": ..., "SHA256": ...}`.
+        os_name: `linux`, `windows` or `macos`.
     """
     name, build = manifest["artifact_name"], manifest["build"]
     src, nvel = manifest["source"], manifest["source"]["nvel"]
@@ -407,7 +407,7 @@ def cmd_bundle(_args: argparse.Namespace) -> int:
 
 
 def cmd_manifest_to_github_env(_args: argparse.Namespace) -> int:
-    """Append ``bundle/provenance/manifest.json`` fields to ``$GITHUB_ENV``."""
+    """Append `bundle/provenance/manifest.json` fields to `$GITHUB_ENV`."""
     manifest_path = Path("bundle/provenance/manifest.json")
     github_env = os.environ.get("GITHUB_ENV", "").strip()
     if not github_env:

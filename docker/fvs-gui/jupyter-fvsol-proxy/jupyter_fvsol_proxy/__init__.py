@@ -18,7 +18,7 @@ def setup_fvs_gui() -> dict[str, object]:
     """Build the jupyter-server-proxy server definition for fvsOL.
 
     Returns:
-        Keyword arguments for ``jupyter_server_proxy.config.ServerProcess``.
+        Keyword arguments for `jupyter_server_proxy.config.ServerProcess`.
         The server's name (and so its URL segment) comes from the entry point
         name, not from this dict.
     """
