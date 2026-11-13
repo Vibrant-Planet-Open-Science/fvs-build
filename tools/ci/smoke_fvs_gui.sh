@@ -291,4 +291,17 @@ for k in ir python3; do
 done
 pass "ir and python3 kernels registered"
 
+# --- 16. default command serves JupyterLab ------------------------------------
+info "16. docker run with no command serves JupyterLab on 8888"
+cid=$(docker run -d -p 8892:8888 "$IMAGE")
+CIDS+=("$cid")
+if ! wait_http "http://localhost:8892/api" 90; then
+  echo "--- container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
+  die "the default command did not start JupyterLab on port 8888"
+fi
+docker logs "$cid" 2>&1 | grep -q 'http://127.0.0.1:8888/lab?token=' \
+  || die "JupyterLab did not print the http://127.0.0.1:8888/lab?token=... link the README tells users to open"
+docker rm -f "$cid" >/dev/null; CIDS=()
+pass "default command serves JupyterLab and prints the login link"
+
 printf '\n\033[32mALL SMOKE TESTS PASSED\033[0m (%s)\n' "$IMAGE"

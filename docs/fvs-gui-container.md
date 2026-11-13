@@ -29,7 +29,7 @@ Steps 1–8 run once per arch: `amd64` on `runner_image`, plus `arm64` on `ubunt
 | `/usr/share/fvs-build/manifest.json` | the native bundle's provenance manifest |
 | `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary SBOM |
 
-The image has no `ENTRYPOINT`. On Binder, JupyterHub spawns `jupyterhub-singleuser` (from the `jupyterhub` pip package, **not** `jupyter lab` or `jupyter notebook`: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404, while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on the first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the shared libraries live in `/usr/local/lib` (`FVS_BIN`).
+The image's default command starts JupyterLab on port 8888 (`EXPOSE 8888`), for running it locally (see README). It has no `ENTRYPOINT`, so any other command replaces the default. On Binder, JupyterHub spawns `jupyterhub-singleuser` (from the `jupyterhub` pip package, **not** `jupyter lab` or `jupyter notebook`: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404, while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on the first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the shared libraries live in `/usr/local/lib` (`FVS_BIN`).
 
 ## Publishing for Binder
 
@@ -86,6 +86,7 @@ Unlike the runtime image, the GUI image is smoke-tested before it is pushed: sev
 | 13\. an `FVS<v>` executable on `PATH` runs `--version` and reaches `STOP 20` on empty input | the executables missing from the image, or not runnable in it |
 | 14\. `fvs2py` loads an `FVS<v>.so` from `$FVS_BIN` | an `fvs2py` release whose required API routines the `.so` lacks, or `FVS_BIN` pointing elsewhere |
 | 15\. `jupyter kernelspec list` shows `ir` and `python3` | a notebook kernel missing on Binder |
+| 16\. `docker run` with no command serves JupyterLab on 8888 and prints the `http://127.0.0.1:8888/lab?token=` link | the README's local instructions breaking |
 
 Run it locally against a `--load`ed image:
 

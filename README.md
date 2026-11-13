@@ -14,6 +14,32 @@ The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-scie
 
 Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs` (the FVS executables and shared libraries alone) and `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui` (the FVS graphical interface, plus the same executables and Jupyter R and Python kernels with `rFVS` and `fvs2py`). The images are tagged by FVS release (e.g. `2027.1.0`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
 
+### Use the FVS GUI and notebooks on your computer
+
+This runs the same JupyterLab as the Binder button above, on your own computer: the **FVS GUI** tile, plus notebooks that can run FVS from R or Python.
+
+1. Install [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows or Mac) or [Docker Engine](https://docs.docker.com/engine/install/) (Linux), and start it.
+2. Open a terminal: **PowerShell** on Windows, **Terminal** on Mac or Linux.
+3. **Linux only:** copy this line into the terminal and press Enter. It creates the two folders where your work is saved and lets FVS write to them. (On Windows and Mac, Docker creates them for you.)
+
+   ```
+   mkdir -p fvs-work fvs-projects && chmod 777 fvs-work fvs-projects
+   ```
+
+4. Copy this whole line into the terminal and press Enter. The first time, Docker downloads FVS (a few GB), which can take several minutes.
+
+   ```
+   docker run --rm -p 8888:8888 -v "${PWD}/fvs-work:/home/jovyan/work" -v "${PWD}/fvs-projects:/home/jovyan/project" ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:latest
+   ```
+
+5. Wait for a line that starts with `http://127.0.0.1:8888/lab?token=`. Copy that whole line into your web browser's address bar.
+6. Click the **FVS GUI** tile to open the GUI. Your work is kept in two folders inside the folder the terminal started in (your home folder):
+   - `fvs-projects`: your FVS GUI projects.
+   - `fvs-work`: notebooks and other files you save in the `work` folder in JupyterLab's file list. Anything saved outside `work` is deleted when you stop.
+7. To stop, go back to the terminal and press **Ctrl+C**.
+
+### Run FVS from the command line
+
 To run a keyfile in your current working directory with the `usfs-fvs` image, you do a volume mount of your working directory into the Docker container (`-v "$PWD:/data"`) and then call the FVS variant of your choice as a command line tool (`FVSak --keywordfile=mykeyfile.key`):
 
 ```bash
@@ -24,16 +50,6 @@ docker run --rm \
 ```
 
 The `usfs-fvs-gui` image carries the same executables. With it, add `-w /data` (its working directory is the GUI user's home) and `--user "$(id -u):$(id -g)"`, since it otherwise runs as uid 1000, which may not be able to write to your directory.
-
-To run the FVS GUI locally (instead of on the cloud using the Binder option), start the `usfs-fvs-gui` image with the following command, then open a web browser to <http://localhost:3838>. By mounting a local directory onto the container (e.g., `-v "$PWD/fvs-projects:/home/jovyan/project"`), you will be able to keep any project files you generate on your machine (in the `fvs-projects` folder in the example below) after you're done using the container:
-
-```bash
-mkdir -p fvs-projects
-docker run --rm -p 3838:3838 \
-  -v "$PWD/fvs-projects:/home/jovyan/project" \
-  ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:latest \
-  Rscript /opt/fvs/launch.R 3838
-```
 
 The `usfs-fvs` image can also be used as a builder stage in your own Dockerfiles to extract any FVS binaries you need for your own containerized project:
 

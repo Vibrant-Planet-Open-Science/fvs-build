@@ -9,7 +9,9 @@
 # rocker/r2u:noble: r2u+bspm make install.packages() pull apt binaries with
 # system deps resolved.
 #
-# No ENTRYPOINT on purpose: JupyterHub supplies the command.
+# The default command starts JupyterLab for local `docker run`. On Binder,
+# JupyterHub replaces it with jupyterhub-singleuser; there is no ENTRYPOINT,
+# which would wrap that command instead.
 
 FROM rocker/r2u:noble
 
@@ -182,3 +184,5 @@ LABEL org.vibrantplanet.fvs.source-repo="${SOURCE_REPO}" \
 
 WORKDIR /home/jovyan
 USER 1000
+EXPOSE 8888
+CMD ["jupyter", "lab", "--ip=0.0.0.0", "--port=8888", "--no-browser"]
