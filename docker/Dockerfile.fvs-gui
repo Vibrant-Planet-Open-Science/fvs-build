@@ -53,14 +53,13 @@ RUN apt-get update \
 
 # jupyterhub is REQUIRED: BinderHub spawns `jupyterhub-singleuser`. Without it
 # every /user/<id>/ path 404s while the image still runs fine standalone.
-# fvs2py is pinned: notebooks are written against its API.
 RUN python3 -m venv "${VIRTUAL_ENV}" \
   && pip install --no-cache-dir \
   "notebook>=7" \
   jupyterlab \
   jupyter-server-proxy \
   jupyterhub \
-  "fvs2py==0.2.1"
+  fvs2py
 
 # fvsOL lists FVS*.so in FVS_BIN. A COPY glob matching nothing fails the build.
 COPY bundle/FVS*.so /usr/local/lib/
