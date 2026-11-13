@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.7.2](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.7.1...v0.7.2) (2026-11-13)
+
+
+### Features
+
+* record file checksums and component licenses in the native bundle SBOMs ([#62](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/62)) ([f463686](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/f463686eb7dd16e165ce00f7f1a1c584401445f3))
+
 ## [0.7.1](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.7.0...v0.7.1) (2026-11-13)
 
 
