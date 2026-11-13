@@ -7,8 +7,8 @@
 ignored:
   # DL3008: "Pin versions in apt-get install".
   #
-  # We install libgfortran5, libquadmath0, ca-certificates from the
-  # ubuntu:24.04 base unpinned by design. Pinning to specific patches
+  # We install libgfortran5, ca-certificates and the GUI image's build
+  # tools from the ubuntu:24.04 base unpinned by design. Pinning to specific patches
   # (e.g., 14.2.0-4ubuntu2~24.04.1 today) would couple us to a moving
   # target and force config bumps on every Ubuntu point release
   # without buying anything reproducibility-wise -- the OCI labels and
