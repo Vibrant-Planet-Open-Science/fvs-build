@@ -54,11 +54,11 @@ info "2. FVS shared library loads (rFVS::fvsLoad)"
 VARIANT="${SMOKE_VARIANT:-}"
 if [ -z "$VARIANT" ]; then
   VARIANT=$(docker run --rm "$IMAGE" sh -c \
-    'ls /opt/fvs/FVSbin/FVS*.so 2>/dev/null | head -1 | sed "s#.*/FVS##; s#\.so\$##"')
+    'ls /usr/local/lib/FVS*.so 2>/dev/null | head -1 | sed "s#.*/FVS##; s#\.so\$##"')
 fi
-[ -n "$VARIANT" ] || die "no FVS<v>.so found under /opt/fvs/FVSbin"
+[ -n "$VARIANT" ] || die "no FVS<v>.so found under /usr/local/lib"
 docker run --rm -e VARIANT="$VARIANT" "$IMAGE" Rscript -e \
-  'suppressPackageStartupMessages(library(rFVS)); rFVS::fvsLoad(fvsProgram=paste0("FVS",Sys.getenv("VARIANT")), bin="/opt/fvs/FVSbin"); cat("soload-ok\n")' \
+  'suppressPackageStartupMessages(library(rFVS)); rFVS::fvsLoad(fvsProgram=paste0("FVS",Sys.getenv("VARIANT")), bin=Sys.getenv("FVS_BIN")); cat("soload-ok\n")' \
   | grep -q '^soload-ok$' || die "FVS${VARIANT}.so did not load with its expected API symbols"
 pass "FVS${VARIANT}.so loads with expected API symbols"
 

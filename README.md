@@ -183,6 +183,10 @@ undefined reference to `dbsreference_'
 
 This is a source-list completeness bug in upstream `USDAForestService/ForestVegetationSimulator`. Until a fix lands there, omit `bc` and `on` from the `variants` option.
 
+## Acknowledgment and disclaimer
+
+FVS is developed and maintained by the USDA Forest Service, and this project builds on the source code and documentation the Forest Service publishes. fvs-build is an independent project of Vibrant Planet and is not affiliated with or endorsed by the USDA Forest Service. Any opinions, findings, conclusions, or recommendations expressed here are those of the authors and should not be construed to represent any official USDA or U.S. Government determination or policy. The use of trade or firm names is for reader information and does not imply endorsement by the U.S. Department of Agriculture of any product or service.
+
 ## Releases
 
 Releases are cut by [release-please](https://github.com/googleapis/release-please). PRs are squash-merged, so each PR title must be a [Conventional Commit](https://www.conventionalcommits.org/) (`feat:`, `fix:`, `build:`, `docs:`, …; `!` or a `BREAKING CHANGE:` footer for breaking changes). release-please keeps an open release PR that bumps the version, `CHANGELOG.md` and the `@vX.Y.Z` pins in `docs/workflow-interface.md`; merging it tags the release. Before 1.0, a breaking change bumps the minor version and a feature or fix bumps the patch. Dependabot keeps the GitHub Actions current with `build(deps):` PRs, which count toward the next release.

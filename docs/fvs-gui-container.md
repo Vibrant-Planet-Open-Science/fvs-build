@@ -20,16 +20,16 @@ Steps 1–8 run once per arch: `amd64` on `runner_image`, plus `arm64` on `ubunt
 
 | Path | Content |
 | --- | --- |
-| `/opt/fvs/FVSbin/FVS<v>.so` | per-variant shared library (`rFVS::fvsLoad()` globs these) |
+| `/usr/local/lib/FVS<v>.so` | per-variant shared library (`FVS_BIN`; `fvsOL` lists the `FVS*.so` files there) |
 | `/usr/local/bin/FVS<v>` | per-variant executable, for running FVS from the command line (see README) |
-| `fvs2py` (pinned, in `/opt/venv`) and `IRkernel` | Python and R access to the `.so` set from Jupyter notebooks. `FVS_BIN=/opt/fvs/FVSbin` points both at it: `rFVS::fvsLoad("FVSpn", bin = Sys.getenv("FVS_BIN"))`, `fvs2py.FVS(os.path.join(os.environ["FVS_BIN"], "FVSpn.so"))` |
+| `fvs2py` (pinned, in `/opt/venv`) and `IRkernel` | Python and R access to the `.so` set from Jupyter notebooks. `FVS_BIN=/usr/local/lib` points both at it: `rFVS::fvsLoad("FVSpn", bin = Sys.getenv("FVS_BIN"))`, `fvs2py.FVS(os.path.join(os.environ["FVS_BIN"], "FVSpn.so"))` |
 | `/opt/fvs/launch.R` | launch shim (`docker/fvs-gui/launch.R`): neutralizes `launch.browser=TRUE`, pins host/port, and calls `shiny::runApp()` inside a **supervise loop**. `fvsOL` calls `stopApp()` on every session end, which makes `runApp()` return, and jupyter-server-proxy never respawns a cleanly-exited process. A fast-exit guard (3 consecutive exits under 5 s) fails loudly instead of spinning. See smoke check 9 |
 | `jupyter-fvsol-proxy` (pip-installed into `/opt/venv`) | registers the `fvs-gui` proxy entry via the `jupyter_serverproxy_servers` entry point (`docker/fvs-gui/jupyter-fvsol-proxy/`): `timeout: 120`, `absolute_url: False`, no `environment` (leaving `SHINY_PORT` unset selects Local mode), plus the launcher icon. See smoke checks 7 and 8 |
 | `/opt/fvs/patches/` | `fvsOL` source patches (`docker/fvs-gui/patches/`), applied before the package is built and kept in the image to record what it was patched with. See [Local mode and the `fvsOL` patch](#local-mode-and-the-fvsol-patch) |
 | `/usr/share/fvs-build/manifest.json` | the native bundle's provenance manifest |
 | `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary SBOM |
 
-The image has no `ENTRYPOINT`. On Binder, JupyterHub spawns `jupyterhub-singleuser` (from the `jupyterhub` pip package, **not** `jupyter lab` or `jupyter notebook`: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404, while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on the first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the shared libraries live under `/opt/fvs/FVSbin` (`FVSOL_BIN`).
+The image has no `ENTRYPOINT`. On Binder, JupyterHub spawns `jupyterhub-singleuser` (from the `jupyterhub` pip package, **not** `jupyter lab` or `jupyter notebook`: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404, while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on the first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the shared libraries live in `/usr/local/lib` (`FVS_BIN`).
 
 ## Publishing for Binder
 
@@ -94,7 +94,7 @@ docker buildx build --load -t usfs-fvs-gui:local -f docker/Dockerfile.fvs-gui .
 tools/ci/smoke_fvs_gui.sh usfs-fvs-gui:local
 ```
 
-Override the variant used in check 2 with `SMOKE_VARIANT=<code>`; it otherwise auto-detects one from `/opt/fvs/FVSbin`.
+Override the variant used in check 2 with `SMOKE_VARIANT=<code>`; it otherwise auto-detects one from `/usr/local/lib`.
 
 ## Local validation
 

@@ -51,7 +51,7 @@ LABEL org.opencontainers.image.source="https://github.com/${FVS_BUILD_REPO}" \
   org.opencontainers.image.version="${SOURCE_REF}" \
   org.opencontainers.image.created="${TIMESTAMP}" \
   org.opencontainers.image.title="usfs-fvs" \
-  org.opencontainers.image.description="Forest Vegetation Simulator (FVS) variant binaries packaged into a runtime-only Ubuntu 24.04 image. Built by Vibrant-Planet-Open-Science/fvs-build." \
+  org.opencontainers.image.description="Forest Vegetation Simulator (FVS) variant binaries packaged into a runtime-only Ubuntu 24.04 image. Built by Vibrant-Planet-Open-Science/fvs-build. Independent build; not affiliated with or endorsed by the USDA Forest Service." \
   org.opencontainers.image.licenses="MIT AND CC0-1.0 AND blessing AND GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later" \
   org.opencontainers.image.documentation="https://github.com/${FVS_BUILD_REPO}/blob/${FVS_BUILD_REF}/docs/workflow-interface.md"
 
