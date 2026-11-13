@@ -285,7 +285,6 @@ jobs:
           fvs_native_platform: windows
           staging_artifact: windows-staging
           artifact_name: fvs-native-windows-${{ github.run_id }}
-          sbom_spdx_relpath: sbom/fvs-native-windows.spdx.json
           variants_input: ${{ inputs.variants }}
           runner_image: ${{ inputs.runner_image }}
           meson_version: ${{ inputs.meson_version }}

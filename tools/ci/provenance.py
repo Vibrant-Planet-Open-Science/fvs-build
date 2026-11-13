@@ -9,9 +9,11 @@ native workflows in the same run do not collide on ``variant-<v>``.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
+import re
 import shlex
 import shutil
 import subprocess
@@ -122,6 +124,8 @@ def _per_variant_document() -> dict[str, Any]:
             "repo": _require_env("SOURCE_REPO"),
             "ref": _require_env("SOURCE_REF"),
             "sha": _require_env("SOURCE_SHA"),
+            "nvel": {"url": _require_env("NVEL_URL"), "sha": _require_env("NVEL_SHA")},
+            "sqlite_version": _require_env("SQLITE_VERSION"),
         },
         "fvs_build": {
             "repo": _require_env("FVS_BUILD_REPO"),
@@ -329,6 +333,81 @@ def cmd_collect_bundle(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _spdx_package(
+    spdx_id: str, name: str, version: str, location: str, license_id: str
+) -> dict[str, Any]:
+    return {
+        "name": name,
+        "SPDXID": f"SPDXRef-Package-{spdx_id}",
+        "versionInfo": version,
+        "downloadLocation": location,
+        "filesAnalyzed": False,
+        "licenseConcluded": license_id,
+        "licenseDeclared": license_id,
+        "copyrightText": "NOASSERTION",
+    }
+
+
+def cmd_complete_sbom(args: argparse.Namespace) -> int:
+    """Complete syft's SPDX JSON (on stdin) and write it to the bundle's SBOM path.
+
+    syft's SPDX writer leaves all-zero checksums on files no package owns (every
+    file here), and Meson-built binaries carry no package metadata, so the
+    components compiled into them come from the bundle manifest instead.
+    """
+    manifest = json.loads(
+        (args.root / "provenance/manifest.json").read_text(encoding="utf-8")
+    )
+    sbom = args.root / manifest["artifacts"]["sbom"]
+    doc = json.load(sys.stdin.buffer)
+    src, nvel = manifest["source"], manifest["source"]["nvel"]
+    gcc = re.search(r"\) (\d+\.\d+\.\d+)", manifest["toolchain"]["gcc_version"])
+    fvs_url = f"git+https://github.com/{src['repo']}@{src['sha']}"
+    nvel_url = f"git+{nvel['url']}@{nvel['sha']}"
+    sources = [
+        _spdx_package(*row)
+        for row in [
+            ("FVS", "ForestVegetationSimulator", src["ref"], fvs_url, "CC0-1.0"),
+            ("NVEL", "VolumeLibrary", nvel["sha"], nvel_url, "CC0-1.0"),
+            ("SQLite", "SQLite", src["sqlite_version"], "NOASSERTION", "blessing"),
+        ]
+    ]
+    gcc_runtime = _spdx_package(
+        "GCC-runtime",
+        "GCC runtime libraries (libgfortran, libgcc, libquadmath)",
+        gcc[1] if gcc else "NOASSERTION",
+        "https://gcc.gnu.org/",
+        "GPL-3.0-or-later WITH GCC-exception-3.1 AND LGPL-2.1-or-later",
+    )
+    doc.setdefault("packages", []).extend([*sources, gcc_runtime])
+    relationships = doc.setdefault("relationships", [])
+    linux = _native_platform() == "linux"
+    for entry in doc.get("files", []):
+        # syft writes "FVSak" on Linux and "\FVSak.dll" on Windows.
+        rel = entry["fileName"].replace("\\", "/").removeprefix("./").lstrip("/")
+        data = (args.root / rel).read_bytes()
+        entry["checksums"] = [
+            {
+                "algorithm": "SHA1",
+                "checksumValue": hashlib.sha1(data, usedforsecurity=False).hexdigest(),
+            },
+            {"algorithm": "SHA256", "checksumValue": hashlib.sha256(data).hexdigest()},
+        ]
+        # Only the Linux shared libraries load the GCC runtime dynamically.
+        link = "DYNAMIC_LINK" if linux and rel.endswith(".so") else "STATIC_LINK"
+        relationships += [
+            {
+                "spdxElementId": entry["SPDXID"],
+                "relationshipType": kind,
+                "relatedSpdxElement": pkg["SPDXID"],
+            }
+            for pkg, kind in [(p, "GENERATED_FROM") for p in sources]
+            + [(gcc_runtime, link)]
+        ]
+    _write_json(sbom, doc)
+    return 0
+
+
 def _variants_built_csv(binaries: list[str]) -> str:
     codes = [name.removeprefix("FVS") for name in binaries]
     return ",".join(codes)
@@ -414,6 +493,15 @@ def _build_parser() -> argparse.ArgumentParser:
         ),
     )
     p_coll.set_defaults(func=cmd_collect_bundle)
+
+    p_sbom = sub.add_parser(
+        "complete-sbom",
+        help="Complete syft's SPDX JSON from stdin and write the bundle's SBOM.",
+    )
+    p_sbom.add_argument(
+        "--root", required=True, type=Path, help="Bundle directory syft scanned."
+    )
+    p_sbom.set_defaults(func=cmd_complete_sbom)
 
     p_env = sub.add_parser(
         "manifest-to-github-env",

@@ -12,6 +12,7 @@ import ctypes
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -162,6 +163,10 @@ def _stage(variant: str) -> int:
         text=True,
     )
     fortran_args = json.loads(flags_proc.stdout)
+    source_dir = Path(os.environ.get("FVS_SOURCE", "fvs-source"))
+    nvel_dir = str(source_dir / "volume/NVEL")
+    sqlite_c = (source_dir / "dbsqlite/sqlite3.c").read_text(errors="replace")
+    sqlite_version = re.search(r'#define SQLITE_VERSION\s+"([^"]+)"', sqlite_c)
     build_profile = os.environ.get("BUILD_PROFILE", "reference").strip() or "reference"
     meson_buildtype = os.environ.get("MESON_BUILDTYPE", "plain").strip() or "plain"
 
@@ -181,6 +186,11 @@ def _stage(variant: str) -> int:
             "BUILD_PROFILE": build_profile,
             "MESON_BUILDTYPE": meson_buildtype,
             "FORTRAN_ARGS_JSON": json.dumps(fortran_args),
+            "NVEL_URL": _first_line(
+                ["git", "-C", nvel_dir, "remote", "get-url", "origin"]
+            ),
+            "NVEL_SHA": _first_line(["git", "-C", nvel_dir, "rev-parse", "HEAD"]),
+            "SQLITE_VERSION": sqlite_version[1],
         }
     )
     cmd = [

@@ -261,7 +261,6 @@ jobs:
           fvs_native_platform: darwin
           staging_artifact: macos-staging
           artifact_name: fvs-native-macos-${{ github.run_id }}
-          sbom_spdx_relpath: sbom/fvs-native-macos.spdx.json
           variants_input: ${{ inputs.variants }}
           runner_image: ${{ inputs.runner_image }}
           meson_version: ${{ inputs.meson_version }}
