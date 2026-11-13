@@ -23,6 +23,8 @@ docker run --rm \
   FVSak --keywordfile=mykeyfile.key
 ```
 
+The `usfs-fvs-gui` image carries the same executables, so the same command works with it; add `-w /data`, since its working directory is the GUI user's home.
+
 To run the FVS GUI locally (instead of on the cloud using the Binder option), start the `usfs-fvs-gui` image with the following command, then open a web browser to <http://localhost:3838>. By mounting a local directory onto the container (e.g., `-v "$PWD/fvs-projects:/home/jovyan/project"`), you will be able to keep any project files you generate on your machine (in the `fvs-projects` folder in the example below) after you're done using the container:
 
 ```bash

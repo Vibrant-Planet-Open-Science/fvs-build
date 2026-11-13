@@ -269,4 +269,11 @@ docker run --rm "$IMAGE" Rscript -e '
   || die "getProjectList() errored with the open project locked: the Manage Projects tab will grey out on first click"
 pass "project list resolves with the open project locked (Manage Projects usable)"
 
+# --- 13. FVS executable on PATH ----------------------------------------------
+info "13. FVS${VARIANT} executable on PATH runs to STOP 20"
+docker run --rm -w /tmp -e VARIANT="$VARIANT" "$IMAGE" sh -c \
+  '"FVS$VARIANT" --version && { "FVS$VARIANT" </dev/null 2>&1 || true; }' \
+  | grep -q 'STOP 20' || die "FVS${VARIANT} is missing from PATH or did not reach STOP 20 on empty input"
+pass "FVS${VARIANT} runs from PATH"
+
 printf '\n\033[32mALL SMOKE TESTS PASSED\033[0m (%s)\n' "$IMAGE"
