@@ -17,8 +17,9 @@ on:
         type: string
       variants:
         description: >-
-          Comma-separated list of FVS variant codes. Empty builds the 22 US
-          variants in tools/ci/resolve_variants.sh.
+          Comma-separated list of FVS variant codes. Defaults to empty, which
+          builds all US variants. The Canadian variants (bc, on) are excluded
+          by default due to incomplete upstream source lists.
         required: false
         type: string
         default: ""

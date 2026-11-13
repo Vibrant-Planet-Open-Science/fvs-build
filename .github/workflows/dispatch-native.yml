@@ -24,7 +24,10 @@ on:
         default: "2027.1.0"
         type: string
       variants:
-        description: "Comma-separated FVS variant codes (empty: the 22 US variants)"
+        description: >-
+          Comma-separated list of FVS variant codes. Defaults to empty, which
+          builds all US variants. The Canadian variants (bc, on) are excluded
+          by default due to incomplete upstream source lists.
         required: false
         default: ""
         type: string
