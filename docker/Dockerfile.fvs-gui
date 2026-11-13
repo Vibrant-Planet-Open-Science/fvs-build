@@ -4,18 +4,13 @@
 # Copies the FVS<v>.so set from a prior native build and builds only the pure-R
 # glue layer (rFVS + fvsOL) here; FVS is never compiled in Docker.
 #
-# Base image choice of rocker/r2u:noble has two reasons: it is glibc-identical
-# to the ubuntu-24.04 native runner, so the copied .so load cleanly, and
-# r2u+bspm make install.packages() pull signed apt binaries with system deps
-# resolved.
+# rocker/r2u:noble: r2u+bspm make install.packages() pull apt binaries with
+# system deps resolved.
 #
 # No ENTRYPOINT on purpose: JupyterHub supplies the command.
 
 FROM rocker/r2u:noble
 
-# Provenance ARGs mirror Dockerfile.runtime (derived from the bundle's
-# manifest.json by the workflow), extended with the Interface source provenance.
-# Kept as ARGs so ad-hoc local builds can pass --build-arg.
 ARG SOURCE_REPO
 ARG SOURCE_REF
 ARG SOURCE_SHA
@@ -32,16 +27,12 @@ ARG INTERFACE_SHA
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV FVS_VERSION=${SOURCE_REF}
-# Binder identity. Jupyter and the app run as this unprivileged user.
 ENV USER=jovyan
 ENV HOME=/home/jovyan
-# Python venv holding the Binder/Jupyter stack, on PATH for every user so
-# `jupyter` resolves without --break-system-packages against noble's PEP 668
-# externally-managed system Python.
+# Venv for the Jupyter stack: noble's system Python is PEP 668 externally managed.
 ENV VIRTUAL_ENV=/opt/venv
 ENV PATH=/opt/venv/bin:${PATH}
-# rgl runs headless in the container/Binder: use its null device instead of
-# trying (and failing) to open an X11/OpenGL display.
+# Headless: no X11/OpenGL display for rgl.
 ENV RGL_USE_NULL=TRUE
 
 # make/git for the R package data-gen makefiles. libgfortran5, which the
@@ -55,11 +46,8 @@ RUN apt-get update \
   ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 
-# Binder stack. notebook>=7 is the jupyter-server-backed line (avoid classic 6).
-#
-# jupyterhub is REQUIRED: BinderHub spawns `jupyterhub-singleuser`, not
-# `jupyter lab`. Without it every /user/<id>/ path 404s while the image still
-# runs fine standalone. smoke check 6.
+# jupyterhub is REQUIRED: BinderHub spawns `jupyterhub-singleuser`. Without it
+# every /user/<id>/ path 404s while the image still runs fine standalone.
 RUN python3 -m venv "${VIRTUAL_ENV}" \
   && pip install --no-cache-dir \
   "notebook>=7" \
@@ -67,16 +55,13 @@ RUN python3 -m venv "${VIRTUAL_ENV}" \
   jupyter-server-proxy \
   jupyterhub
 
-# rFVS::fvsLoad() globs FVS*.so here to auto-discover variants. The glob is also
-# the guard: matching nothing fails the build rather than shipping an empty image.
+# rFVS::fvsLoad() globs FVS*.so here. A COPY glob matching nothing fails the build.
 COPY bundle/FVS*.so /opt/fvs/FVSbin/
 
-# Provenance manifest + binary SBOM, mirroring Dockerfile.runtime's layout.
 COPY bundle/provenance/manifest.json         /usr/share/fvs-build/manifest.json
 COPY bundle/sbom/fvs-native-linux.spdx.json  /usr/share/fvs-build/sbom-binaries.spdx.json
 
-# rFVS + fvsOL sources, staged by the workflow as siblings (the fvsOL data-gen
-# scripts assume the sibling layout).
+# The fvsOL data-gen scripts assume rFVS is a sibling.
 COPY fvs-gui-context/rFVS/  /opt/fvs/interface/rFVS/
 COPY fvs-gui-context/fvsOL/ /opt/fvs/interface/fvsOL/
 
@@ -90,7 +75,7 @@ RUN for p in rFVS fvsOL; do \
   fi; \
   done
 
-# Install the R packages fvsOL declares (Depends + Imports), as r2u binaries.
+# fvsOL's Depends + Imports, as r2u binaries.
 RUN Rscript -e 'd <- read.dcf("fvsOL/DESCRIPTION", c("Depends", "Imports")); \
   pkgs <- trimws(sub("[(].*", "", unlist(strsplit(d[!is.na(d)], ",")))); \
   pkgs <- setdiff(pkgs[nzchar(pkgs)], c("R", "rFVS", rownames(installed.packages(priority = "base")))); \
@@ -98,17 +83,12 @@ RUN Rscript -e 'd <- read.dcf("fvsOL/DESCRIPTION", c("Depends", "Imports")); \
   missing <- setdiff(pkgs, rownames(installed.packages())); \
   if (length(missing)) { message("failed to install: ", paste(missing, collapse = ", ")); quit(status = 1) }'
 
-# Patches applied BEFORE the package is built so the installed copy carries
-# them. The image runs fvsOL in LOCAL mode (see the proxy config), which is the
-# mode that wires up the working-directory chooser, the project backup upload
-# and project switching -- but upstream Local mode has two Linux/reverse-proxy
-# defects that make it unusable as shipped.
+# fvsOL runs in Local mode (working-directory chooser, backup upload, project
+# switching), which upstream breaks on Linux behind a reverse proxy.
 COPY docker/fvs-gui/patches/ /opt/fvs/patches/
 RUN git apply --verbose /opt/fvs/patches/*.patch
 
-# Assert the patch actually took, like the NAMESPACE guard above: an
-# origin-absolute stand-image URL and the mis-cased lock-file removal are both
-# invisible at build time and only surface in a live session.
+# Both defects only surface in a live session, so assert the patch took.
 RUN if grep -rq '"/www/s' fvsOL/R; then \
   echo "ERROR: origin-absolute /www/ stand-image URL still present in fvsOL/R." >&2; \
   echo "       View On Maps popup graphs will 404 under the /fvs-gui/ subpath." >&2; \
@@ -120,9 +100,8 @@ RUN if grep -rq '"/www/s' fvsOL/R; then \
   exit 1; \
   fi
 
-# Build the R glue layer in dependency order. The mkpkeys/mkhelp step generates
-# prms.RData and fvsOnlineHelpRender.RData, which fvsOL does not ship, and must
-# run with cwd = the fvsOL package dir.
+# mkpkeys/mkhelp generate prms.RData and fvsOnlineHelpRender.RData, which fvsOL
+# does not ship; they must run from the fvsOL dir.
 WORKDIR /opt/fvs/interface
 RUN R CMD INSTALL rFVS
 WORKDIR /opt/fvs/interface/fvsOL
@@ -132,21 +111,16 @@ WORKDIR /opt/fvs/interface
 RUN R CMD INSTALL fvsOL \
   && Rscript -e 'stopifnot(requireNamespace("fvsOL", quietly = TRUE), requireNamespace("rFVS", quietly = TRUE))'
 
-# Silence bspm's D-Bus warning on every runtime R session (no package daemon in
-# a headless container). Must be set before r2u's Rprofile.site calls
-# bspm::enable(), hence the prepend. The sudo backend is never actually invoked.
+# Silences bspm's D-Bus warning in every R session. Prepended: it must precede
+# r2u's bspm::enable(). The sudo backend is never invoked.
 RUN R_SITE="$(R RHOME)/etc/Rprofile.site" \
   && touch "$R_SITE" \
   && { echo 'options(bspm.sudo = TRUE)'; cat "$R_SITE"; } > "${R_SITE}.tmp" \
   && mv "${R_SITE}.tmp" "$R_SITE"
 
-# The /fvs-gui/ route is registered by an entry point, NOT a Jupyter config
-# file -- mybinder mounts a ConfigMap over /etc/jupyter at runtime and would
-# mask one. Full rationale in the package's module docstring. smoke checks 7, 8.
-#
-# jupyter-server-proxy warn()s and skips an entry point that raises, so a
-# mistake here would allow a silent 404 rather than a startup error. Fail the
-# build instead.
+# /fvs-gui/ is registered by an entry point, not a Jupyter config file: mybinder
+# mounts a ConfigMap over /etc/jupyter. jupyter-server-proxy skips an entry point
+# that raises (a silent 404), so check it at build time.
 COPY docker/fvs-gui/launch.R              /opt/fvs/launch.R
 COPY docker/fvs-gui/jupyter-fvsol-proxy/  /opt/fvs/jupyter-fvsol-proxy/
 RUN pip install --no-cache-dir /opt/fvs/jupyter-fvsol-proxy \
@@ -159,9 +133,8 @@ sp = ServerProcess(name="fvs-gui", **eps["fvs-gui"].load()()); \
 assert os.path.exists(sp.command[1]), "launch shim missing: " + sp.command[1]; \
 assert os.path.exists(sp.launcher_entry.icon_path), "launcher icon missing"'
 
-# Binder requires uid 1000, and the app writes runs/SQLite/www into prjDir, so
-# prjDir and HOME must be writable by it. Noble already ships an `ubuntu` user
-# at uid 1000, hence the userdel before useradd.
+# Binder requires uid 1000, which must own prjDir and HOME. Noble's `ubuntu`
+# user already holds uid 1000.
 RUN if id -u 1000 >/dev/null 2>&1; then \
   userdel -r "$(id -un 1000)" 2>/dev/null || userdel "$(id -un 1000)"; \
   fi \
@@ -169,7 +142,6 @@ RUN if id -u 1000 >/dev/null 2>&1; then \
   && mkdir -p /home/jovyan/project \
   && chown -R 1000:1000 /home/jovyan /opt/fvs
 
-# OCI standard provenance labels.
 # `licenses` describes the image contents, not this repo: CC0-1.0 upstream
 # FVS and rFVS/fvsOL, MIT the fvs-build parts. Same value on both images.
 LABEL org.opencontainers.image.source="https://github.com/${FVS_BUILD_REPO}" \
@@ -181,8 +153,6 @@ LABEL org.opencontainers.image.source="https://github.com/${FVS_BUILD_REPO}" \
   org.opencontainers.image.licenses="MIT AND CC0-1.0" \
   org.opencontainers.image.documentation="https://github.com/${FVS_BUILD_REPO}/blob/${FVS_BUILD_REF}/docs/fvs-gui-container.md"
 
-# fvs-build-specific provenance: FVS source, toolchain, variant set (all from
-# the native bundle) plus the Interface source the R layer was built from.
 LABEL org.vibrantplanet.fvs.source-repo="${SOURCE_REPO}" \
   org.vibrantplanet.fvs.source-ref="${SOURCE_REF}" \
   org.vibrantplanet.fvs.source-sha="${SOURCE_SHA}" \
@@ -197,6 +167,4 @@ LABEL org.vibrantplanet.fvs.source-repo="${SOURCE_REPO}" \
   org.vibrantplanet.fvs.interface-sha="${INTERFACE_SHA}"
 
 WORKDIR /home/jovyan
-# Numeric on purpose (hadolint DL3066): this is the jovyan account created
-# above, and Binder requires the image to run as uid 1000.
 USER 1000
