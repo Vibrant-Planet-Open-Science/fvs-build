@@ -1,8 +1,8 @@
 # No `paths:` filter: a skipped run leaves a required check pending forever, so
-# the `changes` job gates the builds instead. Make `native-builds` the required
+# the `changes` job gates the jobs instead. `Native builds` is the required
 # check; the reusable-workflow job names are not stable check names.
 
-name: Test reusable native workflows (pull request)
+name: Test native builds and GUI image (pull request)
 
 on:
   pull_request:
@@ -13,66 +13,54 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# packages: write is never used (push: false), but the GUI workflow declares it
+# and cannot get more than its caller grants: without it, startup_failure.
 permissions:
   contents: read
+  packages: write
 
 jobs:
   changes:
-    name: Detect native build changes
+    name: Detect changes
     runs-on: ubuntu-24.04
     outputs:
       native: ${{ steps.filter.outputs.native }}
+      gui: ${{ steps.filter.outputs.gui }}
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
-      - name: Diff monitored paths against PR base
+      # native: anything that can change native build output, so all four
+      # builds run. gui: the GUI image's own files; it is built from the Linux
+      # bundles, so a native change runs it too.
+      - name: Diff paths against PR base
         id: filter
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-
-          # Anything that can change native build output.
-          changed=$(git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- \
-            .github/actions/prepare-fvs-native-checkout/action.yml \
-            .github/actions/resolve-fvs-build-ref/action.yml \
-            .github/workflows/build-native-linux.yml \
-            .github/workflows/build-native-windows.yml \
-            .github/workflows/build-native-macos.yml \
-            .github/workflows/ci-test-reusable-native.yml \
-            meson.build \
-            meson_options.txt \
-            tools/ci/provenance.py \
-            tools/ci/resolve_variants.sh \
-            tools/ci/smoke_test_native.sh \
-            tools/ci/meson_configure_native.sh \
-            tools/ci/check_gcc_major.sh \
-            tools/ci/msys2-toolchains.json \
-            tools/parse_sourcelist.py)
-
-          if [ -n "$changed" ]; then
-            echo "native=true" >> "$GITHUB_OUTPUT"
-            {
-              echo "### Native build matrix: running"
-              echo
-              echo "Changed monitored paths:"
-              echo '```'
-              echo "$changed"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "native=false" >> "$GITHUB_OUTPUT"
-            echo "### Native build matrix: skipped (no monitored paths changed)" \
-              >> "$GITHUB_STEP_SUMMARY"
-          fi
+          changed() { git diff --name-only "${BASE_SHA}...${HEAD_SHA}" -- "$@"; }
+          native=$(changed .github/actions '.github/workflows/build-native-*' \
+            .github/workflows/ci-test-reusable-native.yml meson.build meson_options.txt \
+            tools ':!tools/ci/smoke_fvs_gui.sh')
+          gui=$(changed docker/Dockerfile.fvs-gui docker/fvs-gui \
+            .github/workflows/build-container-fvs-gui-linux.yml tools/ci/smoke_fvs_gui.sh)
+          [ -n "$native" ] && n=true || n=false
+          [ -n "$native$gui" ] && g=true || g=false
+          { echo "native=$n"; echo "gui=$g"; } >> "$GITHUB_OUTPUT"
+          {
+            echo "native builds: $n, GUI image: $g"
+            echo '```'
+            printf '%s\n' "$native" "$gui" | sed '/^$/d'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
   linux:
     name: Linux (reusable)
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.gui == 'true'
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
@@ -86,7 +74,7 @@ jobs:
   linux-arm64:
     name: Linux arm64 (reusable)
     needs: changes
-    if: needs.changes.outputs.native == 'true'
+    if: needs.changes.outputs.native == 'true' || needs.changes.outputs.gui == 'true'
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
@@ -125,45 +113,27 @@ jobs:
       meson_version: "1.12.0"
       profile: reference
 
+  fvs-gui:
+    name: FVS GUI image (reusable)
+    needs: [changes, linux, linux-arm64]
+    if: needs.changes.outputs.gui == 'true'
+    uses: ./.github/workflows/build-container-fvs-gui-linux.yml
+    with:
+      artifact_name: ${{ needs.linux.outputs.artifact_name }}
+      artifact_name_arm64: ${{ needs.linux-arm64.outputs.artifact_name }}
+      interface_ref: "20261109"
+      image_name: usfs-fvs-gui
+      image_tag: ci-${{ github.run_id }}
+      push: false
+
+  # Jobs skipped by `changes` are fine; a failed or cancelled one is not. A job
+  # skipped because a dependency failed is covered by that dependency's failure.
   native-builds:
     name: Native builds
     if: always()
-    needs:
-      - changes
-      - linux
-      - linux-arm64
-      - windows
-      - macos
+    needs: [changes, linux, linux-arm64, windows, macos, fvs-gui]
     runs-on: ubuntu-24.04
     steps:
-      - name: Aggregate matrix result
-        env:
-          CHANGES: ${{ needs.changes.result }}
-          NATIVE: ${{ needs.changes.outputs.native }}
-          LINUX: ${{ needs.linux.result }}
-          LINUX_ARM64: ${{ needs.linux-arm64.result }}
-          WINDOWS: ${{ needs.windows.result }}
-          MACOS: ${{ needs.macos.result }}
-        run: |
-          set -euo pipefail
-
-          if [ "$CHANGES" != "success" ]; then
-            echo "Change detection did not succeed (result: $CHANGES)."
-            exit 1
-          fi
-
-          if [ "$NATIVE" != "true" ]; then
-            echo "No monitored native build paths changed; nothing to build."
-            exit 0
-          fi
-
-          status=0
-          for pair in "Linux:$LINUX" "Linux arm64:$LINUX_ARM64" "Windows:$WINDOWS" "macOS:$MACOS"; do
-            name=${pair%%:*}
-            result=${pair#*:}
-            echo "$name: $result"
-            if [ "$result" != "success" ]; then
-              status=1
-            fi
-          done
-          exit "$status"
+      - name: Fail if any job failed or was cancelled
+        if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

@@ -14,7 +14,7 @@ Maintainer notes for `build-container-fvs-gui-linux.yml` and `docker/Dockerfile.
 8. Generate an SPDX SBOM of the image with `syft` and upload it as `container-fvs-gui-sbom-<arch>-<run_id>`.
 9. If `push: true`, a `manifest` job joins the per-arch digests into one manifest list carrying every tag.
 
-Steps 1–8 run once per arch: `amd64` on `runner_image`, plus `arm64` on `ubuntu-24.04-arm` when `artifact_name_arm64` is set. `ci-test-fvs-gui-container.yml` builds and smoke-tests both arches on pull requests that touch the GUI image or the native Linux bundle, without pushing.
+Steps 1–8 run once per arch: `amd64` on `runner_image`, plus `arm64` on `ubuntu-24.04-arm` when `artifact_name_arm64` is set. On pull requests, `ci-test-reusable-native.yml` builds and smoke-tests both arches, without pushing, whenever the GUI image's files or anything behind the native bundles change. It reuses the Linux bundles that run builds anyway.
 
 ## Files baked into the image
 
