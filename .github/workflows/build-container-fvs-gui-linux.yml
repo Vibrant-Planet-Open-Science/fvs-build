@@ -10,7 +10,8 @@ on:
         description: >-
           Name of the x86_64 fvs-native-linux artifact bundle produced by a
           prior build-native-linux.yml job in the same workflow run (typically
-          `fvs-native-linux-x86_64-<run_id>`). Only its FVS<v>.so set is used.
+          `fvs-native-linux-x86_64-<run_id>`). Its FVS<v> executables and FVS<v>.so
+          set are used.
         required: true
         type: string
       artifact_name_arm64:

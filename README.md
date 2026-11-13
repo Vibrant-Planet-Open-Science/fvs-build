@@ -12,7 +12,7 @@ The Docker container image behind the badge is `ghcr.io/vibrant-planet-open-scie
 
 ## Run FVS on your machine using Docker
 
-Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs`(for binaries alone) and`ghcr.io/vibrant-planet-open-science/usfs-fvs-gui`(for the FVS graphical interface). The images are tagged by FVS release (e.g. `2027.1.0`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
+Docker Images are published at `ghcr.io/vibrant-planet-open-science/usfs-fvs` (the FVS executables and shared libraries alone) and `ghcr.io/vibrant-planet-open-science/usfs-fvs-gui` (the FVS graphical interface, plus the same executables and Jupyter R and Python kernels with `rFVS` and `fvs2py`). The images are tagged by FVS release (e.g. `2027.1.0`), but you can also use the `latest` tag to pull whichever version is the most recent. The images are multi-arch (linux/amd64, linux/arm64), so they will run natively on your machine whether you're running Docker from Windows, Linux, or Mac.
 
 To run a keyfile in your current working directory with the `usfs-fvs` image, you do a volume mount of your working directory into the Docker container (`-v "$PWD:/data"`) and then call the FVS variant of your choice as a command line tool (`FVSak --keywordfile=mykeyfile.key`):
 
@@ -23,7 +23,7 @@ docker run --rm \
   FVSak --keywordfile=mykeyfile.key
 ```
 
-The `usfs-fvs-gui` image carries the same executables, so the same command works with it; add `-w /data`, since its working directory is the GUI user's home.
+The `usfs-fvs-gui` image carries the same executables. With it, add `-w /data` (its working directory is the GUI user's home) and `--user "$(id -u):$(id -g)"`, since it otherwise runs as uid 1000, which may not be able to write to your directory.
 
 To run the FVS GUI locally (instead of on the cloud using the Binder option), start the `usfs-fvs-gui` image with the following command, then open a web browser to <http://localhost:3838>. By mounting a local directory onto the container (e.g., `-v "$PWD/fvs-projects:/home/jovyan/project"`), you will be able to keep any project files you generate on your machine (in the `fvs-projects` folder in the example below) after you're done using the container:
 
@@ -203,7 +203,7 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 - `.github/workflows/dispatch-container-linux.yml` — manually-triggered option for the native Linux + container steps in sequence.
 - `.github/workflows/dispatch-container-fvs-gui-linux.yml` — manually-triggered option for running native Linux + FVS GUI container steps in sequence.
 - `docker/Dockerfile.runtime` — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; supports standard FVS command-line invocation).
-- `docker/Dockerfile.fvs-gui` — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the`FVS<v>.so`shared libraries, builds `rFVS`/`fvsOL`) from source code. Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-gui/`.
+- `docker/Dockerfile.fvs-gui` — FVSOnLocal GUI image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the `FVS<v>` executables and `FVS<v>.so` shared libraries, installs `fvs2py` and an R kernel, builds `rFVS`/`fvsOL` from source). Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-gui/`.
 - `binder/Dockerfile` — thin `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>` shim so mybinder.org can launch the GUI image in seconds rather than building from scratch.
 - `docs/local-builds.md` — details for running the Meson build by hand, primarily intended for developers who would like to work on the `fvs-build` project or run Meson-based builds themselves.
 - `docs/workflow-interface.md` — the reusable workflows' inputs, outputs and artifact contract.

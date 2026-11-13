@@ -3,7 +3,7 @@
 # already-built image. The checks are described in docs/fvs-gui-container.md.
 #
 # Usage: tools/ci/smoke_fvs_gui.sh [IMAGE_REF]     (default: usfs-fvs-gui:local)
-# Env:   SMOKE_VARIANT=<code>  override the auto-detected variant used by the .so check.
+# Env:   SMOKE_VARIANT=<code>  override the auto-detected variant used by checks 2, 13 and 14.
 set -euo pipefail
 
 IMAGE="${1:-usfs-fvs-gui:local}"

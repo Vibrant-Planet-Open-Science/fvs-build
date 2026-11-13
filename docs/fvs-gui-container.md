@@ -83,7 +83,7 @@ Unlike the runtime image, the GUI image is smoke-tested before it is pushed: sev
 | 10\. neither patched defect is present in the `fvsOL/R` sources baked into the image | a published image built without the patch |
 | 11\. `isLocal()` is `TRUE` and `getVolumes2()()` returns a non-empty volume list | `launch.R` no longer attaching `fs`, which kills every Local-mode session after the page is served |
 | 12\. `getProjectList()` returns instead of erroring with the open project locked | the Manage Projects tab greying out on first click |
-| 13\. an `FVS<v>` executable on `PATH` prints its version and reaches `STOP 20` on empty input | the executables missing from the image, or not runnable in it |
+| 13\. an `FVS<v>` executable on `PATH` runs `--version` and reaches `STOP 20` on empty input | the executables missing from the image, or not runnable in it |
 | 14\. `fvs2py` loads an `FVS<v>.so` from `$FVS_BIN` | an `fvs2py` release whose required API routines the `.so` lacks, or `FVS_BIN` pointing elsewhere |
 | 15\. `jupyter kernelspec list` shows `ir` and `python3` | a notebook kernel missing on Binder |
 
@@ -94,7 +94,7 @@ docker buildx build --load -t usfs-fvs-gui:local -f docker/Dockerfile.fvs-gui .
 tools/ci/smoke_fvs_gui.sh usfs-fvs-gui:local
 ```
 
-Override the variant used in check 2 with `SMOKE_VARIANT=<code>`; it otherwise auto-detects one from `/usr/local/lib`.
+Override the variant used in checks 2, 13 and 14 with `SMOKE_VARIANT=<code>`; it otherwise auto-detects one from `/usr/local/lib`.
 
 ## Local validation
 
