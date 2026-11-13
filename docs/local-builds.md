@@ -6,7 +6,7 @@ The supported way to build FVS is the reusable workflows (see the [README](../RE
 
 - Linux x86_64 or aarch64
 - `gfortran` and `gcc` (the workflows select a GCC major with `gcc_major`; any reasonably recent gfortran works for local experimentation)
-- `meson >= 1.1`, `ninja`
+- `meson >= 1.8`, `ninja`
 - `python3` (stdlib only)
 - An FVS source tree at FS2026.3 or later (see [Supported FVS versions](../README.md#supported-fvs-versions))
 
@@ -44,7 +44,9 @@ For variant `<v>`, `meson compile` produces in `builddir/`:
 
 - `FVS<v>` (`FVS<v>.exe` on Windows) — standalone CLI executable; does not load the shared library at runtime (matches upstream `bin/makefile` `%.prg` linking)
 - `FVS<v>.so` (Linux and macOS) / `.dll` (Windows) — embedder shared library for PyFVS, rFVS, fvs2py (no `lib` prefix; same basename as upstream)
-- `libfvs_<v>_objs.a` — internal static object carrier; not a deliverable
+- `libfvs_<v>_objs.a`, plus `libfvs_sqlite.a`, `libfvs_fofem.a`, `libfvs_nvel.a` shared by all variants — internal static archives; not deliverables
+
+These are unstripped. The workflows strip debug info from the shared libraries when staging the bundle; executables ship as built.
 
 Toolchain and host details captured at configure time are in `builddir/meson-logs/`.
 

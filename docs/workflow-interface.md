@@ -129,7 +129,7 @@ To run it by hand: `gh workflow run dispatch-native-linux.yml -f source_repo=USD
 
 ## `build-container-linux.yml`
 
-Packages `build-native-linux.yml` bundles into a runtime-only Ubuntu 24.04 image with `libgfortran5` (plus `libquadmath0` on amd64), and optionally pushes it. It does not recompile FVS; binaries are smoke-tested on the native runner, not in the image.
+Packages `build-native-linux.yml` bundles into a runtime-only Ubuntu 24.04 image with `libgfortran5`, and optionally pushes it. It does not recompile FVS; binaries are smoke-tested on the native runner, not in the image.
 
 ### Inputs
 

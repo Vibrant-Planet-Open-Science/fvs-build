@@ -44,17 +44,11 @@ ENV PATH=/opt/venv/bin:${PATH}
 # trying (and failing) to open an X11/OpenGL display.
 ENV RGL_USE_NULL=TRUE
 
-# FVS runtime libraries r2u will NOT pull (they satisfy the copied FVS<v>.so's
-# Fortran/quad-precision runtime), plus build glue: make/git for the R package
-# data-gen makefiles, python3-venv for the Jupyter venv, ca-certificates.
-# libquadmath0 is amd64 only (Ubuntu does not build it for arm64); the
-# unquoted $(...) is meant to vanish on arm64.
-# hadolint ignore=SC2046
+# make/git for the R package data-gen makefiles. libgfortran5, which the
+# FVS<v>.so libraries need, already comes with R's LAPACK in the base image.
 RUN apt-get update \
   && apt-get upgrade -y --no-install-recommends \
   && apt-get install -y --no-install-recommends \
-  libgfortran5 \
-  $([ "$(dpkg --print-architecture)" = amd64 ] && echo libquadmath0) \
   make \
   git \
   python3-venv \
