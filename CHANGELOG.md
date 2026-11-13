@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.8.0](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.7.2...v0.8.0) (2026-11-13)
+
+
+### ⚠ BREAKING CHANGES
+
+* rename the GUI image to fvs-workspace ([#69](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/69))
+* pin native toolchains and unify bundle names ([#67](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/67))
+* assemble native bundles in the build job ([#66](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/66))
+
+### Features
+
+* ship the FVS executables, fvs2py and an R kernel in the GUI image ([#64](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/64)) ([216d633](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/216d633f89774052188f0c453f012fcb73dfef33))
+
+
+### Code Refactoring
+
+* assemble native bundles in the build job ([#66](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/66)) ([464ef56](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/464ef56c357c14f8cbf5f6568799c668b54437ae))
+* pin native toolchains and unify bundle names ([#67](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/67)) ([1ed45ba](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/1ed45ba911be5f2c5726baba7dd4e6b3a3cac575))
+* rename the GUI image to fvs-workspace ([#69](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/69)) ([20e1f8b](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/20e1f8bfdac2e811006efb61ffa081f374584d84))
+
 ## [0.7.2](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.7.1...v0.7.2) (2026-11-13)
 
 
