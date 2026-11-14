@@ -22,6 +22,7 @@ ARG FVS_BUILD_REPO
 ARG FVS_BUILD_REF
 ARG FVS_BUILD_SHA
 ARG IMAGE_SOURCE_REPO
+ARG IMAGE_VERSION
 ARG VARIANTS
 ARG GFORTRAN_VERSION
 ARG MESON_VERSION
@@ -161,11 +162,13 @@ RUN if id -u 1000 >/dev/null 2>&1; then \
 # `licenses` covers what fvs-build puts in the image: FVS, NVEL and rFVS/fvsOL
 # (CC0-1.0), SQLite (blessing), the GCC runtime linked into the executables,
 # and fvs-build (MIT). R, Python and system packages are in the image SBOM.
-# `source` is the repo that publishes the image, not fvs-build: GHCR links the
-# package to it and shows its README on the package page.
+# `source` and `version` belong to the repo that publishes the image, not
+# fvs-build: GHCR links the package to `source` and shows its README on the
+# package page, and `version` is the caller's image tag. The FVS version is
+# `org.vibrantplanet.fvs.source-ref`.
 LABEL org.opencontainers.image.source="https://github.com/${IMAGE_SOURCE_REPO}" \
   org.opencontainers.image.revision="${FVS_BUILD_SHA}" \
-  org.opencontainers.image.version="${SOURCE_REF}" \
+  org.opencontainers.image.version="${IMAGE_VERSION}" \
   org.opencontainers.image.created="${TIMESTAMP}" \
   org.opencontainers.image.title="fvs-workspace" \
   org.opencontainers.image.description="FVSOnLocal (fvsOL) R-Shiny GUI over FVS variant shared libraries, plus the FVS variant executables and Jupyter R and Python kernels with rFVS and fvs2py, packaged Binder-ready on rocker/r2u:noble. FVS binaries copied from a native build, not compiled in this image's build; only the rFVS/fvsOL R packages are built from source. Built by Vibrant-Planet-Open-Science/fvs-build. Independent build; not affiliated with or endorsed by the USDA Forest Service." \
