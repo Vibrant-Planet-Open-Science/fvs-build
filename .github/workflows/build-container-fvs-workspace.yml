@@ -198,6 +198,7 @@ jobs:
       # release build. Releases build clean.
       - name: Build FVS workspace image (load locally)
         env:
+          IMAGE_TAG: ${{ inputs.image_tag }}
           INTERFACE_REPO: ${{ inputs.interface_repo }}
           INTERFACE_REF: ${{ inputs.interface_ref }}
         run: |
@@ -215,6 +216,8 @@ jobs:
             --build-arg FVS_BUILD_REPO="${FVS_BUILD_REPO}"
             --build-arg FVS_BUILD_REF="${FVS_BUILD_REF}"
             --build-arg FVS_BUILD_SHA="${FVS_BUILD_SHA}"
+            --build-arg IMAGE_SOURCE_REPO="${GITHUB_REPOSITORY}"
+            --build-arg IMAGE_VERSION="${IMAGE_TAG}"
             --build-arg VARIANTS="${VARIANTS_BUILT}"
             --build-arg GFORTRAN_VERSION="${GFORTRAN_VERSION}"
             --build-arg MESON_VERSION="${MESON_VERSION}"

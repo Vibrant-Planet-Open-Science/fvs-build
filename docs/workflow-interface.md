@@ -237,6 +237,6 @@ Same as `build-container-linux.yml`: `image_ref` and `image_digest`. Multi-arch 
 
 ### OCI labels
 
-The runtime image's labels (with `title` `fvs-workspace`), plus `org.vibrantplanet.fvs.interface-repo`, `interface-ref` and `interface-sha` for the R layer.
+The runtime image's labels (with `title` `fvs-workspace`), plus `org.vibrantplanet.fvs.interface-repo`, `interface-ref` and `interface-sha` for the R layer. `source` is the calling repository, so GHCR links the package to the caller and shows its README on the package page. `version` is `image_tag`, not the FVS source ref, which is in `org.vibrantplanet.fvs.source-ref`. fvs-build is still recorded in `revision` and the `fvs-build-*` labels.
 
 To run it by hand: `gh workflow run dispatch-container-fvs-workspace.yml -f source_ref=2027.1.0 -f interface_ref=20261109 -f image_tag=2027.1.0 -f push=false`.
