@@ -21,6 +21,7 @@ ARG SOURCE_SHA
 ARG FVS_BUILD_REPO
 ARG FVS_BUILD_REF
 ARG FVS_BUILD_SHA
+ARG IMAGE_SOURCE_REPO
 ARG VARIANTS
 ARG GFORTRAN_VERSION
 ARG MESON_VERSION
@@ -160,7 +161,9 @@ RUN if id -u 1000 >/dev/null 2>&1; then \
 # `licenses` covers what fvs-build puts in the image: FVS, NVEL and rFVS/fvsOL
 # (CC0-1.0), SQLite (blessing), the GCC runtime linked into the executables,
 # and fvs-build (MIT). R, Python and system packages are in the image SBOM.
-LABEL org.opencontainers.image.source="https://github.com/${FVS_BUILD_REPO}" \
+# `source` is the repo that publishes the image, not fvs-build: GHCR links the
+# package to it and shows its README on the package page.
+LABEL org.opencontainers.image.source="https://github.com/${IMAGE_SOURCE_REPO}" \
   org.opencontainers.image.revision="${FVS_BUILD_SHA}" \
   org.opencontainers.image.version="${SOURCE_REF}" \
   org.opencontainers.image.created="${TIMESTAMP}" \

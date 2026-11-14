@@ -215,6 +215,7 @@ jobs:
             --build-arg FVS_BUILD_REPO="${FVS_BUILD_REPO}"
             --build-arg FVS_BUILD_REF="${FVS_BUILD_REF}"
             --build-arg FVS_BUILD_SHA="${FVS_BUILD_SHA}"
+            --build-arg IMAGE_SOURCE_REPO="${GITHUB_REPOSITORY}"
             --build-arg VARIANTS="${VARIANTS_BUILT}"
             --build-arg GFORTRAN_VERSION="${GFORTRAN_VERSION}"
             --build-arg MESON_VERSION="${MESON_VERSION}"
