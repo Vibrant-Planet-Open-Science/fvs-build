@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.8.0](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.7.2...v0.8.0) (2026-11-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* rename the GUI image to fvs-workspace ([#69](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/69))
+* pin native toolchains and unify bundle names ([#67](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/67))
+* assemble native bundles in the build job ([#66](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/66))
+
+### Features
+
+* link the fvs-workspace package to the repo that publishes it ([#70](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/70)) ([ac16e2d](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/ac16e2dfd2ea197c6965d3b17ba75a20362d86c7))
+* ship the FVS executables, fvs2py and an R kernel in the GUI image ([#64](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/64)) ([216d633](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/216d633f89774052188f0c453f012fcb73dfef33))
+
+
+### Build System
+
+* **deps:** bump meson from 1.12.0 to 1.12.1 in /tools/ci ([#68](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/68)) ([8186f95](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/8186f95e983dfba34f1d485d4de3847155530f36))
+
+
+### Code Refactoring
+
+* assemble native bundles in the build job ([#66](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/66)) ([464ef56](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/464ef56c357c14f8cbf5f6568799c668b54437ae))
+* pin native toolchains and unify bundle names ([#67](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/67)) ([1ed45ba](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/1ed45ba911be5f2c5726baba7dd4e6b3a3cac575))
+* rename the GUI image to fvs-workspace ([#69](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/69)) ([20e1f8b](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/20e1f8bfdac2e811006efb61ffa081f374584d84))
+
+
+### Documentation
+
+* point users to fvs-workspace for the GUI and Binder ([#72](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/72)) ([5caf699](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/5caf699601279e4e8f0ccfb63f201da12844185b))
+
 ## [0.7.2](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.7.1...v0.7.2) (2026-11-13)
 
 
