@@ -7,15 +7,8 @@ BUILD_DIR="${BUILD_DIR:-_build}"
 OVERLAY_DIR="${OVERLAY_DIR:-fvs-build}"
 FVS_SOURCE="${FVS_SOURCE:?FVS_SOURCE is required}"
 VARIANTS="${VARIANTS:?VARIANTS is required}"
+# meson_options.txt's `combo` rejects any other profile.
 PROFILE="${PROFILE:-reference}"
-
-case "${PROFILE}" in
-  reference | debug) ;;
-  *)
-    echo "ERROR: unknown profile '${PROFILE}'; expected reference or debug" >&2
-    exit 1
-    ;;
-esac
 
 ARGS=(
   --buildtype=plain
