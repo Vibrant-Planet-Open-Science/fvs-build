@@ -230,4 +230,5 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
   - `tools/ci/requirements-build.txt` — the Meson pin.
   - `tools/ci/meson_configure_native.sh` — `meson setup` with the requested `profile`.
   - `tools/ci/smoke_test_native.sh` — runs each variant executable to `STOP 20` and checks its `--version` build info.
+  - `tools/ci/verify_native.sh` — checks each executable and shared library needs only what an end user's system provides (readelf, otool or objdump per OS), then runs `tools/ci/check_gcc_major.sh` on them.
   - `tools/ci/provenance.py` — `bundle` assembles the bundle (binaries, provenance, SBOM) at the end of each build job; `manifest-to-github-env` reads its manifest for the container workflows.

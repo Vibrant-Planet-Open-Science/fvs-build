@@ -199,35 +199,8 @@ jobs:
       - name: Smoke-test the variant executables
         run: bash fvs-build/tools/ci/smoke_test_native.sh
 
-      - name: Verify artifacts are self-contained (objdump)
-        run: |
-          set -euo pipefail
-          # Denylist the MinGW runtime DLLs rather than allowlist the (large,
-          # unstable) Windows system set. msvcrt.dll means a MINGW64 object
-          # slipped into this UCRT64 build.
-          runtime='libgfortran|libgcc_s|libquadmath|libwinpthread|libstdc\+\+|libssp|msvcrt\.dll'
-          status=0
-          check() {
-            f="$1"; pat="$2"
-            test -f "$f"
-            echo "----- objdump -p $f (DLL imports) -----"
-            objdump -p "$f" | grep 'DLL Name:' || true
-            if objdump -p "$f" | grep 'DLL Name:' | grep -qiE "$pat"; then
-              echo "ERROR: $f imports a runtime/embedder DLL it must not" >&2
-              status=1
-            fi
-          }
-          for v in $VARIANTS; do
-            check "_build/FVS${v}.exe" "FVS${v}\.dll|${runtime}"
-            check "_build/FVS${v}.dll" "${runtime}"
-          done
-          exit $status
-
-      - name: Verify single GCC major in artifacts
-        run: |
-          files=()
-          for v in $VARIANTS; do files+=("_build/FVS$v.exe" "_build/FVS$v.dll"); done
-          bash fvs-build/tools/ci/check_gcc_major.sh "${files[@]}"
+      - name: Verify artifacts are self-contained and from one GCC
+        run: bash fvs-build/tools/ci/verify_native.sh
 
       - name: Bundle binaries, provenance and SBOM
         id: bundle
