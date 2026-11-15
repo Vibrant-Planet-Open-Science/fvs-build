@@ -154,44 +154,8 @@ jobs:
       - name: Smoke-test the variant executables
         run: bash fvs-build/tools/ci/smoke_test_native.sh
 
-      - name: Verify artifacts are self-contained (otool)
-        run: |
-          set -euo pipefail
-          # A leaked Homebrew GCC runtime path or unresolved @rpath entry is
-          # absent on end-user Macs and fails at dlopen; with the static GCC
-          # runtime only /usr/lib and /System deps should remain.
-          status=0
-          files=()
-          for v in $VARIANTS; do files+=("_build/FVS$v" "_build/FVS$v.so"); done
-          for f in "${files[@]}"; do
-            test -f "$f"
-            echo "----- otool -L $f -----"
-            otool -L "$f"
-            base="$(basename "$f")"
-            # Skip the lib's own install-id, matched by basename so an
-            # @rpath/-prefixed id is handled too.
-            leaks="$(otool -L "$f" | tail -n +2 | awk '{print $1}' \
-              | awk -v b="$base" '{ n=$0; sub(/.*\//,"",n); if (n != b) print }' \
-              | grep -Ev '^(/usr/lib/|/System/)' || true)"
-            if [ -n "$leaks" ]; then
-              echo "ERROR: $f has non-system runtime dependencies:" >&2
-              printf '%s\n' "$leaks" | sed 's/^/  /' >&2
-              status=1
-            fi
-            minos="$(otool -l "$f" | awk '/LC_BUILD_VERSION/ {b=1} b && $1 == "minos" {print $2; exit}')"
-            echo "minos: ${minos}"
-            if [ "$minos" != "$MACOSX_DEPLOYMENT_TARGET" ]; then
-              echo "ERROR: $f targets macOS ${minos}, expected ${MACOSX_DEPLOYMENT_TARGET}" >&2
-              status=1
-            fi
-          done
-          exit $status
-
-      - name: Verify single GCC major in artifacts
-        run: |
-          files=()
-          for v in $VARIANTS; do files+=("_build/FVS$v" "_build/FVS$v.so"); done
-          bash fvs-build/tools/ci/check_gcc_major.sh "${files[@]}"
+      - name: Verify artifacts are self-contained and from one GCC
+        run: bash fvs-build/tools/ci/verify_native.sh
 
       - name: Bundle binaries, provenance and SBOM
         id: bundle
