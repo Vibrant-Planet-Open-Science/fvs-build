@@ -215,7 +215,7 @@ To run it by hand: `gh workflow run dispatch-container-linux.yml -f source_repo=
 
 ## `build-container-fvs-workspace.yml`
 
-Builds the Binder-ready FVS workspace image and optionally pushes it. It reuses the executables and `FVS<v>.so` set from `build-native-linux.yml` bundles. For notebooks it adds Python and R kernels with `fvs2py` and `rFVS`, the packages that load FVS through those shared libraries. It builds `rFVS` and the `fvsOL` GUI from `ForestVegetationSimulator-Interface` on `rocker/r2u:noble`, with Jupyter and `jupyter-server-proxy` serving the app at `/fvs-gui/`. The image is smoke-tested before it is pushed. Build steps, the Local-mode patch, the smoke checks and Binder publishing are in [`fvs-workspace-container.md`](fvs-workspace-container.md).
+Builds the Binder-ready FVS workspace image and optionally pushes it. It reuses the executables and `FVS<v>.so` set from `build-native-linux.yml` bundles. For notebooks it adds Python and R kernels with `fvs2py` and `rFVS`, the packages that load FVS through those shared libraries. It builds `rFVS` and the `fvsOL` GUI from `ForestVegetationSimulator-Interface` on `rocker/r2u:noble`, with Jupyter and `jupyter-server-proxy` serving the app at `/fvs-gui/`. The image is smoke-tested before it is pushed. Build steps, the Local-mode patch, the smoke checks, publishing and Binder constraints are in [`fvs-workspace-container.md`](fvs-workspace-container.md).
 
 The caller runs `build-native-linux.yml` earlier in the same run, once per arch the image is built for, and lists those jobs in `needs:`. The workflow downloads each bundle by its name, `fvs-native-linux-<arch>-<run_id>`.
 
