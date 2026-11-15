@@ -7,10 +7,8 @@
 set -euo pipefail
 
 IMAGE="${1:-fvs-workspace:local}"
-APP_PORT="${SMOKE_APP_PORT:-3838}"
-JUP_PORT="${SMOKE_JUP_PORT:-8888}"
-MASK_PORT="${SMOKE_MASK_PORT:-8890}"
-SUP_PORT="${SMOKE_SUP_PORT:-8891}"
+# Host ports, one per check that serves, so a slow container teardown can't clash.
+APP_PORT=3838 JUP_PORT=8888 MASK_PORT=8890 SUP_PORT=8891 DEFAULT_PORT=8892
 
 CIDS=()
 TMPFILES=()
@@ -27,16 +25,37 @@ info() { printf '\n== %s\n' "$1"; }
 pass() { printf '   \033[32mPASS\033[0m %s\n' "$1"; }
 die()  { printf '   \033[31mFAIL\033[0m %s\n' "$1" >&2; exit 1; }
 
-# Poll until success or timeout (seconds). Connection resets while the app starts
-# are expected noise, so errors are muted here; the real fetch keeps -S.
-wait_http() {
-  local url="$1" timeout="${2:-120}" waited=0
-  while [ "$waited" -lt "$timeout" ]; do
-    if curl -fs -o /dev/null --max-time 5 "$url" 2>/dev/null; then return 0; fi
+# Fail with the container's log tail, which is where a server that never came up
+# says why.
+die_logs() {
+  echo "--- container logs (tail) ---" >&2
+  docker logs "$1" 2>&1 | tail -40 >&2
+  die "$2"
+}
+
+# wait_or_die CID URL TIMEOUT MESSAGE: poll URL until it answers. Connection
+# resets while the app starts are expected noise, so curl's errors are muted.
+wait_or_die() {
+  local waited=0
+  until curl -fs -o /dev/null --max-time 5 "$2" 2>/dev/null; do
+    [ "$waited" -lt "$3" ] || die_logs "$1" "$4"
     sleep 3
     waited=$((waited + 3))
   done
-  return 1
+}
+
+# expect_shiny CID URL MESSAGE: URL must return 200 and a Shiny page. A first
+# hit through the proxy launches the app, so allow the proxy's own timeout.
+expect_shiny() {
+  local html code
+  html=$(mktemp)
+  TMPFILES+=("$html")
+  code=$(curl -s -o "$html" -w '%{http_code}' -L --max-time 150 "$2")
+  [ "$code" = 200 ] || die_logs "$1" "$3 (HTTP ${code}, expected 200)"
+  grep -qi 'shiny' "$html" || {
+    head -c 800 "$html" >&2
+    die "$3 (response is not a Shiny page)"
+  }
 }
 
 info "FVS workspace image smoke test: ${IMAGE}"
@@ -83,13 +102,8 @@ pass "temp-table write works + default FVS_Data.db opens"
 info "4. headless app boot (launch.R) -> HTTP 200 Shiny page"
 cid=$(docker run -d -p "${APP_PORT}:${APP_PORT}" "$IMAGE" Rscript /opt/fvs/launch.R "${APP_PORT}")
 CIDS+=("$cid")
-if ! wait_http "http://localhost:${APP_PORT}/" 150; then
-  echo "--- app container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "launch.R app did not serve within timeout"
-fi
-html=$(mktemp); TMPFILES+=("$html")
-curl -fsS --max-time 15 "http://localhost:${APP_PORT}/" -o "$html"
-grep -qi 'shiny' "$html" || { head -c 800 "$html" >&2; die "app response is not a Shiny page"; }
+wait_or_die "$cid" "http://localhost:${APP_PORT}/" 150 "launch.R app did not serve within timeout"
+expect_shiny "$cid" "http://localhost:${APP_PORT}/" "launch.R app did not serve fvsOL"
 docker rm -f "$cid" >/dev/null; CIDS=()
 pass "launch.R serves a Shiny page on :${APP_PORT}"
 
@@ -101,18 +115,8 @@ cid=$(docker run -d -p "${JUP_PORT}:${JUP_PORT}" "$IMAGE" \
   jupyter lab --ip=0.0.0.0 --no-browser --ServerApp.token='' --ServerApp.password='' \
   --ServerApp.base_url="${BASE_URL}")
 CIDS+=("$cid")
-if ! wait_http "http://localhost:${JUP_PORT}${BASE_URL}api" 90; then
-  echo "--- jupyter container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "jupyter server did not come up"
-fi
-# First hit launches the proxied app; the proxy waits up to its own timeout.
-html=$(mktemp); TMPFILES+=("$html")
-code=$(curl -s -o "$html" -w '%{http_code}' -L --max-time 150 "http://localhost:${JUP_PORT}${BASE_URL}fvs-gui/")
-if [ "$code" != "200" ]; then
-  echo "--- jupyter container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "${BASE_URL}fvs-gui/ returned HTTP ${code} (expected 200)"
-fi
-grep -qi 'shiny' "$html" || { head -c 800 "$html" >&2; die "${BASE_URL}fvs-gui/ response is not a Shiny page"; }
+wait_or_die "$cid" "http://localhost:${JUP_PORT}${BASE_URL}api" 90 "jupyter server did not come up"
+expect_shiny "$cid" "http://localhost:${JUP_PORT}${BASE_URL}fvs-gui/" "${BASE_URL}fvs-gui/ did not serve fvsOL"
 docker rm -f "$cid" >/dev/null; CIDS=()
 pass "jupyter-server-proxy serves fvsOL at ${BASE_URL}fvs-gui/"
 
@@ -131,17 +135,9 @@ cid=$(docker run -d -p "${MASK_PORT}:${MASK_PORT}" -v "${maskdir}:/etc/jupyter:r
   jupyter lab --ip=0.0.0.0 --port="${MASK_PORT}" --no-browser \
   --ServerApp.token='' --ServerApp.password='' --ServerApp.base_url="${BASE_URL}")
 CIDS+=("$cid")
-if ! wait_http "http://localhost:${MASK_PORT}${BASE_URL}api" 90; then
-  echo "--- jupyter container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "jupyter server did not come up with /etc/jupyter masked"
-fi
-html=$(mktemp); TMPFILES+=("$html")
-code=$(curl -s -o "$html" -w '%{http_code}' -L --max-time 150 "http://localhost:${MASK_PORT}${BASE_URL}fvs-gui/")
-if [ "$code" != "200" ]; then
-  echo "--- jupyter container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "with /etc/jupyter masked, ${BASE_URL}fvs-gui/ returned HTTP ${code} (expected 200): the fvs-gui route must be registered by the jupyter_serverproxy_servers entry point, which no mount can shadow"
-fi
-grep -qi 'shiny' "$html" || { head -c 800 "$html" >&2; die "masked-config response is not a Shiny page"; }
+wait_or_die "$cid" "http://localhost:${MASK_PORT}${BASE_URL}api" 90 "jupyter server did not come up with /etc/jupyter masked"
+expect_shiny "$cid" "http://localhost:${MASK_PORT}${BASE_URL}fvs-gui/" \
+  "with /etc/jupyter masked, ${BASE_URL}fvs-gui/ did not serve fvsOL: the fvs-gui route must be registered by the jupyter_serverproxy_servers entry point, which no mount can shadow"
 
 # A served icon also catches a package installed without its icons/ data files.
 ctype=$(curl -s -o /dev/null -w '%{content_type}' --max-time 30 \
@@ -194,23 +190,15 @@ RWRAP
 cid=$(docker run -d -p "${SUP_PORT}:${SUP_PORT}" -v "${wrap}:/tmp/wrap.R:ro" "$IMAGE" \
   Rscript /tmp/wrap.R "${SUP_PORT}")
 CIDS+=("$cid")
-if ! wait_http "http://localhost:${SUP_PORT}/" 180; then
-  echo "--- app container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "app did not serve before the supervise-loop test could start"
-fi
+wait_or_die "$cid" "http://localhost:${SUP_PORT}/" 180 "app did not serve before the supervise-loop test could start"
 docker exec "$cid" touch /tmp/fvs-stop
 deadline=$((SECONDS + 120))
 until docker logs "$cid" 2>&1 | grep -q 'relaunching on port'; do
-  if [ "$SECONDS" -ge "$deadline" ]; then
-    echo "--- app container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-    die "launch.R did not relaunch fvsOL after stopApp(): a closed tab would brick the Binder session"
-  fi
+  [ "$SECONDS" -lt "$deadline" ] \
+    || die_logs "$cid" "launch.R did not relaunch fvsOL after stopApp(): a closed tab would brick the Binder session"
   sleep 2
 done
-if ! wait_http "http://localhost:${SUP_PORT}/" 180; then
-  echo "--- app container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "fvsOL relaunched but never served again after stopApp()"
-fi
+wait_or_die "$cid" "http://localhost:${SUP_PORT}/" 180 "fvsOL relaunched but never served again after stopApp()"
 docker rm -f "$cid" >/dev/null; CIDS=()
 pass "supervise loop relaunches fvsOL after stopApp()"
 
@@ -293,12 +281,9 @@ pass "ir and python3 kernels registered"
 
 # --- 16. default command serves JupyterLab ------------------------------------
 info "16. docker run with no command serves JupyterLab on 8888"
-cid=$(docker run -d -p 8892:8888 "$IMAGE")
+cid=$(docker run -d -p "${DEFAULT_PORT}:8888" "$IMAGE")
 CIDS+=("$cid")
-if ! wait_http "http://localhost:8892/api" 90; then
-  echo "--- container logs (tail) ---" >&2; docker logs "$cid" 2>&1 | tail -40 >&2
-  die "the default command did not start JupyterLab on port 8888"
-fi
+wait_or_die "$cid" "http://localhost:${DEFAULT_PORT}/api" 90 "the default command did not start JupyterLab on port 8888"
 docker logs "$cid" 2>&1 | grep -q 'http://127.0.0.1:8888/lab?token=' \
   || die "JupyterLab did not print the http://127.0.0.1:8888/lab?token=... link the README tells users to open"
 docker rm -f "$cid" >/dev/null; CIDS=()
