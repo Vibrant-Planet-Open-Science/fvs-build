@@ -70,92 +70,19 @@ All 24 FVS variants are addressable by their two-letter codes. The Docker images
 | `wc` | West Cascades |
 | `ws` | West Sierras |
 
-## Build FVS in your repository with reusable GitHub workflows
+## Build FVS with reusable GitHub workflows
 
-Five reusable `workflow_call` workflows can be used to build the native binaries (one workflow for each OS including Linux, MacOS, and Windows), the runtime image (binaries only in the container), and the FVS workspace image (the FVS GUI, FVS executables, and the packages rFVS and fvs2py that can load FVS through shared libraries).
+Five reusable `workflow_call` workflows build the native binaries (one each for Linux, macOS and Windows), the runtime image (the binaries alone in a container), and the FVS workspace image (the FVS GUI, the executables, and the `rFVS` and `fvs2py` packages that load FVS through its shared libraries).
 
 ### Supported FVS versions
 
-The workflows build from`USDAForestService/ForestVegetationSimulator` and support release tags from "**FS2026.3" or more recent**. FVS versions prior to FS2026.3 include copies of the`volume/NVEL` submodule that included stale gfortran `.mod` files, which cause errors during the build. Those were fixed in release FS2026.3. Upstream tags use `YYYY.N.P` from `2027.1.0`, which is the default ref and the one CI tests.
+The workflows build from `USDAForestService/ForestVegetationSimulator` and support release tags from **FS2026.3** on. Earlier releases include copies of the `volume/NVEL` submodule with stale gfortran `.mod` files, which break the build. Upstream tags use `YYYY.N.P` from `2027.1.0`, which is the default ref and the one CI tests.
 
-### Native binaries only
+### Calling the workflows
 
-```yaml
-jobs:
-  fvs-binaries:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
-    with:
-      source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
-      profile: reference
-```
+Call a workflow from a job with `uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/<file>@<tag>`, pinned to a release tag. Each native workflow uploads one bundle per platform: the executable and shared library for each variant, provenance, and an SPDX SBOM. [`docs/workflow-interface.md`](docs/workflow-interface.md) has every input, output and bundle layout, an example of [one native build](docs/workflow-interface.md#calling-the-workflow), and one of [a native build feeding a container image](docs/workflow-interface.md#composing-native--container).
 
-Produces a single bundle of artifacts (including binaries for each FVS variant + provenance manifest + a Software Bill of Materials following the System Package Data Exchange standard, SPDX SBOM). To produce binaries for another operating system, such as Windows, just change the `uses` line to point to that workflow: `Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-windows.yml@main`
-
-### Native binaries + container image
-
-You can integrate these workflows as steps in your own, gathering the binaries from the `build_native` workflow, and using them in your own `container` step, for example.
-
-```yaml
-permissions:
-  contents: read
-  packages: write
-
-jobs:
-  native:
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-native-linux.yml@main
-    with:
-      source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
-
-  container:
-    needs: native
-    uses: Vibrant-Planet-Open-Science/fvs-build/.github/workflows/build-container-linux.yml@main
-    with:
-      artifact_name: ${{ needs.native.outputs.artifact_name }}
-      image_name: ghcr.io/your-org/usfs-fvs
-      image_tag: 2027.1.0
-      image_extra_tags: latest
-      push: true
-    secrets: inherit
-```
-
-In this example, the `build-container` workflow copies the already-validated native binaries into a runtime-only Ubuntu 24.04 Docker image and pushes it the GitHub Container Registry with full OCI provenance labels (only pushing to GHCR when `push: true`).
-
-See `docs/workflow-interface.md` for the full input/output patterns for these and other workflows, more details on the layout of artifacts within the bundle, the OCI labels baked into the image, and additional caller snippets.
-
-### Manual drivers
-
-Three `workflow_dispatch` drivers allow the workflows to be triggered manually. These are primarily used for testing purposes and creating releases of the Docker containers from this repo:
-
-```bash
-# Native binaries only
-gh workflow run dispatch-native.yml \
-  -f platform=linux-x86_64 \
-  -f source_ref=2027.1.0
-
-# Full native + container, dry run (no push)
-gh workflow run dispatch-container-linux.yml \
-  -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=2027.1.0 \
-  -f image_tag=2027.1.0
-
-# Same, but actually push to ghcr.io/vibrant-planet-open-science/usfs-fvs:2027.1.0
-gh workflow run dispatch-container-linux.yml \
-  -f source_repo=USDAForestService/ForestVegetationSimulator \
-  -f source_ref=2027.1.0 \
-  -f image_tag=2027.1.0 \
-  -f push=true
-```
-
-To build the FVS workspace image (dry run, no push):
-
-```bash
-gh workflow run dispatch-container-fvs-workspace.yml \
-  -f source_ref=2027.1.0 \
-  -f interface_ref=20261109 \
-  -f image_tag=2027.1.0
-```
+Each workflow also has a manual `dispatch-*.yml` driver, used for testing; the command to run each one is in its section of `workflow-interface.md`.
 
 ## Known upstream issues in `USDAForestService/ForestVegetationSimulator`
 
@@ -180,26 +107,9 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 
 ## Repository layout
 
-- `meson.build` — Meson build definition that compiles FVS from a source repository. Reads options, parses the repository's`bin/FVS<variant>_sourceList.txt` manifests at configure time, and emits per-variant build targets.
-- `meson_options.txt` — build-time options (`fvs_source_dir`, `variants`, `profile`, `traps`, and local-only `extra_fortran_args`).
-- `tools/parse_sourcelist.py` — turns one source list into the categorized file lists Meson consumes to build the binaries, invoked during the Meson build for each variant.
-- `.github/workflows/build-native-linux.yml`, `.github/workflows/build-native-windows.yml`, `.github/workflows/build-native-macos.yml` — reusable `workflow_call` workflows that run the Meson build for a single OS. Each produces an artifact bundle (binaries + provenance + SBOM); see `docs/workflow-interface.md`.
-- `.github/workflows/build-container-linux.yml` — reusable `workflow_call` workflow that packages the native binaries into a runtime-only Ubuntu 24.04 container image, with option to push the image to GHCR.
-- `.github/workflows/build-container-fvs-workspace.yml` — reusable `workflow_call` workflow that builds the FVS workspace image, which serves the FVSOnLocal (`fvsOL`) GUI. It copies the native Linux binaries (`FVS<v>.so`) and builds the `rFVS`/`fvsOL` R layer on a `rocker/r2u:noble`base image with additional configuration settings that allow the image to be hosted via Binder.
-- `.github/workflows/dispatch-native.yml` — manually-triggered option for one native workflow, chosen by `platform` (`workflow_dispatch`).
-- `.github/workflows/dispatch-container-linux.yml` — manually-triggered option for the native Linux + container steps in sequence.
-- `.github/workflows/dispatch-container-fvs-workspace.yml` — manually-triggered option for running native Linux + FVS workspace container steps in sequence.
-- `docker/Dockerfile.runtime` — runtime image definition (Ubuntu 24.04 + `libgfortran5` + the variant binaries; supports standard FVS command-line invocation).
-- `docker/Dockerfile.fvs-workspace` — FVS workspace image definition (`rocker/r2u:noble` + Jupyter + `jupyter-server-proxy`; copies the `FVS<v>` executables and `FVS<v>.so` shared libraries, installs `fvs2py` and an R kernel, builds `rFVS`/`fvsOL` from source). Its baked-in launch shim and proxy configuration for running the web browser interface live under `docker/fvs-workspace/`.
-- `docs/local-builds.md` — details for running the Meson build by hand, primarily intended for developers who would like to work on the `fvs-build` project or run Meson-based builds themselves.
-- `docs/workflow-interface.md` — the reusable workflows' inputs, outputs and artifact contract.
-- `release-please-config.json`, `.release-please-manifest.json`, `.github/workflows/release-please.yml` — release automation (see [Releases](#releases)).
-- `.github/dependabot.yml` — weekly updates for the GitHub Actions and the Meson pin.
-- `docs/fvs-workspace-container.md` — maintainer notes for the FVS workspace image: build steps, the `fvsOL` Local-mode patch, smoke checks and the constraints Binder puts on the image.
-- Shared CI helpers used by the three native workflows:
-  - `tools/ci/resolve_variants.sh` — normalizes the `variants` input into the list each build job loops over, and holds the default list.
-  - `tools/ci/requirements-build.txt` — the Meson pin.
-  - `tools/ci/meson_configure_native.sh` — `meson setup` with the requested `profile`.
-  - `tools/ci/smoke_test_native.sh` — runs each variant executable to `STOP 20` and checks its `--version` build info.
-  - `tools/ci/verify_native.sh` — checks each executable and shared library needs only what an end user's system provides (readelf, otool or objdump per OS), then runs `tools/ci/check_gcc_major.sh` on them.
-  - `tools/ci/provenance.py` — `bundle` assembles the bundle (binaries, provenance, SBOM) at the end of each build job; `manifest-to-github-env` reads its manifest for the container workflows.
+- `meson.build`, `meson_options.txt` and `tools/parse_sourcelist.py`: the Meson build, which reads each variant's `bin/FVS<v>_sourceList.txt` from the FVS source tree and defines its executable and shared library.
+- `.github/workflows/`: the reusable `build-*.yml` workflows, their `dispatch-*.yml` drivers, PR CI and release-please.
+- `tools/ci/`: the scripts those workflows run, from resolving the variant list through configure, smoke tests and artifact checks to assembling the bundle and its provenance.
+- `docker/`: `Dockerfile.runtime` (`usfs-fvs`) and `Dockerfile.fvs-workspace`, with the workspace image's launch shim, proxy package and `fvsOL` patches under `docker/fvs-workspace/`.
+- `docs/`: [`workflow-interface.md`](docs/workflow-interface.md) (the contract for callers), [`local-builds.md`](docs/local-builds.md) (running Meson by hand) and [`fvs-workspace-container.md`](docs/fvs-workspace-container.md) (maintainer notes for the workspace image).
+- `release-please-config.json`, `.release-please-manifest.json` and `.github/dependabot.yml`: releases (see [Releases](#releases)) and dependency updates.
