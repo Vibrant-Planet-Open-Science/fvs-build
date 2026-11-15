@@ -64,17 +64,15 @@ fortran_base_args = [
   '-fallow-argument-mismatch',
 ]
 
-if profile == 'reference'
-  profile_fortran_args = []
-elif profile == 'debug'
+# The `combo` option admits only reference and debug; reference adds nothing.
+profile_fortran_args = []
+if profile == 'debug'
   profile_fortran_args = [
     '-O0',
     '-fcheck=all',
     '-finit-real=snan',
     '-finit-integer=-99999',
   ]
-else
-  error('Unknown profile @0@; expected reference or debug'.format(profile))
 endif
 
 common_fortran_args = fortran_base_args
