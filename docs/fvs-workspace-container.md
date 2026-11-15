@@ -29,14 +29,13 @@ Steps 1–8 run once per arch: `amd64` on `ubuntu-24.04`, plus `arm64` on `ubunt
 | `/usr/share/fvs-build/manifest.json` | the native bundle's provenance manifest |
 | `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary SBOM |
 
-The image's default command starts JupyterLab on port 8888 (`EXPOSE 8888`), for running it locally (see README). It has no `ENTRYPOINT`, so any other command replaces the default. On Binder, JupyterHub spawns `jupyterhub-singleuser` (from the `jupyterhub` pip package, **not** `jupyter lab` or `jupyter notebook`: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404, while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on the first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the shared libraries live in `/usr/local/lib` (`FVS_BIN`).
+The image's default command starts JupyterLab on port 8888 (`EXPOSE 8888`), for running it locally (see the [fvs-workspace README](https://github.com/Vibrant-Planet-Open-Science/fvs-workspace#run-it-on-your-computer-with-docker)). It has no `ENTRYPOINT`, so any other command replaces the default. On Binder, JupyterHub spawns `jupyterhub-singleuser` (from the `jupyterhub` pip package, **not** `jupyter lab` or `jupyter notebook`: without that binary the single-user server never starts and every `/user/<id>/` path returns a bare 404, while the image still runs fine under `docker run`). jupyter-server-proxy then launches `Rscript /opt/fvs/launch.R {port}` on the first hit to `/fvs-gui/` and reverse-proxies the Shiny app. The Binder user is `jovyan` (uid 1000) with a writable starter project at `/home/jovyan/project` (`FVSOL_PRJDIR`); the shared libraries live in `/usr/local/lib` (`FVS_BIN`).
 
-## Publishing for Binder
+## Publishing
 
-`binder/Dockerfile` is a single `FROM ghcr.io/vibrant-planet-open-science/usfs-fvs-gui:<tag>`, so mybinder.org builds it in seconds. Two things govern whether the README badge picks up a published image:
+The published image comes from [fvs-workspace](https://github.com/Vibrant-Planet-Open-Science/fvs-workspace): each of its releases calls this workflow with `push: true`, its own version as `image_tag`, and pinned FVS, Interface and fvs-build refs. The package is linked to that repository (`org.opencontainers.image.source` is the caller), which also holds the Binder badge and `binder/Dockerfile`.
 
-- **The GHCR package must be public.** mybinder.org pulls the image anonymously, so publish it (`push: true`) and mark the package public.
-- **Re-publishing a tag does not reach an existing Binder.** mybinder caches builds by repo ref, not by the digest behind the tag in `binder/Dockerfile`. A new commit on the branch the badge points at forces a rebuild; overwriting the GHCR tag does not.
+## Binder constraints
 
 The `/fvs-gui/` route is registered by an entry point, not a Jupyter config file: mybinder mounts a Kubernetes ConfigMap over `/etc/jupyter` at runtime, so anything registered there is invisible on Binder even though `docker run` works.
 
@@ -107,4 +106,4 @@ gh workflow run dispatch-container-fvs-workspace.yml \
   -f push=false
 ```
 
-`push=false` (the default) builds the image without publishing. With `-f push=true` it publishes to `ghcr.io/<your-account>/fvs-workspace:2027.1.0`; make the GHCR package public before pointing mybinder.org at it.
+`push=false` (the default) builds the image without publishing. With `-f push=true` it publishes to `ghcr.io/<your-account>/fvs-workspace:2027.1.0`, which is for forks: in this organization the package belongs to fvs-workspace, and fvs-build's token cannot push to it.
