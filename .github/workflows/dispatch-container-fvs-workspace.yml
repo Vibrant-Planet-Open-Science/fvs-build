@@ -28,10 +28,10 @@ on:
         type: string
       interface_ref:
         description: >-
-          Interface source ref (tag, branch, or SHA); release 20261019 or
-          later (earlier refs ship rFVS/fvsOL without NAMESPACE).
+          Interface source ref (tag, branch, or SHA); release 20261121 or
+          later (earlier refs lack the fvsOL Local-mode fixes).
         required: true
-        default: "20261109"
+        default: "20261121"
         type: string
       image_name:
         description: "Fully-qualified image name without tag (defaults to ghcr.io/<owner>/fvs-workspace)"

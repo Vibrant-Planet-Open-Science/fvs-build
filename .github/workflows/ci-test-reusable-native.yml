@@ -101,7 +101,7 @@ jobs:
     if: needs.changes.outputs.image == 'true'
     uses: ./.github/workflows/build-container-fvs-workspace.yml
     with:
-      interface_ref: "20261109"
+      interface_ref: "20261121"
       image_name: fvs-workspace
       image_tag: ci-${{ github.run_id }}
       push: false

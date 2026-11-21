@@ -2,12 +2,8 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
-      # The patches' context lines carry upstream's trailing whitespace, and
-      # `git apply` needs them byte-exact: "cleaning" one breaks the GUI build.
       - id: trailing-whitespace
-        exclude: ^docker/fvs-workspace/patches/
       - id: end-of-file-fixer
-        exclude: ^docker/fvs-workspace/patches/
       - id: check-yaml
         # Actions YAML may use tags PyYAML rejects without --unsafe;
         # actionlint does the workflow-aware validation.

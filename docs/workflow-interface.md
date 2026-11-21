@@ -225,7 +225,7 @@ The caller runs `build-native-linux.yml` earlier in the same run, once per arch 
 | --- | --- | --- | --- | --- |
 | `arm64` | boolean | no | `true` | Build linux/arm64 as well as linux/amd64. |
 | `interface_repo` | string | no | `USDAForestService/ForestVegetationSimulator-Interface` | Repo providing `rFVS` and `fvsOL`. |
-| `interface_ref` | string | no | `20261109` | Ref in `interface_repo`; release `20261019` or later (earlier refs ship `rFVS`/`fvsOL` without `NAMESPACE`). |
+| `interface_ref` | string | no | `20261121` | Ref in `interface_repo`; release `20261121` or later (earlier refs lack the `fvsOL` Local-mode fixes; see [`fvs-workspace-container.md`](fvs-workspace-container.md#minimum-interface_ref)). |
 | `image_name` | string | yes | — | Image name without tag (e.g. `ghcr.io/vibrant-planet-open-science/fvs-workspace`). |
 | `image_tag` | string | yes | — | Primary tag, typically the FVS source ref (e.g. `2027.1.0`). |
 | `image_extra_tags` | string | no | `""` | Comma-separated extra tags. |
@@ -239,4 +239,4 @@ Same as `build-container-linux.yml`: `image_ref` and `image_digest`. Multi-arch 
 
 The runtime image's labels (with `title` `fvs-workspace`), plus `org.vibrantplanet.fvs.interface-repo`, `interface-ref` and `interface-sha` for the R layer. `source` is the calling repository, so GHCR links the package to the caller and shows its README on the package page. `version` is `image_tag`, not the FVS source ref, which is in `org.vibrantplanet.fvs.source-ref`. fvs-build is still recorded in `revision` and the `fvs-build-*` labels.
 
-To run it by hand: `gh workflow run dispatch-container-fvs-workspace.yml -f source_ref=2027.1.0 -f interface_ref=20261109 -f image_tag=2027.1.0 -f push=false`.
+To run it by hand: `gh workflow run dispatch-container-fvs-workspace.yml -f source_ref=2027.1.0 -f interface_ref=20261121 -f image_tag=2027.1.0 -f push=false`.
