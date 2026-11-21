@@ -154,6 +154,11 @@ jobs:
       - name: Smoke-test the variant executables
         run: bash fvs-build/tools/ci/smoke_test_native.sh
 
+      - name: Run the FVS regression tests
+        # The debug profile's runtime checks change outputs.
+        if: inputs.profile == 'reference'
+        run: bash fvs-build/tools/ci/regression_tests.sh
+
       - name: Verify artifacts are self-contained and from one GCC
         run: bash fvs-build/tools/ci/verify_native.sh
 
