@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.9.0](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.8.0...v0.9.0) (2026-11-21)
+
+
+### ⚠ BREAKING CHANGES
+
+* build the workspace image from Interface 20261121 without the fvsOL patch ([#76](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/76))
+
+### Bug Fixes
+
+* build the workspace image from Interface 20261121 without the fvsOL patch ([#76](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/76)) ([34641cc](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/34641cc59a5029296a3ab67a30d298803dfaa39b))
+
 ## [0.8.0](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.7.2...v0.8.0) (2026-11-15)
 
 
