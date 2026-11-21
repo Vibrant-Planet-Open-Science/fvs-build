@@ -2,12 +2,14 @@
 # Run the FVS source's tests/FVS<v>/makefile against the built executables and
 # fail unless every output with a .save beside it matches, ignoring run stamps
 # (-999 lines, the page header) and sqlite3 CLI quoting and type case.
+# DIFFS_WARN=1 reports a differing output as a warning instead of a failure.
 set -uo pipefail
 shopt -s nullglob
 
 VARIANTS="${VARIANTS:?VARIANTS is required}"
 FVS_SOURCE="${FVS_SOURCE:-${GITHUB_WORKSPACE:?set FVS_SOURCE or GITHUB_WORKSPACE}/fvs-source}"
 BUILD_DIR="${BUILD_DIR:-_build}"
+DIFFS_WARN="${DIFFS_WARN:-0}"
 
 # The FVSie makefile reads iet01_Out_sqlite.sql, the file is
 # iet01_out_sqlite.sql (USDAForestService/ForestVegetationSimulator#97).
@@ -40,6 +42,8 @@ for v in $VARIANTS; do
       status=1
     elif diff -w -i --strip-trailing-cr <(normalized "$output") <(normalized "$golden"); then
       echo "PASS ${name}"
+    elif [ "$DIFFS_WARN" = 1 ]; then
+      echo "::warning title=Regression test differs::${name} differs from its .save"
     else
       echo "FAIL ${name} (differs from its .save)"
       status=1
