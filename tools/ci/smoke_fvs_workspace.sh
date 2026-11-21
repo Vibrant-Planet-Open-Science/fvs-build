@@ -3,7 +3,7 @@
 # already-built image. The checks are described in docs/fvs-workspace-container.md.
 #
 # Usage: tools/ci/smoke_fvs_workspace.sh [IMAGE_REF]     (default: fvs-workspace:local)
-# Env:   SMOKE_VARIANT=<code>  override the auto-detected variant used by checks 2, 13 and 14.
+# Env:   SMOKE_VARIANT=<code>  override the auto-detected variant used by checks 2, 12 and 13.
 set -euo pipefail
 
 IMAGE="${1:-fvs-workspace:local}"
@@ -202,45 +202,19 @@ wait_or_die "$cid" "http://localhost:${SUP_PORT}/" 180 "fvsOL relaunched but nev
 docker rm -f "$cid" >/dev/null; CIDS=()
 pass "supervise loop relaunches fvsOL after stopApp()"
 
-# --- 10. the patches landed in the shipped sources -------------------
-info "10. vendored fvsOL patches present in the image's staged sources"
-docker run --rm "$IMAGE" sh -c '
-  set -e
-  test -d /opt/fvs/interface/fvsOL/R
-  if grep -rq "\"/www/s" /opt/fvs/interface/fvsOL/R; then
-    echo "found origin-absolute /www/ stand-image URL"; exit 1
-  fi
-  if grep -rq "ProjectIsLocked" /opt/fvs/interface/fvsOL/R; then
-    echo "found mis-cased ProjectIsLocked.txt"; exit 1
-  fi
-  echo patched-ok' 2>&1 | grep -q '^patched-ok$' \
-  || die "the vendored fvsOL patches are missing from this image: the View On Maps popup graphs will 404 under the /fvs-gui/ proxy subpath, and leaving a project will strand a lock file that hides it from the project picker. Rebuild from a Dockerfile.fvs-workspace that applies docker/fvs-workspace/patches/"
-pass "vendored patches present in /opt/fvs/interface/fvsOL/R"
+# --- 10. the Interface release has the Local-mode fixes ----------------------
+info "10. fvsOL sources include the Local-mode fixes from Interface 20261121"
+docker run --rm "$IMAGE" sh -c \
+  'cd /opt/fvs/interface/fvsOL/R && ! grep -rqE "\"/www/s|ProjectIsLocked|getVolumes2" .' \
+  || die "this image was built from an interface_ref older than 20261121: View On Maps popup graphs will 404 under the /fvs-gui/ proxy subpath, leaving a project will strand a lock file that hides it from the project picker, and Change Working Directory will kill the session. Rebuild with interface_ref 20261121 or later"
+pass "Local-mode fixes present in /opt/fvs/interface/fvsOL/R"
 
-# --- 11. Local mode can construct a session ----------------------------------
-# Evaluate only the installed launch.R's library()/require() calls, so the fs
-# attachment must come from the shim rather than from this check.
-info "11. Local mode: isLocal() TRUE and getVolumes2() usable (fs attached by launch.R)"
-docker run --rm "$IMAGE" Rscript -e '
-  attaches <- Filter(function(e) is.call(e) && is.name(e[[1]]) &&
-      as.character(e[[1]]) %in%
-        c("library", "require", "suppressPackageStartupMessages"),
-    as.list(parse("/opt/fvs/launch.R")))
-  stopifnot(length(attaches) > 0)
-  for (e in attaches) eval(e, globalenv())
-  stopifnot(fvsOL:::isLocal())
-  volumes <- c(fvsOL:::getVolumes2()())
-  stopifnot(length(volumes) > 0, all(nzchar(volumes)))
-  cat("local-ok", paste(volumes, collapse=","), "\n")' 2>&1 | grep -q '^local-ok ' \
-  || die "Local mode cannot construct a session with only the packages launch.R attaches: isLocal() is FALSE, or getVolumes2() failed (it calls fs::dir_exists unqualified and fvsOL declares no fs dependency, so launch.R must attach fs). The app would still boot and serve, then grey out the instant a browser opens a session"
-pass "Local mode constructs from launch.R's attachments: volume list non-empty"
-
-# --- 12. Manage Projects does not grey out ------------------------------------
+# --- 11. Manage Projects does not grey out ------------------------------------
 # Reproduces a live session's on-disk state: the projectId.txt fvsOL writes at
 # first start plus the lock file it holds for the life of the session.
-info "12. Manage Projects project list survives a locked open project"
+info "11. Manage Projects project list survives a locked open project"
 docker run --rm "$IMAGE" Rscript -e '
-  suppressPackageStartupMessages({library(fs); library(fvsOL)})
+  suppressPackageStartupMessages(library(fvsOL))
   prjDir <- Sys.getenv("FVSOL_PRJDIR", "/home/jovyan/project")
   stopifnot(dir.exists(prjDir))
   setwd(prjDir)
@@ -257,30 +231,30 @@ docker run --rm "$IMAGE" Rscript -e '
   || die "getProjectList() errored with the open project locked: the Manage Projects tab will grey out on first click"
 pass "project list resolves with the open project locked (Manage Projects usable)"
 
-# --- 13. FVS executable on PATH ----------------------------------------------
-info "13. FVS${VARIANT} executable on PATH runs to STOP 20"
+# --- 12. FVS executable on PATH ----------------------------------------------
+info "12. FVS${VARIANT} executable on PATH runs to STOP 20"
 docker run --rm -w /tmp -e VARIANT="$VARIANT" "$IMAGE" sh -c \
   '"FVS$VARIANT" --version && { "FVS$VARIANT" </dev/null 2>&1 || true; }' \
   | grep -q 'STOP 20' || die "FVS${VARIANT} is missing from PATH or did not reach STOP 20 on empty input"
 pass "FVS${VARIANT} runs from PATH"
 
-# --- 14. fvs2py loads a variant from FVS_BIN ----------------------------------
-info "14. fvs2py loads FVS${VARIANT}.so from \$FVS_BIN"
+# --- 13. fvs2py loads a variant from FVS_BIN ----------------------------------
+info "13. fvs2py loads FVS${VARIANT}.so from \$FVS_BIN"
 docker run --rm -e VARIANT="$VARIANT" "$IMAGE" python -c \
   'import os; from fvs2py import FVS; FVS(os.path.join(os.environ["FVS_BIN"], "FVS" + os.environ["VARIANT"] + ".so")); print("fvs2py-ok")' \
   2>&1 | grep -q '^fvs2py-ok$' || die "fvs2py could not load FVS${VARIANT}.so from \$FVS_BIN"
 pass "fvs2py loads FVS${VARIANT}.so"
 
-# --- 15. Jupyter R and Python kernels -----------------------------------------
-info "15. Jupyter kernels: ir and python3"
+# --- 14. Jupyter R and Python kernels -----------------------------------------
+info "14. Jupyter kernels: ir and python3"
 kernels="$(docker run --rm "$IMAGE" jupyter kernelspec list 2>/dev/null)"
 for k in ir python3; do
   printf '%s\n' "$kernels" | grep -qE "^ +${k} " || die "Jupyter kernel ${k} is not registered"
 done
 pass "ir and python3 kernels registered"
 
-# --- 16. default command serves JupyterLab ------------------------------------
-info "16. docker run with no command serves JupyterLab on 8888"
+# --- 15. default command serves JupyterLab ------------------------------------
+info "15. docker run with no command serves JupyterLab on 8888"
 cid=$(docker run -d -p "${DEFAULT_PORT}:8888" "$IMAGE")
 CIDS+=("$cid")
 wait_or_die "$cid" "http://localhost:${DEFAULT_PORT}/api" 90 "the default command did not start JupyterLab on port 8888"

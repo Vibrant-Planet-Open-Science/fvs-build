@@ -25,11 +25,11 @@ on:
       interface_ref:
         description: >-
           Tag, branch, or SHA in interface_repo for the rFVS/fvsOL sources.
-          Must be release 20261019 or later: earlier refs ship rFVS/fvsOL
-          without NAMESPACE and fail Dockerfile.fvs-workspace's guard.
+          Must be release 20261121 or later: earlier refs lack the fvsOL
+          fixes Local mode needs on Linux behind the /fvs-gui/ proxy.
         required: false
         type: string
-        default: "20261109"
+        default: "20261121"
       image_name:
         description: >-
           Fully-qualified image name without the tag suffix, e.g.

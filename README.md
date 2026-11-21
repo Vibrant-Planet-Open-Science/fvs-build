@@ -110,6 +110,6 @@ Releases are cut by [release-please](https://github.com/googleapis/release-pleas
 - `meson.build`, `meson_options.txt` and `tools/parse_sourcelist.py`: the Meson build, which reads each variant's `bin/FVS<v>_sourceList.txt` from the FVS source tree and defines its executable and shared library.
 - `.github/workflows/`: the reusable `build-*.yml` workflows, their `dispatch-*.yml` drivers, PR CI and release-please.
 - `tools/ci/`: the scripts those workflows run, from resolving the variant list through configure, smoke tests and artifact checks to assembling the bundle and its provenance.
-- `docker/`: `Dockerfile.runtime` (`usfs-fvs`) and `Dockerfile.fvs-workspace`, with the workspace image's launch shim, proxy package and `fvsOL` patches under `docker/fvs-workspace/`.
+- `docker/`: `Dockerfile.runtime` (`usfs-fvs`) and `Dockerfile.fvs-workspace`, with the workspace image's launch shim and proxy package under `docker/fvs-workspace/`.
 - `docs/`: [`workflow-interface.md`](docs/workflow-interface.md) (the contract for callers), [`local-builds.md`](docs/local-builds.md) (running Meson by hand) and [`fvs-workspace-container.md`](docs/fvs-workspace-container.md) (maintainer notes for the workspace image).
 - `release-please-config.json`, `.release-please-manifest.json` and `.github/dependabot.yml`: releases (see [Releases](#releases)) and dependency updates.

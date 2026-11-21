@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 # Launch shim for fvsOL behind jupyter-server-proxy: `Rscript launch.R {port}`.
-# See docs/fvs-workspace-container.md for Local mode, the fs attachment and the loop.
+# See docs/fvs-workspace-container.md for Local mode and the loop.
 #
 # fvsOL is attached with library() rather than called as fvsOL::fvsOL: its app
 # code calls its Depends (shiny, Cairo, ...) unqualified, and `::` does not
@@ -26,12 +26,7 @@ max_fast_restarts <- 3
 options(browser = function(url) invisible(NULL))
 options(shiny.port = port, shiny.host = "0.0.0.0")
 
-# fs: getVolumes2() calls fs::dir_exists/dir_ls unqualified, and fvsOL does not
-# declare fs.
-suppressPackageStartupMessages({
-  library(fs)
-  library(fvsOL)
-})
+suppressPackageStartupMessages(library(fvsOL))
 
 fast_restarts <- 0
 

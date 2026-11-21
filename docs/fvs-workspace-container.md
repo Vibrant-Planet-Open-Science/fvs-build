@@ -25,7 +25,6 @@ Steps 1–8 run once per arch: `amd64` on `ubuntu-24.04`, plus `arm64` on `ubunt
 | `fvs2py` (in `/opt/venv`) and `IRkernel` | Python and R access to the `.so` set from Jupyter notebooks. `FVS_BIN=/usr/local/lib` points both at it: `rFVS::fvsLoad("FVSpn", bin = Sys.getenv("FVS_BIN"))`, `fvs2py.FVS(os.path.join(os.environ["FVS_BIN"], "FVSpn.so"))` |
 | `/opt/fvs/launch.R` | launch shim (`docker/fvs-workspace/launch.R`): neutralizes `launch.browser=TRUE`, pins host/port, and calls `shiny::runApp()` inside a **supervise loop**. `fvsOL` calls `stopApp()` on every session end, which makes `runApp()` return, and jupyter-server-proxy never respawns a cleanly-exited process. A fast-exit guard (3 consecutive exits under 5 s) fails loudly instead of spinning. See smoke check 9 |
 | `jupyter-fvsol-proxy` (pip-installed into `/opt/venv`) | registers the `fvs-gui` proxy entry via the `jupyter_serverproxy_servers` entry point (`docker/fvs-workspace/jupyter-fvsol-proxy/`): `timeout: 120`, `absolute_url: False`, no `environment` (leaving `SHINY_PORT` unset selects Local mode), plus the launcher icon. See smoke checks 7 and 8 |
-| `/opt/fvs/patches/` | `fvsOL` source patches (`docker/fvs-workspace/patches/`), applied before the package is built and kept in the image to record what it was patched with. See [Local mode and the `fvsOL` patch](#local-mode-and-the-fvsol-patch) |
 | `/usr/share/fvs-build/manifest.json` | the native bundle's provenance manifest |
 | `/usr/share/fvs-build/sbom-binaries.spdx.json` | the native bundle's binary SBOM |
 
@@ -39,30 +38,18 @@ The published image comes from [fvs-workspace](https://github.com/Vibrant-Planet
 
 The `/fvs-gui/` route is registered by an entry point, not a Jupyter config file: mybinder mounts a Kubernetes ConfigMap over `/etc/jupyter` at runtime, so anything registered there is invisible on Binder even though `docker run` works.
 
-## Local mode and the `fvsOL` patch
+## Local mode
 
-`fvsOL` picks its mode from `isLocal()`, which is `Sys.getenv('SHINY_PORT') == ""` (`server.R:113`). The proxy config sets no environment, so the image runs in **Local** mode. Local mode is what makes the Manage Projects tab work: `shinyDirChoose` for "Change Working Directory" is registered only under `if (isLocal())` (`server.R:421`), the "Upload project backup zip file" observer returns immediately otherwise (`server.R:6156`), and "Open selected project" only does the `setwd`/reload in the Local branch (`server.R:8781`). Online mode does **not** hide those three: `FVSOnlineUI` (`ui.R:1`) is a package-level object whose `isLocal()` branches were frozen `TRUE` at install time during `docker build`, while the server re-evaluates them per request, so under Online mode they render and do nothing.
-
-Local mode needs three fixes here. Two are source-level, in `docker/fvs-workspace/patches/0001-fvsol-local-mode-behind-proxy.patch`, applied by `Dockerfile.fvs-workspace` before `document()`/`install()`:
-
-| Fix | Where | Why |
-| --- | --- | --- |
-| "View On Maps" popup graph URL | `server.R:5933` | with `Display: graph`, each stand's leaflet popup shows a PNG written to `./www/s<sid>.png` and served via `addResourcePath("www", …)`. The Local branch addresses it as an origin-absolute `/www/s<sid>.png`, which 404s under the `/fvs-gui/` prefix. The other branch derives the URL from `session$clientData$url_pathname`, correct both behind a proxy and with none, so the patch drops the `isLocal()` special case |
-| lock-file name case | `server.R:8783`, `8920` | the lock is written as `projectIsLocked.txt` (`server.R:224`) but removed as `ProjectIsLocked.txt`. On a case-sensitive filesystem the removal silently fails, every project the user leaves keeps a stale lock, and `getProjectList()` drops locked projects, so it vanishes from the picker |
-| `fs` not attached | `launch.R` | `getVolumes2()` (`change_project_dir.R`) calls `fs::dir_exists`/`dir_ls` unqualified while `fvsOL` neither `Depends` on nor `Imports` `fs`, so the session dies at construction with `could not find function "dir_exists"`. `fs` is already in the image and only needs attaching. Kept deployment-side so it is not a third source hunk to carry across `interface_ref` bumps |
-
-The patch is applied with `git apply` (no fuzz). The Dockerfile re-greps `fvsOL/R` for both defects, and smoke check 10 greps the sources baked into the built image. `.pre-commit-config.yaml` excludes `docker/fvs-workspace/patches/` from the whitespace and end-of-file hooks: the diff's context lines carry upstream's trailing whitespace, and "cleaning" them makes `git apply` reject the patch.
+`fvsOL` picks its mode from `isLocal()`, which is `Sys.getenv('SHINY_PORT') == ""` (`server.R:113`). The proxy config sets no environment, so the image runs in **Local** mode. Local mode is what makes the Manage Projects tab work: `shinyDirChoose` for "Change Working Directory" is registered only under `if (isLocal())` (`server.R:449`), the "Upload project backup zip file" observer returns immediately otherwise (`server.R:6009`), and "Open selected project" only does the `setwd`/reload in the Local branch (`server.R:8661`). Online mode does **not** hide those three: `FVSOnlineUI` (`ui.R:1`) is a package-level object whose `isLocal()` branches were frozen `TRUE` at install time during `docker build`, while the server re-evaluates them per request, so under Online mode they render and do nothing.
 
 Two Local-mode behaviours are known and not fixed:
 
-- **The directory chooser is rooted at `/`.** `getVolumes2()` returns `c(Computer = "/")` on Linux. In a single-user Binder container that grants nothing the JupyterLab terminal does not, but it needs a decision before any shared or multi-tenant deployment.
+- **The directory chooser is rooted at `/`.** `shinyFiles::getVolumes()()` returns `c(Computer = "/")` in the image. In a single-user Binder container that grants nothing the JupyterLab terminal does not, but it needs a decision before any shared or multi-tenant deployment.
 - **A working-directory change does not survive a relaunch.** `launch.R`'s supervise loop re-enters `fvsOL(prjDir = FVSOL_PRJDIR, …)`, so a session that ends after a directory switch comes back in the starter project.
-
-**Exit criteria:** when both source fixes merge upstream, delete `docker/fvs-workspace/patches/`, the Dockerfile apply and assert steps, and smoke check 10, then bump `interface_ref` to the merged SHA.
 
 ## Minimum `interface_ref`
 
-`interface_ref` must be Interface release `20261019` or later. From that release `rFVS` and `fvsOL` ship `NAMESPACE` and `man/`, which the image needs to install them with `R CMD INSTALL`; `Dockerfile.fvs-workspace` fails the build otherwise.
+`interface_ref` must be Interface release `20261121` or later. Earlier releases lack three `fvsOL` fixes Local mode needs on Linux behind the `/fvs-gui/` proxy: "Change Working Directory" ([#43](https://github.com/USDAForestService/ForestVegetationSimulator-Interface/issues/43)), the project lock on a project switch ([#45](https://github.com/USDAForestService/ForestVegetationSimulator-Interface/issues/45)) and View On Maps popup images ([#47](https://github.com/USDAForestService/ForestVegetationSimulator-Interface/issues/47)). Smoke check 10 fails an image built from an older ref. Releases before `20261019` also ship `rFVS` and `fvsOL` without the `NAMESPACE` that `R CMD INSTALL` needs, which `Dockerfile.fvs-workspace` checks.
 
 ## Smoke test
 
@@ -79,13 +66,12 @@ Unlike the runtime image, the workspace image is smoke-tested before it is pushe
 | 7\. `<base_url>/fvs-gui/` still serves with an empty dir mounted over `/etc/jupyter`, and `server-proxy/icon/fvs-gui` returns `image/png` | the proxy registration living only where mybinder's ConfigMap mount shadows it |
 | 8\. the `jupyter_serverproxy_servers` entry point is registered, validates as a `ServerProcess`, and sets no `SHINY_PORT` | a broken entry point (skipped with only a warning, so the symptom is a silent 404), or a reintroduced Online mode |
 | 9\. `launch.R` relaunches `fvsOL` after `stopApp()` | the supervise loop regressing, which bricks the Binder session when the tab closes |
-| 10\. neither patched defect is present in the `fvsOL/R` sources baked into the image | a published image built without the patch |
-| 11\. `isLocal()` is `TRUE` and `getVolumes2()()` returns a non-empty volume list | `launch.R` no longer attaching `fs`, which kills every Local-mode session after the page is served |
-| 12\. `getProjectList()` returns instead of erroring with the open project locked | the Manage Projects tab greying out on first click |
-| 13\. an `FVS<v>` executable on `PATH` runs `--version` and reaches `STOP 20` on empty input | the executables missing from the image, or not runnable in it |
-| 14\. `fvs2py` loads an `FVS<v>.so` from `$FVS_BIN` | an `fvs2py` release whose required API routines the `.so` lacks, or `FVS_BIN` pointing elsewhere |
-| 15\. `jupyter kernelspec list` shows `ir` and `python3` | a notebook kernel missing on Binder |
-| 16\. `docker run` with no command serves JupyterLab on 8888 and prints the `http://127.0.0.1:8888/lab?token=` link | the README's local instructions breaking |
+| 10\. the `fvsOL/R` sources baked into the image include the Local-mode fixes from Interface `20261121` | an image built from an older `interface_ref` |
+| 11\. `getProjectList()` returns instead of erroring with the open project locked | the Manage Projects tab greying out on first click |
+| 12\. an `FVS<v>` executable on `PATH` runs `--version` and reaches `STOP 20` on empty input | the executables missing from the image, or not runnable in it |
+| 13\. `fvs2py` loads an `FVS<v>.so` from `$FVS_BIN` | an `fvs2py` release whose required API routines the `.so` lacks, or `FVS_BIN` pointing elsewhere |
+| 14\. `jupyter kernelspec list` shows `ir` and `python3` | a notebook kernel missing on Binder |
+| 15\. `docker run` with no command serves JupyterLab on 8888 and prints the `http://127.0.0.1:8888/lab?token=` link | the README's local instructions breaking |
 
 Run it locally against a `--load`ed image:
 
@@ -94,14 +80,14 @@ docker buildx build --load -t fvs-workspace:local -f docker/Dockerfile.fvs-works
 tools/ci/smoke_fvs_workspace.sh fvs-workspace:local
 ```
 
-Override the variant used in checks 2, 13 and 14 with `SMOKE_VARIANT=<code>`; it otherwise auto-detects one from `/usr/local/lib`.
+Override the variant used in checks 2, 12 and 13 with `SMOKE_VARIANT=<code>`; it otherwise auto-detects one from `/usr/local/lib`.
 
 ## Local validation
 
 ```bash
 gh workflow run dispatch-container-fvs-workspace.yml \
   -f source_ref=2027.1.0 \
-  -f interface_ref=20261109 \
+  -f interface_ref=20261121 \
   -f image_tag=2027.1.0 \
   -f push=false
 ```
