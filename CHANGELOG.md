@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.9.0](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.8.0...v0.9.0) (2026-11-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* the workspace image no longer patches fvsOL, so `interface_ref` must be `20261121` or later. Older Interface refs lack the fvsOL fixes for Local mode behind the `/fvs-gui/` proxy, and their builds fail smoke check 10.
+
+### Features
+
+* build FVS 2027.1.1 by default ([#79](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/79)) ([7954a80](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/7954a80670fd1fb927cd8c39d7faaa4349255b94))
+* make the regression tests opt-in with a none/warn/strict mode ([#80](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/80)) ([491b00c](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/491b00c509d72d0ebccb931d76c4b39618297fd8))
+* run the FVS regression tests in the native builds ([#78](https://github.com/Vibrant-Planet-Open-Science/fvs-build/issues/78)) ([664af4b](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/664af4b90cfbb2959614564c8d5311a6476f49f0))
+
+
+### Bug Fixes
+
+* build the workspace image from Interface 20261121 without the fvsOL patch ([34641cc](https://github.com/Vibrant-Planet-Open-Science/fvs-build/commit/34641cc59a5029296a3ab67a30d298803dfaa39b))
+
 ## [0.8.0](https://github.com/Vibrant-Planet-Open-Science/fvs-build/compare/v0.7.2...v0.8.0) (2026-11-15)
 
 
