@@ -31,6 +31,15 @@ on:
         required: false
         type: string
         default: "reference"
+      regression_tests:
+        description: >-
+          Run the FVS source's regression tests (reference profile only).
+          One of: none, warn, strict. none skips them. warn reports an
+          output that differs from its .save as a warning; strict fails on
+          it. warn and strict both fail on a missing output.
+        required: false
+        type: string
+        default: "none"
     outputs:
       artifact_name:
         description: >-
@@ -204,7 +213,9 @@ jobs:
 
       - name: Run the FVS regression tests
         # The debug profile's runtime checks change outputs.
-        if: inputs.profile == 'reference'
+        if: inputs.profile == 'reference' && inputs.regression_tests != 'none'
+        env:
+          REGRESSION_TESTS: ${{ inputs.regression_tests }}
         run: bash fvs-build/tools/ci/regression_tests.sh
 
       - name: Verify artifacts are self-contained and from one GCC
