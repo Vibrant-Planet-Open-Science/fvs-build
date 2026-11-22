@@ -38,7 +38,7 @@ on:
         type: string
       image_tag:
         description: >-
-          Primary tag for the built image, e.g. `2027.1.0`.
+          Primary tag for the built image, e.g. `2027.1.1`.
         required: true
         type: string
       image_extra_tags:

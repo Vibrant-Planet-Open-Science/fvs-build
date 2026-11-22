@@ -76,7 +76,7 @@ Five reusable `workflow_call` workflows build the native binaries (one each for 
 
 ### Supported FVS versions
 
-The workflows build from `USDAForestService/ForestVegetationSimulator` and support release tags from **FS2026.3** on. Earlier releases include copies of the `volume/NVEL` submodule with stale gfortran `.mod` files, which break the build. Upstream tags use `YYYY.N.P` from `2027.1.0`, which is the default ref and the one CI tests.
+The workflows build from `USDAForestService/ForestVegetationSimulator` and support release tags from **FS2026.3** on. Earlier releases include copies of the `volume/NVEL` submodule with stale gfortran `.mod` files, which break the build. Upstream tags use `YYYY.N.P` from `2027.1.0` on; `2027.1.1` is the default ref and the one CI tests.
 
 ### Calling the workflows
 
