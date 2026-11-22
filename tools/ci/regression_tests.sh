@@ -40,11 +40,15 @@ for v in $VARIANTS; do
     if [ ! -f "$output" ]; then
       echo "FAIL ${name} (not written)"
       status=1
-    elif diff -w -i --strip-trailing-cr <(normalized "$output") <(normalized "$golden"); then
+    elif changes="$(diff -w -i --strip-trailing-cr <(normalized "$output") <(normalized "$golden"))"; then
       echo "PASS ${name}"
     elif [ "$DIFFS_WARN" = 1 ]; then
-      echo "::warning title=Regression test differs::${name} differs from its .save"
+      # Workflow commands take one line; GitHub decodes these escapes.
+      changes="${changes//'%'/%25}"
+      changes="${changes//$'\r'/%0D}"
+      echo "::warning title=${name} differs from its .save on ${RUNNER_OS:-$(uname -s)}::${changes//$'\n'/%0A}"
     else
+      echo "$changes"
       echo "FAIL ${name} (differs from its .save)"
       status=1
     fi
