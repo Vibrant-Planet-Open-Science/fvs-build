@@ -154,6 +154,15 @@ jobs:
       - name: Smoke-test the variant executables
         run: bash fvs-build/tools/ci/smoke_test_native.sh
 
+      - name: Run the FVS regression tests
+        # The debug profile's runtime checks change outputs.
+        if: inputs.profile == 'reference'
+        env:
+          # Apple's libm moves a few outputs by 1-2 in the last digit, which
+          # -ffp-contract=off doesn't change. Linux and Windows stay strict.
+          DIFFS_WARN: "1"
+        run: bash fvs-build/tools/ci/regression_tests.sh
+
       - name: Verify artifacts are self-contained and from one GCC
         run: bash fvs-build/tools/ci/verify_native.sh
 

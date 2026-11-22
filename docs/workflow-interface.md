@@ -33,6 +33,8 @@ The SBOM (SPDX 2.3 JSON) lists each executable and shared library with its SHA1 
 
 The executable and shared library are independent link products (upstream `bin/makefile` `%.prg` rules): the executable does not need the library beside it. Shared libraries keep the `FVS<v>` basename with no `lib` prefix, and use `.so` on macOS as well as Linux (matching upstream and R's `.Platform$dynlib.ext`). On Windows both are statically linked and import only the Universal C Runtime (Windows 10+). macOS binaries target macOS 15.0 (`MACOSX_DEPLOYMENT_TARGET`), built on the `macos-15` runner, whose Homebrew GCC targets the same release.
 
+The `reference` builds run the FVS source's regression tests, and fail if an output differs from its `.save` on Linux or Windows. On macOS a differing output is a warning: Apple's libm appears to produce slightly different rounding behavior and can move a few values (`cat01.sum`, `emt01.sum`, `sot01.sum`, `DBReportTest_dump.txt` at `2027.1.0`) by 1 or 2 in the last digit. A missing output fails on every platform.
+
 ### Toolchain
 
 Each workflow pins its GCC major (`GCC_MAJOR`). A runner that cannot provide it fails before compiling, and every artifact is checked to come from exactly one GCC of that major (`tools/ci/check_gcc_major.sh`). Meson is pinned in `tools/ci/requirements-build.txt`.
