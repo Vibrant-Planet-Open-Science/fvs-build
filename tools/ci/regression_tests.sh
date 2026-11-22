@@ -32,6 +32,10 @@ normalized() {
   grep -v -e '-999' -e 'FOREST VEGETATION SIMULATOR *VERSION' "$1" | tr -d '"'
 }
 
+want="$(mktemp)"
+got="$(mktemp)"
+trap 'rm -f "$want" "$got"' EXIT
+
 status=0
 for v in $VARIANTS; do
   for golden in "${FVS_SOURCE}/tests/FVS${v}/"*.save; do
@@ -45,9 +49,15 @@ for v in $VARIANTS; do
       echo "PASS ${name}"
     elif [ "$DIFFS_WARN" = 1 ]; then
       title="${name} differs from its .save on ${RUNNER_OS:-$(uname -s)}"
+      normalized "$golden" > "$want"
+      normalized "$output" > "$got"
+      # Marks the changed characters, e.g. 1897[-2-]{+1+}; sed drops the
+      # header naming the temp files.
+      changes="$(git diff --no-index -U0 -w --ignore-cr-at-eol --word-diff=plain --word-diff-regex='[^[:space:]]' \
+        "$want" "$got" | sed 1,4d)"
       # shellcheck disable=SC2016 # literal markdown code fence
       [ -z "${GITHUB_STEP_SUMMARY:-}" ] \
-        || printf '### %s\n\n```diff\n%s\n```\n\n' "$title" "$changes" >> "$GITHUB_STEP_SUMMARY"
+        || printf '### %s\n\n```\n%s\n```\n\n' "$title" "$changes" >> "$GITHUB_STEP_SUMMARY"
       # Workflow commands take one line; GitHub decodes these escapes.
       changes="${changes//'%'/%25}"
       changes="${changes//$'\r'/%0D}"
