@@ -65,7 +65,7 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
+      source_ref: 2027.1.1
 
   linux-arm64:
     name: Linux arm64 (reusable)
@@ -74,7 +74,7 @@ jobs:
     uses: ./.github/workflows/build-native-linux.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
+      source_ref: 2027.1.1
       arch: aarch64
 
   windows:
@@ -84,7 +84,7 @@ jobs:
     uses: ./.github/workflows/build-native-windows.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
+      source_ref: 2027.1.1
 
   macos:
     name: macOS (reusable)
@@ -93,7 +93,7 @@ jobs:
     uses: ./.github/workflows/build-native-macos.yml
     with:
       source_repo: USDAForestService/ForestVegetationSimulator
-      source_ref: 2027.1.0
+      source_ref: 2027.1.1
 
   fvs-workspace:
     name: FVS workspace image (reusable)

@@ -86,10 +86,10 @@ Override the variant used in checks 2, 12 and 13 with `SMOKE_VARIANT=<code>`; it
 
 ```bash
 gh workflow run dispatch-container-fvs-workspace.yml \
-  -f source_ref=2027.1.0 \
+  -f source_ref=2027.1.1 \
   -f interface_ref=20261121 \
-  -f image_tag=2027.1.0 \
+  -f image_tag=2027.1.1 \
   -f push=false
 ```
 
-`push=false` (the default) builds the image without publishing. With `-f push=true` it publishes to `ghcr.io/<your-account>/fvs-workspace:2027.1.0`, which is for forks: in this organization the package belongs to fvs-workspace, and fvs-build's token cannot push to it.
+`push=false` (the default) builds the image without publishing. With `-f push=true` it publishes to `ghcr.io/<your-account>/fvs-workspace:2027.1.1`, which is for forks: in this organization the package belongs to fvs-workspace, and fvs-build's token cannot push to it.

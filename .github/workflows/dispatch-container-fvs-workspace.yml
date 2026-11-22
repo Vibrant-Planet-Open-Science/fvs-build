@@ -11,7 +11,7 @@ on:
       source_ref:
         description: "FVS source ref (tag, branch, or SHA)"
         required: true
-        default: "2027.1.0"
+        default: "2027.1.1"
         type: string
       variants:
         description: >-
@@ -41,7 +41,7 @@ on:
       image_tag:
         description: "Primary image tag (typically the FVS source_ref)"
         required: true
-        default: "2027.1.0"
+        default: "2027.1.1"
         type: string
       image_extra_tags:
         description: "Comma-separated extra tags (e.g. latest)"
