@@ -39,6 +39,15 @@ on:
         options:
           - reference
           - debug
+      regression_tests:
+        description: "FVS regression tests (reference profile only): none, warn (differences are warnings) or strict"
+        required: false
+        default: none
+        type: choice
+        options:
+          - none
+          - warn
+          - strict
 
 permissions:
   contents: read
@@ -54,6 +63,7 @@ jobs:
       variants: ${{ inputs.variants }}
       arch: ${{ inputs.platform == 'linux-aarch64' && 'aarch64' || 'x86_64' }}
       profile: ${{ inputs.profile }}
+      regression_tests: ${{ inputs.regression_tests }}
 
   macos:
     if: inputs.platform == 'macos'
@@ -63,6 +73,7 @@ jobs:
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
       profile: ${{ inputs.profile }}
+      regression_tests: ${{ inputs.regression_tests }}
 
   windows:
     if: inputs.platform == 'windows'
@@ -72,3 +83,4 @@ jobs:
       source_ref: ${{ inputs.source_ref }}
       variants: ${{ inputs.variants }}
       profile: ${{ inputs.profile }}
+      regression_tests: ${{ inputs.regression_tests }}

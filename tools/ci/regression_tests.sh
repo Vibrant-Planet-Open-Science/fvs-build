@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Run the FVS source's tests/FVS<v>/makefile against the built executables and
-# fail unless every output with a .save beside it matches, ignoring run stamps
-# (-999 lines, the page header) and sqlite3 CLI quoting and type case.
-# DIFFS_WARN=1 reports a differing output as a warning instead of a failure.
+# compare every output with a .save beside it, ignoring run stamps (-999
+# lines, the page header) and sqlite3 CLI quoting and type case. A missing
+# output fails; a differing one fails under REGRESSION_TESTS=strict and is a
+# warning under REGRESSION_TESTS=warn.
 set -uo pipefail
 shopt -s nullglob
 
 VARIANTS="${VARIANTS:?VARIANTS is required}"
 FVS_SOURCE="${FVS_SOURCE:-${GITHUB_WORKSPACE:?set FVS_SOURCE or GITHUB_WORKSPACE}/fvs-source}"
 BUILD_DIR="${BUILD_DIR:-_build}"
+REGRESSION_TESTS="${REGRESSION_TESTS:-strict}"
+case "$REGRESSION_TESTS" in
+  warn | strict) ;;
+  *) echo "REGRESSION_TESTS must be warn or strict, not '${REGRESSION_TESTS}'" >&2; exit 2 ;;
+esac
 
 # The FVSie makefile reads iet01_Out_sqlite.sql, the file is
 # iet01_out_sqlite.sql (USDAForestService/ForestVegetationSimulator#97).
@@ -42,7 +48,7 @@ for v in $VARIANTS; do
     elif changes="$(diff -U0 -w -i --strip-trailing-cr --label "${name}.save" --label "$name" \
       <(normalized "$golden") <(normalized "$output"))"; then
       echo "PASS ${name}"
-    elif [ "${DIFFS_WARN:-}" = 1 ]; then
+    elif [ "$REGRESSION_TESTS" = warn ]; then
       title="${name} differs from its .save on ${RUNNER_OS:-$(uname -s)}"
       # shellcheck disable=SC2016 # literal markdown code fence
       [ -z "${GITHUB_STEP_SUMMARY:-}" ] \
