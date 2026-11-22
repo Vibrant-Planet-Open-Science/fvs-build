@@ -40,13 +40,18 @@ for v in $VARIANTS; do
     if [ ! -f "$output" ]; then
       echo "FAIL ${name} (not written)"
       status=1
-    elif changes="$(diff -w -i --strip-trailing-cr <(normalized "$output") <(normalized "$golden"))"; then
+    elif changes="$(diff -u -w -i --strip-trailing-cr --label "${name}.save" --label "$name" \
+      <(normalized "$golden") <(normalized "$output"))"; then
       echo "PASS ${name}"
     elif [ "$DIFFS_WARN" = 1 ]; then
+      title="${name} differs from its .save on ${RUNNER_OS:-$(uname -s)}"
+      # shellcheck disable=SC2016 # literal markdown code fence
+      [ -z "${GITHUB_STEP_SUMMARY:-}" ] \
+        || printf '### %s\n\n```diff\n%s\n```\n\n' "$title" "$changes" >> "$GITHUB_STEP_SUMMARY"
       # Workflow commands take one line; GitHub decodes these escapes.
       changes="${changes//'%'/%25}"
       changes="${changes//$'\r'/%0D}"
-      echo "::warning title=${name} differs from its .save on ${RUNNER_OS:-$(uname -s)}::${changes//$'\n'/%0A}"
+      echo "::warning title=${title}::${changes//$'\n'/%0A}"
     else
       echo "$changes"
       echo "FAIL ${name} (differs from its .save)"
